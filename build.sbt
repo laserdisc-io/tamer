@@ -139,7 +139,7 @@ lazy val root = project
   .aggregate(tamer, example)
   .settings(
     publish / skip := true,
-    addCommandAlias("checkFormat", ";scalafmtCheckAll;scalafmtSbtCheck"),
-    addCommandAlias("format", ";test:scalafmtAll;scalafmtAll;scalafmtSbt;test:scalafmtAll"),
-    addCommandAlias("build", ";checkFormat;clean;test")
+    addCommandAlias("fmtCheck", ";scalafmtCheckAll;scalafmtSbtCheck"),
+    addCommandAlias("fmt", ";test:scalafmtAll;scalafmtAll;scalafmtSbt;test:scalafmtAll"),
+    addCommandAlias("fullBuild", ";checkFormat;clean;test")
   )
