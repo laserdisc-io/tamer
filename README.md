@@ -18,7 +18,7 @@ See [here](example/src/main/scala/tamer/example/Main.scala) for a sample applica
 
 ## License
 
-Eisner is licensed under the **[MIT License](LICENSE)** (the "License"); you may not use this software except in
+Tamer is licensed under the **[MIT License](LICENSE)** (the "License"); you may not use this software except in
 compliance with the License.
 
 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an
