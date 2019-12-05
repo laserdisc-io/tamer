@@ -6,9 +6,11 @@ import java.sql.SQLException
 import cats.effect.Blocker
 import doobie.hikari.HikariTransactor
 import doobie.implicits._
-import doobie.util.query.Query0
 import doobie.util.transactor.Transactor
 import eu.timepit.refined.auto._
+import fs2.Stream
+import log.effect.LogWriter
+import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.config.DbConfig
 import zio._
 import zio.interop.catz._
@@ -21,15 +23,31 @@ trait Db extends Serializable {
 
 object Db {
   trait Service[R] {
-    def runQuery[K, V](tnx: Transactor[Task], query: Query0[V], queue: Queue[(K, V)], f: V => K): ZIO[R, DbError, Unit]
+    def runQuery[K, V, State](
+        tnx: Transactor[Task],
+        setup: Setup[K, V, State]
+    )(state: State, q: Queue[(K, V)]): ZIO[R, DbError, State]
   }
 
   trait Live extends Db {
     override final val db: Service[Any] = new Service[Any] {
-      override final def runQuery[K, V](tnx: Transactor[Task], query: Query0[V], queue: Queue[(K, V)], f: V => K): IO[DbError, Unit] =
-        query.stream.chunks.transact(tnx).evalTap(c => queue.offerAll(c.iterator.toStream.map(v => f(v) -> v))).compile.drain.mapError {
-          case e: Exception => DbError(e.getLocalizedMessage)
-        }
+      private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.Db.Live")
+      override final def runQuery[K, V, State](
+          tnx: Transactor[Task],
+          setup: Setup[K, V, State]
+      )(state: State, q: Queue[(K, V)]): IO[DbError, State] =
+        (for {
+          log   <- logTask
+          query <- UIO(setup.buildQuery(state))
+          _     <- log.info(s"running ${query.sql} with params derived from $state").ignore
+          values <- query.stream.chunks
+                     .transact(tnx)
+                     .evalTap(c => q.offerAll(c.iterator.toStream.map(v => setup.valueToKey(v) -> v)))
+                     .flatMap(Stream.chunk)
+                     .compile
+                     .toList
+          newState <- setup.stateFoldM(state)(values)
+        } yield newState).mapError { case e: Exception => DbError(e.getLocalizedMessage) }
     }
   }
 

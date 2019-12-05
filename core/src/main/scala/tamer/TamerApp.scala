@@ -7,15 +7,14 @@ import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 
-abstract class TamerApp[K, V, State](setupR: UIO[Setup[K, V, State]]) extends App {
+abstract class TamerApp[K, V, State](private val setup: UIO[Setup[K, V, State]]) extends App {
   final val run: ZIO[Blocking with Clock with Config with Db with Kafka, TamerError, Unit] =
     for {
-      setup       <- setupR
-      conf        <- config.load
-      blockingEC  <- blocking.blockingExecutor.map(_.asEC)
-      transactorR = Db.mkTransactor(conf.db, platform.executor.asEC, blockingEC)
-      program <- transactorR.use { tnx =>
-                  kafka.run(conf.kafka, setup) { case (sv, queue) => db.runQuery(tnx, setup.buildQuery(sv), queue, setup.valueToKey) }
+      setup      <- setup
+      config     <- config.load
+      blockingEC <- blocking.blockingExecutor.map(_.asEC)
+      program <- Db.mkTransactor(config.db, platform.executor.asEC, blockingEC).use { tnx =>
+                  kafka.run(config.kafka, setup)(db.runQuery(tnx, setup))
                 }
     } yield program
 
