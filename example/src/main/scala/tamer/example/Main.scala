@@ -24,9 +24,7 @@ object Source {
     val sixtyDaysAgo = bootTime.minus60Days
     Setup.avro(
       State(sixtyDaysAgo, sixtyDaysAgo.plus5Minutes)
-    )(
-      s => sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${s.from} AND modified_at <= ${s.to}""".query[Value]
-    )(
+    )(s => sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${s.from} AND modified_at <= ${s.to}""".query[Value])(
       v => Key(v.id),
       s => {
         case Nil => s.to.plus5Minutes.orNow.map(State(s.from, _))
