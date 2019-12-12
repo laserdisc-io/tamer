@@ -11,10 +11,10 @@ abstract class TamerApp[K, V, State](private val setup: UIO[Setup[K, V, State]])
   final val run: ZIO[Blocking with Clock with Config with Db with Kafka, TamerError, Unit] =
     for {
       setup      <- setup
-      config     <- config.load
+      config     <- Config.>.load
       blockingEC <- blocking.blockingExecutor.map(_.asEC)
       program <- Db.mkTransactor(config.db, platform.executor.asEC, blockingEC).use { tnx =>
-                  kafka.run(config.kafka, setup)(db.runQuery(tnx, setup))
+                  Kafka.>.run(config.kafka, setup)(Db.>.runQuery(tnx, setup))
                 }
     } yield program
 

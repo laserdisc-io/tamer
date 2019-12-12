@@ -13,9 +13,10 @@ lazy val V = new {
   val scalacheck    = "1.14.2"
   val scalatest     = "3.1.0"
   val silencer      = "1.4.2"
+  val zio           = "1.0.0-RC17"
   val `zio-interop` = "2.0.0.0-RC10"
   val `zio-kafka`   = "0.4.1"
-  val `zio-streams` = "1.0.0-RC17"
+  val `zio-macros`  = "0.6.0"
 }
 
 lazy val D = new {
@@ -70,7 +71,8 @@ lazy val D = new {
   val zio = Seq(
     "dev.zio" %% "zio-interop-cats" % V.`zio-interop`,
     "dev.zio" %% "zio-kafka"        % V.`zio-kafka`,
-    "dev.zio" %% "zio-streams"      % V.`zio-streams`
+    "dev.zio" %% "zio-macros-core"  % V.`zio-macros`,
+    "dev.zio" %% "zio-streams"      % V.zio
   )
 }
 
@@ -121,7 +123,8 @@ lazy val tamer = project
     libraryDependencies ++= (D.cats ++ D.config ++ D.doobie ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
       .map(_.withSources)
       .map(_.withJavadoc),
-    addCompilerPlugin("com.github.ghik" %% "silencer-plugin" % V.silencer),
+    addCompilerPlugin("com.github.ghik"  %% "silencer-plugin" % V.silencer),
+    addCompilerPlugin(("org.scalamacros" % "paradise"         % "2.1.1") cross CrossVersion.full),
     Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
     Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )
