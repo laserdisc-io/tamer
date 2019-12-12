@@ -9,6 +9,7 @@ import eu.timepit.refined.types.numeric.PosInt
 import eu.timepit.refined.types.string.NonEmptyString
 import zio.{IO, Task, ZIO}
 import zio.interop.catz._
+import zio.macros.annotation.accessible
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -18,7 +19,7 @@ final case class KafkaStateConfig(topic: NonEmptyString, groupId: NonEmptyString
 final case class KafkaConfig(brokers: HostList, closeTimeout: FiniteDuration, bufferSize: PosInt, sink: KafkaSinkConfig, state: KafkaStateConfig)
 final case class TamerConfig(db: DbConfig, kafka: KafkaConfig)
 
-trait Config extends Serializable {
+@accessible(">") trait Config extends Serializable {
   val config: Config.Service[Any]
 }
 
