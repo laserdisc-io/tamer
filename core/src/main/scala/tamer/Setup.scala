@@ -2,7 +2,7 @@ package tamer
 
 import com.sksamuel.avro4s._
 import doobie.util.query.Query0
-import tamer.registry.{Registry, Topic}
+import tamer.registry.Registry
 import zio.UIO
 import zio.kafka.client.serde.Serializer
 
