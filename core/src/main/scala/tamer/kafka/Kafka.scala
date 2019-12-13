@@ -18,7 +18,7 @@ import zio.duration._
 import zio.kafka.client._
 import zio.stream.ZStream
 
-final case class StateKey(table: String, groupId: String)
+final case class StateKey(queryHash: String, groupId: String)
 
 trait Kafka extends Serializable {
   val kafka: Kafka.Service[Any]
