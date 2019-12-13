@@ -32,8 +32,8 @@ object Serde {
       else {
         val id = buffer.getInt()
         for {
-          env <- RIO.environment[Registry with Topic]
-          _   <- env.registry.verifySchema(id).provide(TopicAndSchema(subject(env.topic), schema))
+          env <- RIO.environment[Registry]
+          _   <- env.registry.verifySchema(id, schema)
           res <- RIO.fromTry {
                   val length  = buffer.limit() - 1 - intByteSize
                   val payload = new Array[Byte](length)
@@ -46,7 +46,7 @@ object Serde {
     override final val serializer: Serializer[Registry with Topic, A] = Serializer.byteArray.contramapM { a =>
       for {
         env <- RIO.environment[Registry with Topic]
-        id  <- env.registry.getOrRegisterId.provide(TopicAndSchema(subject(env.topic), schema))
+        id  <- env.registry.getOrRegisterId(subject(env.topic), schema)
         arr <- Task {
                 val baos = new ByteArrayOutputStream
                 baos.write(Magic.toInt)

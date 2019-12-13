@@ -10,7 +10,7 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.KafkaException
 import tamer.config._
-import tamer.registry.{Registry, Topic}
+import tamer.registry.Registry
 import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
