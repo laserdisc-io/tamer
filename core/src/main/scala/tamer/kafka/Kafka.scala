@@ -71,9 +71,9 @@ object Kafka {
         val cSettings     = ConsumerSettings(brokers, groupId, clientId, closeTimeout.zio, Map.empty, 250.millis, 50.millis, 2)
         val pSettings     = ProducerSettings(brokers, closeTimeout.zio, Map.empty)
         val stateTopicSub = Subscription.topics(stateTopic)
-        val stateKeySerde = Serde[StateKey](isKey = true).serde
+        val stateKeySerde = Serde[StateKey](isKey = true)
         val stateConsumer = Consumer.make(cSettings)
-        val stateProducer = Producer.make(pSettings, stateKeySerde, stateSerde)
+        val stateProducer = Producer.make(pSettings, stateKeySerde.serializer, stateSerde)
         val producer      = Producer.make(pSettings, keySer, valueSer)
         val queue         = Managed.make(Queue.bounded[(K, V)](bufferSize))(_.shutdown)
 
@@ -96,7 +96,7 @@ object Kafka {
         def mkRecordChunk(kvs: List[(K, V)]) = Chunk.fromIterable(kvs.map { case (k, v) => new ProducerRecord(sinkTopic, k, v) })
         def sink(q: Queue[(K, V)], p: Producer[Registry with Topic, K, V], src: SchemaRegistryClient) = logTask.flatMap { log =>
           q.takeAll.flatMap {
-            case Nil => log.debug("no data to push") *> ZIO.unit
+            case Nil => log.trace("no data to push") *> ZIO.unit
             case kvs =>
               p.produceChunk(mkRecordChunk(kvs)).provideSome[Blocking](blocking(src, sinkTopic)).retry(tenTimes).flatten.unit <*
                 log.info(s"pushed ${kvs.size} messages to $sinkTopic")
@@ -127,7 +127,7 @@ object Kafka {
                     )
                 }
                 .drain ++
-                sc.plainStream(stateKeySerde, stateSerde)
+                sc.plainStream(stateKeySerde.deserializer, stateSerde)
                   .provideSome[Blocking with Clock](blockingWithClock(src, stateTopic))
                   .mapM {
                     case CommittableRecord(record, offset) if record.key == stateKey =>
@@ -136,7 +136,7 @@ object Kafka {
                           sp.produce(mkRecord(stateKey, newState))
                             .provideSome[Blocking](blocking(src, stateTopic))
                             .flatten
-                            .flatMap(rmd => log.info(s"pushed state $newState to $rmd"))
+                            .flatMap(rmd => log.debug(s"pushed state $newState to $rmd"))
                             .as(offset)
                         }
                     case CommittableRecord(_, offset) =>

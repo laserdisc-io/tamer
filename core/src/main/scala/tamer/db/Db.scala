@@ -46,7 +46,7 @@ object Db {
         (for {
           log   <- logTask
           query <- UIO(setup.buildQuery(state))
-          _     <- log.info(s"running ${query.sql} with params derived from $state").ignore
+          _     <- log.debug(s"running ${query.sql} with params derived from $state").ignore
           values <- query.stream.chunks
                      .transact(tnx)
                      .evalTap(c => q.offerAll(c.iterator.toStream.map(v => setup.valueToKey(v) -> v)))
