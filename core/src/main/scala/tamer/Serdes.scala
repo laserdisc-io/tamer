@@ -1,84 +1,62 @@
 package tamer
 
 import java.io.ByteArrayOutputStream
-import java.util.UUID
+import java.nio.ByteBuffer
 
 import com.sksamuel.avro4s._
 import org.apache.avro.Schema
-import zio.RIO
-import zio.kafka.client.serde._
+import tamer.registry._
+import zio.{RIO, Task}
+import zio.kafka.client.serde.{Deserializer, Serializer}
 
-import scala.annotation.implicitNotFound
+sealed trait Serde[A] extends Any {
+  def isKey: Boolean
+  def schema: Schema
+  def deserializer: Deserializer[Registry with Topic, A]
+  def serializer: Serializer[Registry with Topic, A]
+  final def serde: ZSerde[Registry with Topic, A] = ZSerde(deserializer)(serializer)
+}
 
-object Serdes {
-  final def apply[A <: Product: SchemaFor] = new SerdesPartiallyApplied(SchemaFor[A])
+object Serde {
+  private[this] final val Magic: Byte = 0x0
+  private[this] final val intByteSize = 4
 
-  final class SerdesPartiallyApplied[A](private val schemaForA: SchemaFor[A]) extends AnyVal {
-    private def schema = schemaForA.schema(DefaultFieldMapper)
-    private def deserWith(schema: Schema)(implicit `_`: Decoder[A]): Deserializer[Any, A] = {
-      def deserialize(ba: Array[Byte]) = AvroInputStream.binary[A].from(ba).build(schema)
-      Deserializer.byteArray.mapM { ba =>
-        RIO.fromTry(deserialize(ba).tryIterator.next)
+  final def apply[A <: Product: Decoder: Encoder: SchemaFor](isKey: Boolean = false) =
+    new RecordSerde[A](isKey, SchemaFor[A].schema(DefaultFieldMapper))
+
+  final class RecordSerde[A: Decoder: Encoder](override final val isKey: Boolean, override final val schema: Schema) extends Serde[A] {
+    private[this] def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
+    override final val deserializer: Deserializer[Registry with Topic, A] = Deserializer.byteArray.mapM { ba =>
+      val buffer = ByteBuffer.wrap(ba)
+      if (buffer.get != Magic) RIO.fail(SerializationError("Unknown magic byte!"))
+      else {
+        val id = buffer.getInt
+        for {
+          env <- RIO.environment[Registry with Topic]
+          _   <- env.registry.verifySchema(id).provide(TopicAndSchema(subject(env.topic), schema))
+          res <- RIO.fromTry {
+                  val length  = buffer.limit - 1 - intByteSize
+                  val payload = new Array[Byte](length)
+                  buffer.get(payload, 0, length)
+                  AvroInputStream.binary[A].from(payload).build(schema).tryIterator.next
+                }
+        } yield res
       }
     }
-    private def serWith(schema: Schema)(implicit `_`: Encoder[A]): Serializer[Any, A] = {
-      def serialize(baos: ByteArrayOutputStream) = AvroOutputStream.binary[A].to(baos).build(schema)
-      Serializer.byteArray.contramapM { a =>
-        RIO {
-          val baos = new ByteArrayOutputStream
-          val ser  = serialize(baos)
-          ser.write(a)
-          ser.close()
-          baos.toByteArray
-        }
-      }
-    }
-
-    final def deserializer(implicit `_`: Decoder[A]): Deserializer[Any, A] = deserWith(schema)
-    final def serializer(implicit `_`: Encoder[A]): Serializer[Any, A]     = serWith(schema)
-    final def serde(implicit `_`: Decoder[A], `__`: Encoder[A]): Serde[Any, A] = {
-      val s = schema
-      Serde(deserWith(s))(serWith(s))
-    }
-  }
-
-  @implicitNotFound("Couldn't find Simple[$A] instance, try implementing your own")
-  sealed trait Simple[A] extends Any {
-    def deserializer: Deserializer[Any, A]
-    def serializer: Serializer[Any, A]
-    final def serde: Serde[Any, A] = Serde(deserializer)(serializer)
-  }
-
-  object Simple {
-    @inline final def apply[A](implicit S: Simple[A]): Simple[A] = S
-
-    implicit final val boolSerde: Simple[Boolean] = new Simple[Boolean] {
-      override final val deserializer: Deserializer[Any, Boolean] = Serde.short.map(_ == 0)
-      override final val serializer: Serializer[Any, Boolean]     = Serde.short.contramap(b => if (b) 1 else 0)
-    }
-    implicit final val doubleSerde: Simple[Double] = new Simple[Double] {
-      override final val deserializer: Deserializer[Any, Double] = Serde.double
-      override final val serializer: Serializer[Any, Double]     = Serde.double
-    }
-    implicit final val floatSerde: Simple[Float] = new Simple[Float] {
-      override final val deserializer: Deserializer[Any, Float] = Serde.float
-      override final val serializer: Serializer[Any, Float]     = Serde.float
-    }
-    implicit final val intSerde: Simple[Int] = new Simple[Int] {
-      override final val deserializer: Deserializer[Any, Int] = Serde.int
-      override final val serializer: Serializer[Any, Int]     = Serde.int
-    }
-    implicit final val longSerde: Simple[Long] = new Simple[Long] {
-      override final val deserializer: Deserializer[Any, Long] = Serde.long
-      override final val serializer: Serializer[Any, Long]     = Serde.long
-    }
-    implicit final val stringSerde: Simple[String] = new Simple[String] {
-      override final val deserializer: Deserializer[Any, String] = Serde.string
-      override final val serializer: Serializer[Any, String]     = Serde.string
-    }
-    implicit final val uiidSerde: Simple[UUID] = new Simple[UUID] {
-      override final val deserializer: Deserializer[Any, UUID] = Serde.uuid
-      override final val serializer: Serializer[Any, UUID]     = Serde.uuid
+    override final val serializer: Serializer[Registry with Topic, A] = Serializer.byteArray.contramapM { a =>
+      for {
+        env <- RIO.environment[Registry with Topic]
+        id  <- env.registry.getOrRegisterId.provide(TopicAndSchema(subject(env.topic), schema))
+        arr <- Task {
+                val baos = new ByteArrayOutputStream
+                baos.write(Magic.toInt)
+                baos.write(ByteBuffer.allocate(intByteSize).putInt(id).array())
+                val ser = AvroOutputStream.binary[A].to(baos).build(schema)
+                ser.write(a)
+                ser.close()
+                baos.toByteArray
+              }
+      } yield arr
     }
   }
 }
