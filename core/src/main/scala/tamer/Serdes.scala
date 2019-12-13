@@ -28,14 +28,14 @@ object Serde {
     private[this] def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
     override final val deserializer: Deserializer[Registry with Topic, A] = Deserializer.byteArray.mapM { ba =>
       val buffer = ByteBuffer.wrap(ba)
-      if (buffer.get != Magic) RIO.fail(SerializationError("Unknown magic byte!"))
+      if (buffer.get() != Magic) RIO.fail(SerializationError("Unknown magic byte!"))
       else {
-        val id = buffer.getInt
+        val id = buffer.getInt()
         for {
           env <- RIO.environment[Registry with Topic]
           _   <- env.registry.verifySchema(id).provide(TopicAndSchema(subject(env.topic), schema))
           res <- RIO.fromTry {
-                  val length  = buffer.limit - 1 - intByteSize
+                  val length  = buffer.limit() - 1 - intByteSize
                   val payload = new Array[Byte](length)
                   buffer.get(payload, 0, length)
                   AvroInputStream.binary[A].from(payload).build(schema).tryIterator.next
