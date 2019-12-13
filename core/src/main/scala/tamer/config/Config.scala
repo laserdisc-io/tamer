@@ -16,7 +16,14 @@ import scala.concurrent.duration.FiniteDuration
 final case class DbConfig(driver: NonEmptyString, uri: UriString, username: NonEmptyString, password: Password)
 final case class KafkaSinkConfig(topic: NonEmptyString)
 final case class KafkaStateConfig(topic: NonEmptyString, groupId: NonEmptyString, clientId: NonEmptyString)
-final case class KafkaConfig(brokers: HostList, closeTimeout: FiniteDuration, bufferSize: PosInt, sink: KafkaSinkConfig, state: KafkaStateConfig)
+final case class KafkaConfig(
+    brokers: HostList,
+    schemaRegistryUrl: UrlString,
+    closeTimeout: FiniteDuration,
+    bufferSize: PosInt,
+    sink: KafkaSinkConfig,
+    state: KafkaStateConfig
+)
 final case class TamerConfig(db: DbConfig, kafka: KafkaConfig)
 
 @accessible(">") trait Config extends Serializable {
@@ -48,6 +55,7 @@ object Config {
       ).parMapN(KafkaStateConfig)
       private val kafkaConfig = (
         env("KAFKA_BROKERS").as[HostList],
+        env("KAFKA_SCHEMA_REGISTRY_URL").as[UrlString],
         env("KAFKA_CLOSE_TIMEOUT").as[FiniteDuration],
         env("KAFKA_BUFFER_SIZE").as[PosInt],
         kafkaSinkConfig,
