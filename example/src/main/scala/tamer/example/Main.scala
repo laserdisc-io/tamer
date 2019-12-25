@@ -4,6 +4,7 @@ package example
 import java.time.Instant
 import java.time.temporal.ChronoUnit._
 
+import doobie.implicits.javatime._
 import doobie.syntax.string._
 import zio.UIO
 
