@@ -17,6 +17,8 @@ import zio.clock.Clock
 import zio.duration._
 import zio.kafka.client._
 import zio.stream.ZStream
+import zio.kafka.client.Consumer.OffsetRetrieval
+import zio.kafka.client.Consumer.AutoOffsetStrategy
 
 final case class StateKey(queryHash: String, groupId: String)
 
@@ -66,9 +68,19 @@ object Kafka {
         val KafkaStateConfig(stateTopic, groupId, clientId)                                            = stateConfig
         val Setup(keySer, valueSer, stateSerde, _, defaultState, buildQuery, _)                        = setup
 
-        val registryTask  = Task(new CachedSchemaRegistryClient(schemaRegistryUrl, 4))
-        val tenTimes      = Schedule.recurs(10) && Schedule.exponential(25.milliseconds)
-        val cSettings     = ConsumerSettings(brokers, groupId, clientId, closeTimeout.zio, Map.empty, 250.millis, 50.millis, 2)
+        val registryTask = Task(new CachedSchemaRegistryClient(schemaRegistryUrl, 4))
+        val tenTimes     = Schedule.recurs(10) && Schedule.exponential(25.milliseconds)
+        val cSettings = ConsumerSettings(
+          brokers,
+          groupId,
+          clientId,
+          closeTimeout.zio,
+          Map.empty,
+          250.millis,
+          50.millis,
+          2,
+          OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest)
+        )
         val pSettings     = ProducerSettings(brokers, closeTimeout.zio, Map.empty)
         val stateTopicSub = Subscription.topics(stateTopic)
         val stateKeySerde = Serde[StateKey](isKey = true)
@@ -121,8 +133,6 @@ object Kafka {
                             .provideSome[Blocking](blocking(src, stateTopic))
                             .flatten
                             .flatMap(rm => log.info(s"pushed initial state $defaultState to $rm"))
-                      } &> waitAssignment(sc).flatMap { tps =>
-                        sc.seekToBeginning(tps) *> log.info(s"consumer group $groupId assigned to $tps and offset now set to earliest")
                       }
                     )
                 }
