@@ -16,9 +16,8 @@ import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
 import zio.kafka.client._
+import zio.kafka.client.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.stream.ZStream
-import zio.kafka.client.Consumer.OffsetRetrieval
-import zio.kafka.client.Consumer.AutoOffsetStrategy
 
 final case class StateKey(queryHash: String, groupId: String)
 
@@ -68,26 +67,17 @@ object Kafka {
         val KafkaStateConfig(stateTopic, groupId, clientId)                                            = stateConfig
         val Setup(keySer, valueSer, stateSerde, _, defaultState, buildQuery, _)                        = setup
 
-        val registryTask = Task(new CachedSchemaRegistryClient(schemaRegistryUrl, 4))
-        val tenTimes     = Schedule.recurs(10) && Schedule.exponential(25.milliseconds)
-        val cSettings = ConsumerSettings(
-          brokers,
-          groupId,
-          clientId,
-          closeTimeout.zio,
-          Map.empty,
-          250.millis,
-          50.millis,
-          2,
-          OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest)
-        )
-        val pSettings     = ProducerSettings(brokers, closeTimeout.zio, Map.empty)
-        val stateTopicSub = Subscription.topics(stateTopic)
-        val stateKeySerde = Serde[StateKey](isKey = true)
-        val stateConsumer = Consumer.make(cSettings)
-        val stateProducer = Producer.make(pSettings, stateKeySerde.serializer, stateSerde)
-        val producer      = Producer.make(pSettings, keySer, valueSer)
-        val queue         = Managed.make(Queue.bounded[(K, V)](bufferSize))(_.shutdown)
+        val registryTask            = Task(new CachedSchemaRegistryClient(schemaRegistryUrl, 4))
+        val tenTimes                = Schedule.recurs(10) && Schedule.exponential(25.milliseconds)
+        val offsetRetrievalStrategy = OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest)
+        val cSettings               = ConsumerSettings(brokers, groupId, clientId, closeTimeout.zio, Map.empty, 250.millis, 50.millis, 2, offsetRetrievalStrategy)
+        val pSettings               = ProducerSettings(brokers, closeTimeout.zio, Map.empty)
+        val stateTopicSub           = Subscription.topics(stateTopic)
+        val stateKeySerde           = Serde[StateKey](isKey = true)
+        val stateConsumer           = Consumer.make(cSettings)
+        val stateProducer           = Producer.make(pSettings, stateKeySerde.serializer, stateSerde)
+        val producer                = Producer.make(pSettings, keySer, valueSer)
+        val queue                   = Managed.make(Queue.bounded[(K, V)](bufferSize))(_.shutdown)
 
         val blocking = (src: SchemaRegistryClient, t: String) =>
           (env: Blocking) =>
