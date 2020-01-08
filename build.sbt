@@ -3,8 +3,8 @@ lazy val V = new {
   val cats          = "2.1.0"
   val `cats-effect` = "2.0.0"
   val ciris         = "1.0.3"
-  val confluent     = "5.3.1"
-  val doobie        = "0.8.7"
+  val confluent     = "5.3.2"
+  val doobie        = "0.8.8"
   val kafka         = "2.4.0"
   val logback       = "1.2.3"
   val `log-effect`  = "0.12.0"
@@ -15,7 +15,7 @@ lazy val V = new {
   val silencer      = "1.4.2"
   val zio           = "1.0.0-RC17"
   val `zio-interop` = "2.0.0.0-RC10"
-  val `zio-kafka`   = "0.4.1"
+  val `zio-kafka`   = "0.5.0"
   val `zio-macros`  = "0.6.2"
 }
 
