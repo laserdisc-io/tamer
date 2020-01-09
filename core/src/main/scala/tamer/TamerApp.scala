@@ -7,8 +7,8 @@ import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 
-abstract class TamerApp[K, V, State](private val setup: UIO[Setup[K, V, State]]) extends App {
-  final val run: ZIO[Blocking with Clock with Config with Db with Kafka, TamerError, Unit] =
+abstract class TamerApp[K, V, State](private val setup: Task[Setup[K, V, State]]) extends App {
+  final val run: ZIO[Blocking with Clock with Config with Db with Kafka, Throwable, Unit] =
     for {
       setup      <- setup
       config     <- Config.>.load
