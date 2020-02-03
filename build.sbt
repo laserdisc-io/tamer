@@ -36,8 +36,11 @@ lazy val D = new {
   )
 
   val kafka = Seq(
-    "io.confluent"     % "kafka-avro-serializer" % V.confluent,
-    "org.apache.kafka" % "kafka-clients"         % V.kafka
+    "org.apache.kafka" % "kafka-clients" % V.kafka
+  )
+
+  val avro = Seq(
+    "io.confluent" % "kafka-avro-serializer" % V.confluent
   )
 
   val logs = Seq(
@@ -123,6 +126,7 @@ lazy val tamer = project
     libraryDependencies ++= (D.cats ++ D.config ++ D.doobie ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
       .map(_.withSources)
       .map(_.withJavadoc),
+    libraryDependencies ++= D.avro,
     addCompilerPlugin("com.github.ghik"  %% "silencer-plugin" % V.silencer),
     addCompilerPlugin(("org.scalamacros" % "paradise"         % "2.1.1") cross CrossVersion.full),
     Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
