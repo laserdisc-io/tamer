@@ -3,7 +3,7 @@ sudo: false
 
 language: scala
 scala:
-  - 2.12.10
+  - 2.13.1
 
 sbt_args: -Dfile.encoding=UTF8 -Dsbt.color=always -Dsbt.supershell=false
 

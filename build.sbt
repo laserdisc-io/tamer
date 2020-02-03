@@ -12,7 +12,7 @@ lazy val V = new {
   val refined       = "0.9.12"
   val scalacheck    = "1.14.3"
   val scalatest     = "3.1.0"
-  val silencer      = "1.4.2"
+  val silencer      = "1.4.4"
   val zio           = "1.0.0-RC17"
   val `zio-interop` = "2.0.0.0-RC10"
   val `zio-kafka`   = "0.5.0"
@@ -59,7 +59,7 @@ lazy val D = new {
   )
 
   val silencer = Seq(
-    "com.github.ghik" %% "silencer-lib" % V.silencer % Provided
+    "com.github.ghik" %% "silencer-lib" % V.silencer % Provided cross CrossVersion.full
   )
 
   val tests = Seq(
@@ -79,7 +79,6 @@ lazy val D = new {
 inThisBuild {
   Seq(
     organization := "io.laserdisc",
-    scalaVersion := "2.12.10",
     homepage := Some(url("https://github.com/laserdisc-io/tamer")),
     licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
     developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
@@ -90,27 +89,21 @@ inThisBuild {
       "-explaintypes",
       "-Yrangepos",
       "-feature",
-      "-Xfuture",
-      "-Ypartial-unification",
       "-language:higherKinds",
       "-language:existentials",
       "-language:implicitConversions",
       "-unchecked",
-      "-Yno-adapted-args",
       "-Xlint:_,-type-parameter-shadow",
       "-Xsource:2.13",
       "-Ywarn-dead-code",
-      "-Ywarn-inaccessible",
-      "-Ywarn-infer-any",
-      "-Ywarn-nullary-override",
-      "-Ywarn-nullary-unit",
       "-Ywarn-numeric-widen",
       "-Ywarn-value-discard",
       "-Xfatal-warnings",
       "-Ywarn-unused",
       "-opt-warnings",
       "-Xlint:constant",
-      "-Ywarn-extra-implicit"
+      "-Ywarn-extra-implicit",
+      "-Ymacro-annotations"
     ),
     resolvers += "confluent" at "https://packages.confluent.io/maven/"
   )
@@ -123,8 +116,7 @@ lazy val tamer = project
     libraryDependencies ++= (D.cats ++ D.config ++ D.doobie ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
       .map(_.withSources)
       .map(_.withJavadoc),
-    addCompilerPlugin("com.github.ghik"  %% "silencer-plugin" % V.silencer),
-    addCompilerPlugin(("org.scalamacros" % "paradise"         % "2.1.1") cross CrossVersion.full),
+    addCompilerPlugin("com.github.ghik" %% "silencer-plugin" % V.silencer cross CrossVersion.full),
     Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
     Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )
