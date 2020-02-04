@@ -49,7 +49,7 @@ object Db {
           _     <- log.debug(s"running ${query.sql} with params derived from $state").ignore
           values <- query.stream.chunks
                      .transact(tnx)
-                     .evalTap(c => q.offerAll(c.iterator.toStream.map(v => setup.valueToKey(v) -> v)))
+                     .evalTap(c => q.offerAll(c.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v)))
                      .flatMap(Stream.chunk)
                      .compile
                      .toList
