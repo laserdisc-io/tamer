@@ -7,7 +7,7 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.avro.{Schema, SchemaValidatorBuilder}
 import zio.{RIO, Task}
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 trait Registry extends Serializable {
   val registry: Registry.Service[Any]
