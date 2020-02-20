@@ -11,7 +11,7 @@ import eu.timepit.refined.auto._
 import fs2.Stream
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import tamer.config.DbConfig
+import tamer.config.{DbConfig, QueryConfig}
 import zio._
 import zio.interop.catz._
 
@@ -25,15 +25,17 @@ object Db {
   trait Service[R] {
     def runQuery[K, V, State](
         tnx: Transactor[Task],
-        setup: Setup[K, V, State]
+        setup: Setup[K, V, State],
+        queryConfig: QueryConfig
     )(state: State, q: Queue[(K, V)]): ZIO[R, DbError, State]
   }
 
   object > extends Service[Db] {
     override final def runQuery[K, V, State](
         tnx: Transactor[Task],
-        setup: Setup[K, V, State]
-    )(state: State, q: Queue[(K, V)]): ZIO[Db, DbError, State] = ZIO.accessM(_.db.runQuery(tnx, setup)(state, q))
+        setup: Setup[K, V, State],
+        queryConfig: QueryConfig
+    )(state: State, q: Queue[(K, V)]): ZIO[Db, DbError, State] = ZIO.accessM(_.db.runQuery(tnx, setup, queryConfig)(state, q))
   }
 
   trait Live extends Db {
@@ -41,13 +43,16 @@ object Db {
       private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.Db.Live")
       override final def runQuery[K, V, State](
           tnx: Transactor[Task],
-          setup: Setup[K, V, State]
+          setup: Setup[K, V, State],
+          queryConfig: QueryConfig
       )(state: State, q: Queue[(K, V)]): IO[DbError, State] =
         (for {
           log   <- logTask
           query <- UIO(setup.buildQuery(state))
           _     <- log.debug(s"running ${query.sql} with params derived from $state").ignore
-          values <- query.stream.chunks
+          values <- query
+                     .streamWithChunkSize(queryConfig.fetchChunkSize)
+                     .chunks
                      .transact(tnx)
                      .evalTap(c => q.offerAll(c.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v)))
                      .flatMap(Stream.chunk)
