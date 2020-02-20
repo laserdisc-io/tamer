@@ -11,3 +11,4 @@
 # Anything else
 **/target/
 local.*
+.java-version

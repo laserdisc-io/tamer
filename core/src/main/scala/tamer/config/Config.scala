@@ -14,6 +14,7 @@ import zio.macros.annotation.accessible
 import scala.concurrent.duration.FiniteDuration
 
 final case class DbConfig(driver: NonEmptyString, uri: UriString, username: NonEmptyString, password: Password)
+final case class QueryConfig(fetchChunkSize: PosInt)
 final case class KafkaSinkConfig(topic: NonEmptyString)
 final case class KafkaStateConfig(topic: NonEmptyString, groupId: NonEmptyString, clientId: NonEmptyString)
 final case class KafkaConfig(
@@ -24,7 +25,7 @@ final case class KafkaConfig(
     sink: KafkaSinkConfig,
     state: KafkaStateConfig
 )
-final case class TamerConfig(db: DbConfig, kafka: KafkaConfig)
+final case class TamerConfig(db: DbConfig, query: QueryConfig, kafka: KafkaConfig)
 
 @accessible(">") trait Config extends Serializable {
   val config: Config.Service[Any]
@@ -47,6 +48,8 @@ object Config {
         env("DATABASE_PASSWORD").as[Password].redacted
       ).parMapN(DbConfig)
 
+      private val queryConfig = env("QUERY_FETCH_CHUNK_SIZE").as[PosInt].map(QueryConfig)
+
       private val kafkaSinkConfig = env("KAFKA_SINK_TOPIC").as[NonEmptyString].map(KafkaSinkConfig)
       private val kafkaStateConfig = (
         env("KAFKA_STATE_TOPIC").as[NonEmptyString],
@@ -62,8 +65,8 @@ object Config {
         kafkaStateConfig
       ).parMapN(KafkaConfig)
 
-      val tamerConfig: ConfigValue[TamerConfig] = (dbConfig, kafkaConfig).parMapN { (db, kafka) =>
-        TamerConfig(db, kafka)
+      val tamerConfig: ConfigValue[TamerConfig] = (dbConfig, queryConfig, kafkaConfig).parMapN { (db, query, kafka) =>
+        TamerConfig(db, query, kafka)
       }
 
       override final val load: IO[ConfigError, TamerConfig] =
