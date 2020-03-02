@@ -9,7 +9,7 @@ import doobie.hikari.HikariTransactor
 import doobie.implicits._
 import doobie.util.transactor.Transactor
 import eu.timepit.refined.auto._
-import fs2.Stream
+import fs2.{Chunk, Stream}
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.config.{DbConfig, QueryConfig}
@@ -26,6 +26,9 @@ object Db {
   implicit class InstantOps(ours: Instant) {
     def -(theirs: Instant): Long = ours.toEpochMilli - theirs.toEpochMilli
   }
+
+  case class ChunkWithMetadata[V](chunk: Chunk[V], pulledAt: Instant = Instant.now())
+  case class ValueWithMetadata[V](value: V, pulledAt: Instant = Instant.now())
 
   trait Service[R] {
     def runQuery[K, V, State](
@@ -60,12 +63,21 @@ object Db {
                      .streamWithChunkSize(queryConfig.fetchChunkSize)
                      .chunks
                      .transact(tnx)
-                     .evalTap(c => q.offerAll(c.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v)))
-                     .flatMap(Stream.chunk)
+                     .map(c => ChunkWithMetadata(c))
+                     .evalTap { c =>
+                       q.offerAll(c.chunk.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v))
+                     }
+                     .flatMap { c =>
+                       Stream.chunk(c.chunk).map(v => ValueWithMetadata(v, c.pulledAt))
+                     }
                      .compile
                      .toList
-          end      <- UIO(Instant.now())
-          newState <- setup.stateFoldM(state)(QueryResult(ResultMetadata(end - start), values))
+          newState <- setup.stateFoldM(state)(
+                       QueryResult(
+                         ResultMetadata(values.headOption.fold(Instant.now())(_.pulledAt) - start),
+                         values.map(_.value)
+                       )
+                     )
         } yield newState).mapError { case e: Exception => DbError(e.getLocalizedMessage) }
     }
   }
