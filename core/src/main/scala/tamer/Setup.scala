@@ -36,5 +36,13 @@ object Setup {
       buildQuery: V => Query0[V],
       valueToKey: V => K
   ): Setup[K, V, V] =
-    Setup(Serde[K](isKey = true).serializer, Serde[V]().serializer, Serde[V]().serde, valueToKey, defaultState, buildQuery, _ => r => UIO(r.results.last))
+    Setup(
+      Serde[K](isKey = true).serializer,
+      Serde[V]().serializer,
+      Serde[V]().serde,
+      valueToKey,
+      defaultState,
+      buildQuery,
+      _ => r => UIO(r.results.last)
+    )
 }

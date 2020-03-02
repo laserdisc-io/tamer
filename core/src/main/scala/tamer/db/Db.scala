@@ -24,7 +24,7 @@ trait Db extends Serializable {
 
 object Db {
   implicit class InstantOps(ours: Instant) {
-    def - (theirs: Instant): Long = ours.toEpochMilli - theirs.toEpochMilli
+    def -(theirs: Instant): Long = ours.toEpochMilli - theirs.toEpochMilli
   }
 
   trait Service[R] {
@@ -64,7 +64,7 @@ object Db {
                      .flatMap(Stream.chunk)
                      .compile
                      .toList
-          end <- UIO(Instant.now())
+          end      <- UIO(Instant.now())
           newState <- setup.stateFoldM(state)(QueryResult(ResultMetadata(end - start), values))
         } yield newState).mapError { case e: Exception => DbError(e.getLocalizedMessage) }
     }
