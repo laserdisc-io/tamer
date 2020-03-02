@@ -6,6 +6,9 @@ import tamer.registry.Registry
 import zio.UIO
 import zio.kafka.client.serde.Serializer
 
+final case class ResultMetadata(queryExecutionTime: Long)
+final case class QueryResult[V](metadata: ResultMetadata, results: List[V])
+
 final case class Setup[K, V, State](
     keySerializer: Serializer[Registry with Topic, K],
     valueSerializer: Serializer[Registry with Topic, V],
@@ -13,7 +16,7 @@ final case class Setup[K, V, State](
     valueToKey: V => K,
     defaultState: State,
     buildQuery: State => Query0[V],
-    stateFoldM: State => List[V] => UIO[State]
+    stateFoldM: State => QueryResult[V] => UIO[State]
 )
 
 object Setup {
@@ -23,7 +26,7 @@ object Setup {
       buildQuery: State => Query0[V]
   )(
       valueToKey: V => K,
-      stateFoldM: State => List[V] => UIO[State]
+      stateFoldM: State => QueryResult[V] => UIO[State]
   ): Setup[K, V, State] =
     Setup(Serde[K](isKey = true).serializer, Serde[V]().serializer, Serde[State]().serde, valueToKey, defaultState, buildQuery, stateFoldM)
 
@@ -33,5 +36,13 @@ object Setup {
       buildQuery: V => Query0[V],
       valueToKey: V => K
   ): Setup[K, V, V] =
-    Setup(Serde[K](isKey = true).serializer, Serde[V]().serializer, Serde[V]().serde, valueToKey, defaultState, buildQuery, _ => l => UIO(l.last))
+    Setup(
+      Serde[K](isKey = true).serializer,
+      Serde[V]().serializer,
+      Serde[V]().serde,
+      valueToKey,
+      defaultState,
+      buildQuery,
+      _ => r => UIO(r.results.last)
+    )
 }
