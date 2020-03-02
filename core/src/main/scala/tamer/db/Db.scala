@@ -2,6 +2,7 @@ package tamer
 package db
 
 import java.sql.SQLException
+import java.time.Instant
 
 import cats.effect.Blocker
 import doobie.hikari.HikariTransactor
@@ -22,6 +23,10 @@ trait Db extends Serializable {
 }
 
 object Db {
+  implicit class InstantOps(ours: Instant) {
+    def - (theirs: Instant): Long = ours.toEpochMilli - theirs.toEpochMilli
+  }
+
   trait Service[R] {
     def runQuery[K, V, State](
         tnx: Transactor[Task],
@@ -50,6 +55,7 @@ object Db {
           log   <- logTask
           query <- UIO(setup.buildQuery(state))
           _     <- log.debug(s"running ${query.sql} with params derived from $state").ignore
+          start <- UIO(Instant.now())
           values <- query
                      .streamWithChunkSize(queryConfig.fetchChunkSize)
                      .chunks
@@ -58,7 +64,8 @@ object Db {
                      .flatMap(Stream.chunk)
                      .compile
                      .toList
-          newState <- setup.stateFoldM(state)(values)
+          end <- UIO(Instant.now())
+          newState <- setup.stateFoldM(state)(QueryResult(ResultMetadata(end - start), values))
         } yield newState).mapError { case e: Exception => DbError(e.getLocalizedMessage) }
     }
   }
