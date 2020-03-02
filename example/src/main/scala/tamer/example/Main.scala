@@ -4,6 +4,7 @@ package example
 import java.time.Instant
 import java.time.temporal.ChronoUnit._
 
+import tamer.QueryResult
 import doobie.implicits.javatime._
 import doobie.syntax.string._
 import zio.UIO
@@ -28,8 +29,8 @@ object Source {
     )(s => sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${s.from} AND modified_at <= ${s.to}""".query[Value])(
       v => Key(v.id),
       s => {
-        case Nil => s.to.plus5Minutes.orNow.map(State(s.from, _))
-        case values =>
+        case QueryResult(_, Nil) => s.to.plus5Minutes.orNow.map(State(s.from, _))
+        case QueryResult(_, values) =>
           val max = values.map(_.modifiedAt).max // if we can't order in the query we need to do it here...
           max.plus5Minutes.orNow.map(State(max, _))
       }
