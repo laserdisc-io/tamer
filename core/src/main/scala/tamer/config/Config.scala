@@ -65,9 +65,7 @@ object Config {
         kafkaStateConfig
       ).parMapN(KafkaConfig)
 
-      val tamerConfig: ConfigValue[TamerConfig] = (dbConfig, queryConfig, kafkaConfig).parMapN { (db, query, kafka) =>
-        TamerConfig(db, query, kafka)
-      }
+      val tamerConfig: ConfigValue[TamerConfig] = (dbConfig, queryConfig, kafkaConfig).parMapN { (db, query, kafka) => TamerConfig(db, query, kafka) }
 
       override final val load: IO[ConfigError, TamerConfig] =
         tamerConfig.load[Task].refineToOrDie[CirisConfigError].mapError(ce => ConfigError(ce.redacted.show))
