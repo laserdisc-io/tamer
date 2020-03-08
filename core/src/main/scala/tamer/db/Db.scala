@@ -64,12 +64,8 @@ object Db {
                      .chunks
                      .transact(tnx)
                      .map(c => ChunkWithMetadata(c))
-                     .evalTap { c =>
-                       q.offerAll(c.chunk.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v))
-                     }
-                     .flatMap { c =>
-                       Stream.chunk(c.chunk).map(v => ValueWithMetadata(v, c.pulledAt))
-                     }
+                     .evalTap { c => q.offerAll(c.chunk.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v)) }
+                     .flatMap { c => Stream.chunk(c.chunk).map(v => ValueWithMetadata(v, c.pulledAt)) }
                      .compile
                      .toList
           newState <- setup.stateFoldM(state)(
