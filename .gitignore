@@ -1,5 +1,6 @@
 # Metals + Bloop
 .metals/
+metals.sbt
 .bloop/
 
 # Intellij
