@@ -1,5 +1,5 @@
 lazy val V = new {
-  val avro4s        = "3.0.9"
+  val avro4s        = "3.1.0"
   val cats          = "2.1.1"
   val `cats-effect` = "2.1.3"
   val ciris         = "1.0.4"
