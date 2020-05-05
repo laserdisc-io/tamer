@@ -45,8 +45,8 @@ lazy val D = new {
 
   val logs = Seq(
     "ch.qos.logback" % "logback-classic" % V.logback,
-    "io.laserdisc"   %% "log-effect-fs2" % V.`log-effect`,
-    "io.laserdisc"   %% "log-effect-zio" % V.`log-effect`
+    "io.laserdisc"  %% "log-effect-fs2"  % V.`log-effect`,
+    "io.laserdisc"  %% "log-effect-zio"  % V.`log-effect`
   )
 
   val postgres = Seq(
