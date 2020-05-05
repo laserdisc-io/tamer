@@ -35,8 +35,9 @@ object Registry {
       override final def getOrRegisterId(subject: String, schema: Schema): Task[Int] =
         for {
           log <- logTask
-          id <- Task(client.getId(subject, schema)).tap(id => log.debug(s"retrieved existing writer schema id: $id")) <>
-                 Task(client.register(subject, schema)).tap(id => log.info(s"registered with id $id new subject $subject writer schema $schema"))
+          id <-
+            Task(client.getId(subject, schema)).tap(id => log.debug(s"retrieved existing writer schema id: $id")) <>
+              Task(client.register(subject, schema)).tap(id => log.info(s"registered with id $id new subject $subject writer schema $schema"))
         } yield id
       override final def verifySchema(id: Int, schema: Schema): Task[Unit] =
         for {

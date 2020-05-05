@@ -35,11 +35,11 @@ object Serde {
           env <- RIO.environment[Registry]
           _   <- env.registry.verifySchema(id, schema)
           res <- RIO.fromTry {
-                  val length  = buffer.limit() - 1 - intByteSize
-                  val payload = new Array[Byte](length)
-                  buffer.get(payload, 0, length)
-                  AvroInputStream.binary[A].from(payload).build(schema).tryIterator.next
-                }
+            val length  = buffer.limit() - 1 - intByteSize
+            val payload = new Array[Byte](length)
+            buffer.get(payload, 0, length)
+            AvroInputStream.binary[A].from(payload).build(schema).tryIterator.next
+          }
         } yield res
       }
     }
@@ -48,14 +48,14 @@ object Serde {
         env <- RIO.environment[Registry with Topic]
         id  <- env.registry.getOrRegisterId(subject(env.topic), schema)
         arr <- Task {
-                val baos = new ByteArrayOutputStream
-                baos.write(Magic.toInt)
-                baos.write(ByteBuffer.allocate(intByteSize).putInt(id).array())
-                val ser = AvroOutputStream.binary[A].to(baos).build(schema)
-                ser.write(a)
-                ser.close()
-                baos.toByteArray
-              }
+          val baos = new ByteArrayOutputStream
+          baos.write(Magic.toInt)
+          baos.write(ByteBuffer.allocate(intByteSize).putInt(id).array())
+          val ser = AvroOutputStream.binary[A].to(baos).build(schema)
+          ser.write(a)
+          ser.close()
+          baos.toByteArray
+        }
       } yield arr
     }
   }

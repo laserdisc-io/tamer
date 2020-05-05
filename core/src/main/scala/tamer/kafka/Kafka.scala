@@ -52,9 +52,10 @@ object Kafka {
   trait Live extends Kafka {
     override final val kafka: Kafka.Service[Any] = new Kafka.Service[Any] {
       private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.Kafka.Live")
-      private[this] def stateKeyTask[A](a: A, s: String)(f: A => String): Task[StateKey] = Task(MessageDigest.getInstance("SHA-1")).map { md =>
-        StateKey(md.digest(f(a).getBytes).take(7).map(b => f"$b%02x").mkString, s)
-      }
+      private[this] def stateKeyTask[A](a: A, s: String)(f: A => String): Task[StateKey] =
+        Task(MessageDigest.getInstance("SHA-1")).map { md =>
+          StateKey(md.digest(f(a).getBytes).take(7).map(b => f"$b%02x").mkString, s)
+        }
 
       override final def run[K, V, State, R0, E1 <: TamerError](
           kafkaConfig: KafkaConfig,
@@ -96,14 +97,15 @@ object Kafka {
             }
 
         def mkRecordChunk(kvs: List[(K, V)]) = Chunk.fromIterable(kvs.map { case (k, v) => new ProducerRecord(sinkTopic, k, v) })
-        def sink(q: Queue[(K, V)], p: Producer[Registry with Topic, K, V], src: SchemaRegistryClient) = logTask.flatMap { log =>
-          q.takeAll.flatMap {
-            case Nil => log.trace("no data to push") *> ZIO.unit
-            case kvs =>
-              p.produceChunk(mkRecordChunk(kvs)).provideSome[Blocking](blocking(src, sinkTopic)).retry(tenTimes).flatten.unit <*
-                log.info(s"pushed ${kvs.size} messages to $sinkTopic")
+        def sink(q: Queue[(K, V)], p: Producer[Registry with Topic, K, V], src: SchemaRegistryClient) =
+          logTask.flatMap { log =>
+            q.takeAll.flatMap {
+              case Nil => log.trace("no data to push") *> ZIO.unit
+              case kvs =>
+                p.produceChunk(mkRecordChunk(kvs)).provideSome[Blocking](blocking(src, sinkTopic)).retry(tenTimes).flatten.unit <*
+                  log.info(s"pushed ${kvs.size} messages to $sinkTopic")
+            }
           }
-        }
 
         def mkRecord(k: StateKey, v: State) = new ProducerRecord(stateTopic, k, v)
         def waitAssignment(sc: Consumer)    = sc.assignment.withFilter(_.nonEmpty).retry(tenTimes)
@@ -116,15 +118,13 @@ object Kafka {
                 .flatMap {
                   case true => ZStream.fromEffect(log.info(s"consumer group $groupId resuming consumption from $stateTopic"))
                   case false =>
-                    ZStream.fromEffect(
-                      {
-                        log.info(s"consumer group $groupId never consumed from $stateTopic, setting offset to earliest") *>
-                          sp.produce(mkRecord(stateKey, defaultState))
-                            .provideSome[Blocking](blocking(src, stateTopic))
-                            .flatten
-                            .flatMap(rm => log.info(s"pushed initial state $defaultState to $rm"))
-                      }
-                    )
+                    ZStream.fromEffect {
+                      log.info(s"consumer group $groupId never consumed from $stateTopic, setting offset to earliest") *>
+                        sp.produce(mkRecord(stateKey, defaultState))
+                          .provideSome[Blocking](blocking(src, stateTopic))
+                          .flatten
+                          .flatMap(rm => log.info(s"pushed initial state $defaultState to $rm"))
+                    }
                 }
                 .drain ++
                 sc.plainStream(stateKeySerde.deserializer, stateSerde)
