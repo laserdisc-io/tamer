@@ -17,10 +17,11 @@ object Source {
   private[this] implicit final class InstantOps(private val instant: Instant) extends AnyVal {
     def plus5Minutes: Instant = instant.plus(5, MINUTES)
     def minus60Days: Instant  = instant.minus(60, DAYS)
-    def orNow: UIO[Instant] = UIO(Instant.now).map {
-      case now if instant.isAfter(now) => now
-      case _                           => instant
-    }
+    def orNow: UIO[Instant] =
+      UIO(Instant.now).map {
+        case now if instant.isAfter(now) => now
+        case _                           => instant
+      }
   }
   final val setup = UIO(Instant.now.truncatedTo(DAYS)).map { bootTime =>
     val sixtyDaysAgo = bootTime.minus60Days
