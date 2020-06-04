@@ -1,17 +1,17 @@
 lazy val V = new {
-  val avro4s        = "3.0.9"
+  val avro4s        = "3.1.0"
   val cats          = "2.1.1"
-  val `cats-effect` = "2.1.2"
-  val ciris         = "1.0.4"
-  val confluent     = "5.4.1"
+  val `cats-effect` = "2.1.3"
+  val ciris         = "1.1.0"
+  val confluent     = "5.4.2"
   val doobie        = "0.9.0"
-  val kafka         = "2.4.1"
+  val kafka         = "2.5.0"
   val logback       = "1.2.3"
-  val `log-effect`  = "0.12.2"
-  val postgres      = "42.2.12"
-  val refined       = "0.9.13"
+  val `log-effect`  = "0.12.1"
+  val postgres      = "42.2.13"
+  val refined       = "0.9.14"
   val scalacheck    = "1.14.3"
-  val scalatest     = "3.1.1"
+  val scalatest     = "3.1.2"
   val silencer      = "1.6.0"
   val zio           = "1.0.0-RC17"
   val `zio-interop` = "2.0.0.0-RC10"
@@ -45,8 +45,8 @@ lazy val D = new {
 
   val logs = Seq(
     "ch.qos.logback" % "logback-classic" % V.logback,
-    "io.laserdisc"   %% "log-effect-fs2" % V.`log-effect`,
-    "io.laserdisc"   %% "log-effect-zio" % V.`log-effect`
+    "io.laserdisc"  %% "log-effect-fs2"  % V.`log-effect`,
+    "io.laserdisc"  %% "log-effect-zio"  % V.`log-effect`
   )
 
   val postgres = Seq(

@@ -59,21 +59,22 @@ object Db {
           query <- UIO(setup.buildQuery(state))
           _     <- log.debug(s"running ${query.sql} with params derived from $state").ignore
           start <- UIO(Instant.now())
-          values <- query
-                     .streamWithChunkSize(queryConfig.fetchChunkSize)
-                     .chunks
-                     .transact(tnx)
-                     .map(c => ChunkWithMetadata(c))
-                     .evalTap { c => q.offerAll(c.chunk.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v)) }
-                     .flatMap { c => Stream.chunk(c.chunk).map(v => ValueWithMetadata(v, c.pulledAt)) }
-                     .compile
-                     .toList
+          values <-
+            query
+              .streamWithChunkSize(queryConfig.fetchChunkSize)
+              .chunks
+              .transact(tnx)
+              .map(c => ChunkWithMetadata(c))
+              .evalTap(c => q.offerAll(c.chunk.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v)))
+              .flatMap(c => Stream.chunk(c.chunk).map(v => ValueWithMetadata(v, c.pulledAt)))
+              .compile
+              .toList
           newState <- setup.stateFoldM(state)(
-                       QueryResult(
-                         ResultMetadata(values.headOption.fold(Instant.now())(_.pulledAt) - start),
-                         values.map(_.value)
-                       )
-                     )
+            QueryResult(
+              ResultMetadata(values.headOption.fold(Instant.now())(_.pulledAt) - start),
+              values.map(_.value)
+            )
+          )
         } yield newState).mapError { case e: Exception => DbError(e.getLocalizedMessage) }
     }
   }
