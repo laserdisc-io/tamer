@@ -1,5 +1,6 @@
 # Metals + Bloop
 .metals/
+metals.sbt
 .bloop/
 
 # Intellij
@@ -11,3 +12,4 @@
 # Anything else
 **/target/
 local.*
+.java-version

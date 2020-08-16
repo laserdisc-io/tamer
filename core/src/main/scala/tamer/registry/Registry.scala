@@ -7,7 +7,7 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.avro.{Schema, SchemaValidatorBuilder}
 import zio.{RIO, Task}
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 trait Registry extends Serializable {
   val registry: Registry.Service[Any]
@@ -35,8 +35,9 @@ object Registry {
       override final def getOrRegisterId(subject: String, schema: Schema): Task[Int] =
         for {
           log <- logTask
-          id <- Task(client.getId(subject, schema)).tap(id => log.debug(s"retrieved existing writer schema id: $id")) <>
-                 Task(client.register(subject, schema)).tap(id => log.info(s"registered with id $id new subject $subject writer schema $schema"))
+          id <-
+            Task(client.getId(subject, schema)).tap(id => log.debug(s"retrieved existing writer schema id: $id")) <>
+              Task(client.register(subject, schema)).tap(id => log.info(s"registered with id $id new subject $subject writer schema $schema"))
         } yield id
       override final def verifySchema(id: Int, schema: Schema): Task[Unit] =
         for {

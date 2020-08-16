@@ -1,18 +1,18 @@
 lazy val V = new {
-  val avro4s        = "3.0.6"
-  val cats          = "2.1.0"
-  val `cats-effect` = "2.1.0"
-  val ciris         = "1.0.4"
-  val confluent     = "5.4.0"
-  val doobie        = "0.8.8"
-  val kafka         = "2.4.0"
+  val avro4s        = "3.1.0"
+  val cats          = "2.1.1"
+  val `cats-effect` = "2.1.4"
+  val ciris         = "1.1.2"
+  val confluent     = "5.4.2"
+  val doobie        = "0.9.0"
+  val kafka         = "2.6.0"
   val logback       = "1.2.3"
   val `log-effect`  = "0.12.1"
-  val postgres      = "42.2.9"
-  val refined       = "0.9.12"
+  val postgres      = "42.2.15"
+  val refined       = "0.9.15"
   val scalacheck    = "1.14.3"
-  val scalatest     = "3.1.0"
-  val silencer      = "1.4.2"
+  val scalatest     = "3.2.1"
+  val silencer      = "1.6.0"
   val zio           = "1.0.0-RC17"
   val `zio-interop` = "2.0.0.0-RC10"
   val `zio-kafka`   = "0.5.0"
@@ -36,14 +36,17 @@ lazy val D = new {
   )
 
   val kafka = Seq(
-    "io.confluent"     % "kafka-avro-serializer" % V.confluent,
-    "org.apache.kafka" % "kafka-clients"         % V.kafka
+    "org.apache.kafka" % "kafka-clients" % V.kafka
+  )
+
+  val avro = Seq(
+    "io.confluent" % "kafka-avro-serializer" % V.confluent
   )
 
   val logs = Seq(
     "ch.qos.logback" % "logback-classic" % V.logback,
-    "io.laserdisc"   %% "log-effect-fs2" % V.`log-effect`,
-    "io.laserdisc"   %% "log-effect-zio" % V.`log-effect`
+    "io.laserdisc"  %% "log-effect-fs2"  % V.`log-effect`,
+    "io.laserdisc"  %% "log-effect-zio"  % V.`log-effect`
   )
 
   val postgres = Seq(
@@ -59,7 +62,7 @@ lazy val D = new {
   )
 
   val silencer = Seq(
-    "com.github.ghik" %% "silencer-lib" % V.silencer % Provided
+    "com.github.ghik" %% "silencer-lib" % V.silencer % Provided cross CrossVersion.full
   )
 
   val tests = Seq(
@@ -79,7 +82,6 @@ lazy val D = new {
 inThisBuild {
   Seq(
     organization := "io.laserdisc",
-    scalaVersion := "2.12.10",
     homepage := Some(url("https://github.com/laserdisc-io/tamer")),
     licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
     developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
@@ -90,27 +92,21 @@ inThisBuild {
       "-explaintypes",
       "-Yrangepos",
       "-feature",
-      "-Xfuture",
-      "-Ypartial-unification",
       "-language:higherKinds",
       "-language:existentials",
       "-language:implicitConversions",
       "-unchecked",
-      "-Yno-adapted-args",
       "-Xlint:_,-type-parameter-shadow",
       "-Xsource:2.13",
       "-Ywarn-dead-code",
-      "-Ywarn-inaccessible",
-      "-Ywarn-infer-any",
-      "-Ywarn-nullary-override",
-      "-Ywarn-nullary-unit",
       "-Ywarn-numeric-widen",
       "-Ywarn-value-discard",
       "-Xfatal-warnings",
       "-Ywarn-unused",
       "-opt-warnings",
       "-Xlint:constant",
-      "-Ywarn-extra-implicit"
+      "-Ywarn-extra-implicit",
+      "-Ymacro-annotations"
     ),
     resolvers += "confluent" at "https://packages.confluent.io/maven/"
   )
@@ -123,8 +119,8 @@ lazy val tamer = project
     libraryDependencies ++= (D.cats ++ D.config ++ D.doobie ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
       .map(_.withSources)
       .map(_.withJavadoc),
-    addCompilerPlugin("com.github.ghik"  %% "silencer-plugin" % V.silencer),
-    addCompilerPlugin(("org.scalamacros" % "paradise"         % "2.1.1") cross CrossVersion.full),
+    libraryDependencies ++= D.avro,
+    addCompilerPlugin("com.github.ghik" %% "silencer-plugin" % V.silencer cross CrossVersion.full),
     Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
     Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )

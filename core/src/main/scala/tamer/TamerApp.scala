@@ -14,8 +14,8 @@ abstract class TamerApp[K, V, State](private val setup: IO[SetupError, Setup[K, 
       config     <- Config.>.load
       blockingEC <- blocking.blockingExecutor.map(_.asEC)
       program <- Db.mkTransactor(config.db, platform.executor.asEC, blockingEC).use { tnx =>
-                  Kafka.>.run(config.kafka, setup)(Db.>.runQuery(tnx, setup))
-                }
+        Kafka.>.run(config.kafka, setup)(Db.>.runQuery(tnx, setup, config.query))
+      }
     } yield program
 
   override final def run(args: List[String]): ZIO[ZEnv, Nothing, Int] =
