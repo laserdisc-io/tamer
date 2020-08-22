@@ -3,27 +3,27 @@ version: '3'
 services:
 
   postgres:
-    container_name: my-local-postgres
+    container_name: tamer-postgres
     image: postgres:latest
     ports:
       - 5432:5432
     hostname: postgres
     networks:
-      - my_local_network
+      - tamer_network
     environment:
       - POSTGRES_PASSWORD=mysecretpassword
 
   zookeeper:
-    container_name: my-local-zookeeper
+    container_name: tamer-zookeeper
     image: niqdev/zookeeper:3.5.5
     ports:
       - 2181:2181
     hostname: zookeeper
     networks:
-      - my_local_network
+      - tamer_network
 
   kafka:
-    container_name: my-local-kafka
+    container_name: tamer-kafka
     image: niqdev/kafka:2.3.0
     depends_on:
       - zookeeper
@@ -31,12 +31,12 @@ services:
       - 9092:9092
     hostname: kafka
     networks:
-      - my_local_network
+      - tamer_network
     environment:
       - ZOOKEEPER_HOSTS=zookeeper:2181
 
   kafka-rest:
-    container_name: my-local-kafka-rest
+    container_name: tamer-kafka-rest
     image: confluentinc/cp-kafka-rest:5.3.0
     depends_on:
       - kafka
@@ -45,7 +45,7 @@ services:
       - 8082:8082
     hostname: kafka-rest
     networks:
-      - my_local_network
+      - tamer_network
     environment:
       - KAFKA_REST_ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_REST_LISTENERS=http://kafka-rest:8082
@@ -53,7 +53,7 @@ services:
       - KAFKA_REST_HOST_NAME=kafka-rest
 
   kafka-ui:
-    container_name: my-local-kafka-ui
+    container_name: tamer-kafka-ui
     image: landoop/kafka-topics-ui:latest
     depends_on:
       - kafka-rest
@@ -61,13 +61,13 @@ services:
       - 8000:8000
     hostname: kafka-ui
     networks:
-      - my_local_network
+      - tamer_network
     environment:
       - KAFKA_REST_PROXY_URL=http://kafka-rest:8082
       - PROXY=true
 
   schema-registry:
-    container_name: my-local-schema-registry
+    container_name: tamer-schema-registry
     image: confluentinc/cp-schema-registry:5.3.0
     depends_on:
       - kafka
@@ -75,14 +75,14 @@ services:
       - 8081:8081
     hostname: schema-registry
     networks:
-      - my_local_network
+      - tamer_network
     environment:
       - SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL=zookeeper:2181
       - SCHEMA_REGISTRY_HOST_NAME=schema-registry
       - SCHEMA_REGISTRY_LISTENERS=http://schema-registry:8081
 
   schema-registry-ui:
-    container_name: my-local-schema-registry-ui
+    container_name: tamer-schema-registry-ui
     image: landoop/schema-registry-ui:latest
     depends_on:
       - schema-registry
@@ -90,10 +90,10 @@ services:
       - 8001:8000
     hostname: schema-registry-ui
     networks:
-      - my_local_network
+      - tamer_network
     environment:
       - SCHEMAREGISTRY_URL=http://schema-registry:8081
       - PROXY=true
 
 networks:
-  my_local_network:
+  tamer_network:
