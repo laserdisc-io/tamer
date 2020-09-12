@@ -111,56 +111,53 @@ object Kafka {
         def waitAssignment(sc: Consumer)    = sc.assignment.withFilter(_.nonEmpty).retry(tenTimes)
         def subscribe(sc: Consumer)         = sc.subscribe(stateTopicSub) *> waitAssignment(sc).flatMap(sc.endOffsets(_)).map(_.values.exists(_ > 0L))
         def source(sc: Consumer, q: Queue[(K, V)], sp: Producer[Registry with Topic, StateKey, State], src: SchemaRegistryClient) =
-          ZStream.fromEffect(logTask <*> stateKeyTask(defaultState, groupId)(buildQuery(_).sql)).flatMap {
-            case (log, stateKey) =>
-              ZStream
-                .fromEffect(subscribe(sc))
-                .flatMap {
-                  case true => ZStream.fromEffect(log.info(s"consumer group $groupId resuming consumption from $stateTopic"))
-                  case false =>
-                    ZStream.fromEffect {
-                      log.info(s"consumer group $groupId never consumed from $stateTopic, setting offset to earliest") *>
-                        sp.produce(mkRecord(stateKey, defaultState))
+          ZStream.fromEffect(logTask <*> stateKeyTask(defaultState, groupId)(buildQuery(_).sql)).flatMap { case (log, stateKey) =>
+            ZStream
+              .fromEffect(subscribe(sc))
+              .flatMap {
+                case true => ZStream.fromEffect(log.info(s"consumer group $groupId resuming consumption from $stateTopic"))
+                case false =>
+                  ZStream.fromEffect {
+                    log.info(s"consumer group $groupId never consumed from $stateTopic, setting offset to earliest") *>
+                      sp.produce(mkRecord(stateKey, defaultState))
+                        .provideSome[Blocking](blocking(src, stateTopic))
+                        .flatten
+                        .flatMap(rm => log.info(s"pushed initial state $defaultState to $rm"))
+                  }
+              }
+              .drain ++
+              sc.plainStream(stateKeySerde.deserializer, stateSerde)
+                .provideSome[Blocking with Clock](blockingWithClock(src, stateTopic))
+                .mapM {
+                  case CommittableRecord(record, offset) if record.key == stateKey =>
+                    log.debug(s"consumer group $groupId consumed state ${record.value} from ${offset.topicPartition}@${offset.offset}") *>
+                      f(record.value, q).flatMap { newState =>
+                        sp.produce(mkRecord(stateKey, newState))
                           .provideSome[Blocking](blocking(src, stateTopic))
                           .flatten
-                          .flatMap(rm => log.info(s"pushed initial state $defaultState to $rm"))
-                    }
+                          .flatMap(rmd => log.debug(s"pushed state $newState to $rmd"))
+                          .as(offset)
+                      }
+                  case CommittableRecord(_, offset) =>
+                    log.debug(s"consumer group $groupId ignored state (wrong key) from ${offset.topicPartition}@${offset.offset}") *> UIO(offset)
                 }
-                .drain ++
-                sc.plainStream(stateKeySerde.deserializer, stateSerde)
-                  .provideSome[Blocking with Clock](blockingWithClock(src, stateTopic))
-                  .mapM {
-                    case CommittableRecord(record, offset) if record.key == stateKey =>
-                      log.debug(s"consumer group $groupId consumed state ${record.value} from ${offset.topicPartition}@${offset.offset}") *>
-                        f(record.value, q).flatMap { newState =>
-                          sp.produce(mkRecord(stateKey, newState))
-                            .provideSome[Blocking](blocking(src, stateTopic))
-                            .flatten
-                            .flatMap(rmd => log.debug(s"pushed state $newState to $rmd"))
-                            .as(offset)
-                        }
-                    case CommittableRecord(_, offset) =>
-                      log.debug(s"consumer group $groupId ignored state (wrong key) from ${offset.topicPartition}@${offset.offset}") *> UIO(offset)
-                  }
-                  .flattenChunks
+                .flattenChunks
           }
 
         ZStream
           .fromEffect(logTask <&> registryTask)
-          .flatMap {
-            case (log, src) =>
-              ZStream
-                .managed(stateConsumer <&> stateProducer <&> producer <&> queue)
-                .flatMap {
-                  case (((sc, sp), p), q) =>
-                    ZStream.fromEffect(sink(q, p, src).forever.fork <* log.info("running sink perpetually")).flatMap { fiber =>
-                      source(sc, q, sp, src).ensuringFirst {
-                        fiber.interrupt *> log.info("sink interrupted").ignore *> sink(q, p, src).run <* log.info("sink queue drained").ignore
-                      }
-                    }
+          .flatMap { case (log, src) =>
+            ZStream
+              .managed(stateConsumer <&> stateProducer <&> producer <&> queue)
+              .flatMap { case (((sc, sp), p), q) =>
+                ZStream.fromEffect(sink(q, p, src).forever.fork <* log.info("running sink perpetually")).flatMap { fiber =>
+                  source(sc, q, sp, src).ensuringFirst {
+                    fiber.interrupt *> log.info("sink interrupted").ignore *> sink(q, p, src).run <* log.info("sink queue drained").ignore
+                  }
                 }
-                .aggregateAsync(Consumer.offsetBatches)
-                .mapM(ob => ob.commit <* log.debug(s"consumer group $groupId committed offset batch ${ob.offsets}"))
+              }
+              .aggregateAsync(Consumer.offsetBatches)
+              .mapM(ob => ob.commit <* log.debug(s"consumer group $groupId committed offset batch ${ob.offsets}"))
           }
           .runDrain
           .refineOrDie(tamerErrors)

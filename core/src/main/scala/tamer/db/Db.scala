@@ -84,8 +84,8 @@ object Db {
       HikariTransactor
         .newHikariTransactor[Task](db.driver, db.uri, db.username, db.password, connectEC, Blocker.liftExecutionContext(transactEC))
         .allocated
-        .map {
-          case (ht, cleanup) => Reservation(ZIO.succeed(ht), _ => cleanup.orDie)
+        .map { case (ht, cleanup) =>
+          Reservation(ZIO.succeed(ht), _ => cleanup.orDie)
         }
         .uninterruptible
         .refineToOrDie[SQLException]
