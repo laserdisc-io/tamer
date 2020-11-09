@@ -2,6 +2,8 @@
 .metals/
 metals.sbt
 .bloop/
+.bsp/
+.vscode/
 
 # Intellij
 .idea
