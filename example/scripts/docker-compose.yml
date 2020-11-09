@@ -4,7 +4,7 @@ services:
 
   postgres:
     container_name: tamer-postgres
-    image: postgres:latest
+    image: postgres:9.6-alpine
     ports:
       - 5432:5432
     hostname: postgres
@@ -15,29 +15,38 @@ services:
 
   zookeeper:
     container_name: tamer-zookeeper
-    image: niqdev/zookeeper:3.5.5
+    image: bitnami/zookeeper:3.6.2
     ports:
       - 2181:2181
     hostname: zookeeper
     networks:
       - tamer_network
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
 
   kafka:
     container_name: tamer-kafka
-    image: niqdev/kafka:2.3.0
-    depends_on:
-      - zookeeper
+    image: bitnami/kafka:2.6.0
     ports:
       - 9092:9092
+      - 9093:9093
     hostname: kafka
     networks:
       - tamer_network
     environment:
-      - ZOOKEEPER_HOSTS=zookeeper:2181
+      - KAFKA_CFG_BROKER_ID=1
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CLIENT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=CLIENT://:9092,EXTERNAL://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=CLIENT://kafka:9092,EXTERNAL://localhost:9093
+      - KAFKA_INTER_BROKER_LISTENER_NAME=CLIENT
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    depends_on:
+      - zookeeper
 
   kafka-rest:
     container_name: tamer-kafka-rest
-    image: confluentinc/cp-kafka-rest:5.3.0
+    image: confluentinc/cp-kafka-rest:6.0.0
     depends_on:
       - kafka
       - schema-registry
@@ -47,7 +56,7 @@ services:
     networks:
       - tamer_network
     environment:
-      - KAFKA_REST_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_REST_BOOTSTRAP_SERVERS=PLAINTEXT://kafka:9092
       - KAFKA_REST_LISTENERS=http://kafka-rest:8082
       - KAFKA_REST_SCHEMA_REGISTRY_URL=http://schema-registry:8081
       - KAFKA_REST_HOST_NAME=kafka-rest
@@ -68,7 +77,7 @@ services:
 
   schema-registry:
     container_name: tamer-schema-registry
-    image: confluentinc/cp-schema-registry:5.3.0
+    image: confluentinc/cp-schema-registry:6.0.0
     depends_on:
       - kafka
     ports:
@@ -77,7 +86,7 @@ services:
     networks:
       - tamer_network
     environment:
-      - SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL=zookeeper:2181
+      - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://kafka:9092
       - SCHEMA_REGISTRY_HOST_NAME=schema-registry
       - SCHEMA_REGISTRY_LISTENERS=http://schema-registry:8081
 
