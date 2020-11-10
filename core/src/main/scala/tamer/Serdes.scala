@@ -22,7 +22,7 @@ object Serde {
   private[this] final val intByteSize = 4
 
   final def apply[A <: Product: Decoder: Encoder: SchemaFor](isKey: Boolean = false) =
-    new RecordSerde[A](isKey, SchemaFor[A].schema(DefaultFieldMapper))
+    new RecordSerde[A](isKey, SchemaFor[A].schema)
 
   final class RecordSerde[A: Decoder: Encoder](override final val isKey: Boolean, override final val schema: Schema) extends Serde[A] {
     private[this] def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
@@ -51,7 +51,7 @@ object Serde {
           val baos = new ByteArrayOutputStream
           baos.write(Magic.toInt)
           baos.write(ByteBuffer.allocate(intByteSize).putInt(id).array())
-          val ser = AvroOutputStream.binary[A].to(baos).build(schema)
+          val ser = AvroOutputStream.binary[A].to(baos).build()
           ser.write(a)
           ser.close()
           baos.toByteArray
