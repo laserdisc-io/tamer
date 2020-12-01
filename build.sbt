@@ -1,5 +1,5 @@
 lazy val V = new {
-  val avro4s        = "4.0.1"
+  val avro4s        = "4.0.2"
   val cats          = "2.2.0"
   val `cats-effect` = "2.2.0"
   val ciris         = "1.2.1"
@@ -9,7 +9,7 @@ lazy val V = new {
   val logback       = "1.2.3"
   val `log-effect`  = "0.13.2"
   val postgres      = "42.2.18"
-  val refined       = "0.9.17"
+  val refined       = "0.9.18"
   val scalacheck    = "1.15.1"
   val scalatest     = "3.2.3"
   val silencer      = "1.6.0"
