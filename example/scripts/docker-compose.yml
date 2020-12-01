@@ -46,7 +46,7 @@ services:
 
   kafka-rest:
     container_name: tamer-kafka-rest
-    image: confluentinc/cp-kafka-rest:6.0.0
+    image: confluentinc/cp-kafka-rest:6.0.1
     depends_on:
       - kafka
       - schema-registry
