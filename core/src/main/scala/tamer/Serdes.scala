@@ -32,7 +32,7 @@ object Serde {
       else {
         val id = buffer.getInt()
         for {
-          _   <- registry.verifySchema(id, schema)
+          _ <- registry.verifySchema(id, schema)
           res <- RIO.fromTry {
             val length  = buffer.limit() - 1 - intByteSize
             val payload = new Array[Byte](length)
@@ -44,8 +44,8 @@ object Serde {
     }
     override final val serializer: Serializer[Registry with Topic, A] = Serializer.byteArray.contramapM { a =>
       for {
-        t   <- registry.topic
-        id  <- registry.getOrRegisterId(subject(t), schema)
+        t  <- registry.topic
+        id <- registry.getOrRegisterId(subject(t), schema)
         arr <- Task {
           val baos = new ByteArrayOutputStream
           baos.write(Magic.toInt)

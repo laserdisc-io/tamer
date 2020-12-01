@@ -10,8 +10,8 @@ import zio.console._
 
 abstract class TamerApp[K, V, State](private val setup: IO[TamerError, Setup[K, V, State]]) extends App {
   final val run = for {
-    setup      <- setup
-    program    <- kafka.runLoop(setup)(db.runQuery(setup))
+    setup   <- setup
+    program <- kafka.runLoop(setup)(db.runQuery(setup))
   } yield program
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = {

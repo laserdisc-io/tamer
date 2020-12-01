@@ -18,12 +18,12 @@ object Config {
   final case class KafkaSink(topic: NonEmptyString)
   final case class KafkaState(topic: NonEmptyString, groupId: NonEmptyString, clientId: NonEmptyString)
   final case class Kafka(
-    brokers: HostList,
-    schemaRegistryUrl: UrlString,
-    closeTimeout: FiniteDuration,
-    bufferSize: PosInt,
-    sink: KafkaSink,
-    state: KafkaState
+      brokers: HostList,
+      schemaRegistryUrl: UrlString,
+      closeTimeout: FiniteDuration,
+      bufferSize: PosInt,
+      sink: KafkaSink,
+      state: KafkaState
   )
   final case class Tamer(db: Db, query: Query, kafka: Kafka)
 
