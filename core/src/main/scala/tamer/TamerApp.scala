@@ -1,28 +1,28 @@
 package tamer
 
-import tamer.config.Config
-import tamer.db.Db
+import tamer.config._
+import tamer.db.{Db, DbTransactor}
 import tamer.kafka.Kafka
-import zio._
+import zio.{App, ExitCode, IO, Layer, URIO, ZEnv}
 import zio.blocking.Blocking
 import zio.clock.Clock
+import zio.console._
 
-abstract class TamerApp[K, V, State](private val setup: IO[SetupError, Setup[K, V, State]]) extends App {
-  final val run: ZIO[Blocking with Clock with Config with Db with Kafka, TamerError, Unit] =
-    for {
-      setup      <- setup
-      config     <- Config.>.load
-      blockingEC <- blocking.blockingExecutor.map(_.asEC)
-      program <- Db.mkTransactor(config.db, platform.executor.asEC, blockingEC).use { tnx =>
-        Kafka.>.run(config.kafka, setup)(Db.>.runQuery(tnx, setup, config.query))
-      }
-    } yield program
+abstract class TamerApp[K, V, State](private val setup: IO[TamerError, Setup[K, V, State]]) extends App {
+  final val run = for {
+    setup      <- setup
+    program    <- kafka.runLoop(setup)(db.runQuery(setup))
+  } yield program
 
-  override final def run(args: List[String]): ZIO[ZEnv, Nothing, Int] =
+  override final def run(args: List[String]): URIO[ZEnv, ExitCode] = {
+    val transactorLayer: Layer[TamerError, DbTransactor] = (Blocking.live ++ Config.live) >>> Db.hikariLayer
+    val dbLayer: Layer[TamerError, Db]                   = (Config.live ++ transactorLayer) >>> Db.live
+    val kafkaLayer: Layer[TamerError, Kafka]             = Config.live >>> Kafka.live
     run
-      .provide(new Blocking.Live with Clock.Live with Config.Live with Db.Live with Kafka.Live {})
+      .provideLayer(Blocking.live ++ Clock.live ++ dbLayer ++ kafkaLayer)
       .foldM(
-        err => console.putStrLn(s"Execution failed with: $err") *> IO.succeed(1),
-        _ => IO.succeed(0)
+        err => putStrLn(s"Execution failed with: $err") *> IO.succeed(ExitCode.failure),
+        _ => IO.succeed(ExitCode.success)
       )
+  }
 }

@@ -12,15 +12,12 @@ import eu.timepit.refined.auto._
 import fs2.{Chunk, Stream}
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import tamer.config.{DbConfig, QueryConfig}
+import tamer.config._
 import zio._
+import zio.blocking.Blocking
 import zio.interop.catz._
 
 import scala.concurrent.ExecutionContext
-
-trait Db extends Serializable {
-  val db: Db.Service[Any]
-}
 
 object Db {
   implicit class InstantOps(ours: Instant) {
@@ -30,30 +27,15 @@ object Db {
   case class ChunkWithMetadata[V](chunk: Chunk[V], pulledAt: Instant = Instant.now())
   case class ValueWithMetadata[V](value: V, pulledAt: Instant = Instant.now())
 
-  trait Service[R] {
-    def runQuery[K, V, State](
-        tnx: Transactor[Task],
-        setup: Setup[K, V, State],
-        queryConfig: QueryConfig
-    )(state: State, q: Queue[(K, V)]): ZIO[R, DbError, State]
+  trait Service {
+    def runQuery[K, V, State](setup: Setup[K, V, State])(state: State, q: Queue[(K, V)]): IO[TamerError, State]
   }
 
-  object > extends Service[Db] {
-    override final def runQuery[K, V, State](
-        tnx: Transactor[Task],
-        setup: Setup[K, V, State],
-        queryConfig: QueryConfig
-    )(state: State, q: Queue[(K, V)]): ZIO[Db, DbError, State] = ZIO.accessM(_.db.runQuery(tnx, setup, queryConfig)(state, q))
-  }
-
-  trait Live extends Db {
-    override final val db: Service[Any] = new Service[Any] {
-      private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.Db.Live")
-      override final def runQuery[K, V, State](
-          tnx: Transactor[Task],
-          setup: Setup[K, V, State],
-          queryConfig: QueryConfig
-      )(state: State, q: Queue[(K, V)]): IO[DbError, State] =
+  // https://github.com/zio/zio/issues/2949
+  val live: URLayer[DbTransactor with QueryConfig, Db] = ZLayer.fromServices[Transactor[Task], Config.Query, Service] { (tnx, cfg) =>
+    new Service {
+      private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.db")
+      override final def runQuery[K, V, State](setup: Setup[K, V, State])(state: State, q: Queue[(K, V)]): IO[TamerError, State] =
         (for {
           log   <- logTask
           query <- UIO(setup.buildQuery(state))
@@ -61,12 +43,12 @@ object Db {
           start <- UIO(Instant.now())
           values <-
             query
-              .streamWithChunkSize(queryConfig.fetchChunkSize)
+              .streamWithChunkSize(cfg.fetchChunkSize)
               .chunks
               .transact(tnx)
-              .map(c => ChunkWithMetadata(c))
+              .map(ChunkWithMetadata(_))
               .evalTap(c => q.offerAll(c.chunk.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v)))
-              .flatMap(c => Stream.chunk(c.chunk).map(v => ValueWithMetadata(v, c.pulledAt)))
+              .flatMap(c => Stream.chunk(c.chunk).map(ValueWithMetadata(_, c.pulledAt)))
               .compile
               .toList
           newState <- setup.stateFoldM(state)(
@@ -75,20 +57,23 @@ object Db {
               values.map(_.value)
             )
           )
-        } yield newState).mapError { case e: Exception => DbError(e.getLocalizedMessage) }
+        } yield newState).mapError { case e: Exception => TamerError(e.getLocalizedMessage, e) }
     }
   }
 
-  def mkTransactor(db: DbConfig, connectEC: ExecutionContext, transactEC: ExecutionContext): Managed[DbError, HikariTransactor[Task]] =
-    Managed {
-      HikariTransactor
-        .newHikariTransactor[Task](db.driver, db.uri, db.username, db.password, connectEC, Blocker.liftExecutionContext(transactEC))
-        .allocated
-        .map { case (ht, cleanup) =>
-          Reservation(ZIO.succeed(ht), _ => cleanup.orDie)
-        }
-        .uninterruptible
-        .refineToOrDie[SQLException]
-        .mapError(sqle => DbError(sqle.getLocalizedMessage()))
-    }
+  val hikariLayer: ZLayer[Blocking with DbConfig, TamerError, DbTransactor] = ZLayer.fromManaged {
+    for {
+      cfg               <- dbConfig.toManaged_
+      connectEC         <- ZIO.descriptor.map(_.executor.asEC).toManaged_
+      blockingEC        <- blocking.blocking(ZIO.descriptor.map(_.executor.asEC)).toManaged_
+      managedTransactor <- mkTransactor(cfg, connectEC, blockingEC)
+    } yield managedTransactor
+  }
+
+  def mkTransactor(db: Config.Db, connectEC: ExecutionContext, transactEC: ExecutionContext): Managed[TamerError, HikariTransactor[Task]] =
+    HikariTransactor
+      .newHikariTransactor[Task](db.driver, db.uri, db.username, db.password, connectEC, Blocker.liftExecutionContext(transactEC))
+      .toManagedZIO
+      .refineToOrDie[SQLException]
+      .mapError(sqle => TamerError(sqle.getLocalizedMessage, sqle))
 }

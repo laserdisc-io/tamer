@@ -5,9 +5,9 @@ import java.nio.ByteBuffer
 
 import com.sksamuel.avro4s._
 import org.apache.avro.Schema
-import tamer.registry._
+import tamer.registry.{Registry, Topic}
 import zio.{RIO, Task}
-import zio.kafka.client.serde.{Deserializer, Serializer}
+import zio.kafka.serde.{Deserializer, Serializer}
 
 sealed trait Serde[A] extends Any {
   def isKey: Boolean
@@ -28,12 +28,11 @@ object Serde {
     private[this] def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
     override final val deserializer: Deserializer[Registry with Topic, A] = Deserializer.byteArray.mapM { ba =>
       val buffer = ByteBuffer.wrap(ba)
-      if (buffer.get() != Magic) RIO.fail(SerializationError("Unknown magic byte!"))
+      if (buffer.get() != Magic) RIO.fail(TamerError("Deserialization failed: unknown magic byte!"))
       else {
         val id = buffer.getInt()
         for {
-          env <- RIO.environment[Registry]
-          _   <- env.registry.verifySchema(id, schema)
+          _   <- registry.verifySchema(id, schema)
           res <- RIO.fromTry {
             val length  = buffer.limit() - 1 - intByteSize
             val payload = new Array[Byte](length)
@@ -45,8 +44,8 @@ object Serde {
     }
     override final val serializer: Serializer[Registry with Topic, A] = Serializer.byteArray.contramapM { a =>
       for {
-        env <- RIO.environment[Registry with Topic]
-        id  <- env.registry.getOrRegisterId(subject(env.topic), schema)
+        t   <- registry.topic
+        id  <- registry.getOrRegisterId(subject(t), schema)
         arr <- Task {
           val baos = new ByteArrayOutputStream
           baos.write(Magic.toInt)
