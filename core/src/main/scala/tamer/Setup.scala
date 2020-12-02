@@ -2,9 +2,9 @@ package tamer
 
 import com.sksamuel.avro4s._
 import doobie.util.query.Query0
-import tamer.registry.Registry
+import tamer.registry.{Registry, Topic}
 import zio.UIO
-import zio.kafka.client.serde.Serializer
+import zio.kafka.serde.Serializer
 
 final case class ResultMetadata(queryExecutionTime: Long)
 final case class QueryResult[V](metadata: ResultMetadata, results: List[V])

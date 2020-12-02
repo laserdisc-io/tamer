@@ -6,27 +6,17 @@ import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.avro.Schema
-import zio.{RIO, Task, UIO}
-
-trait Registry extends Serializable {
-  val registry: Registry.Service[Any]
-}
+import zio._
 
 object Registry {
-  trait Service[R] {
-    def getOrRegisterId(subject: String, schema: Schema): RIO[R, Int]
-    def verifySchema(id: Int, schema: Schema): RIO[R, Unit]
+  trait Service {
+    def getOrRegisterId(subject: String, schema: Schema): Task[Int]
+    def verifySchema(id: Int, schema: Schema): Task[Unit]
   }
 
-  object > extends Service[Registry] {
-    override final def getOrRegisterId(subject: String, schema: Schema): RIO[Registry, Int] = RIO.accessM(_.registry.getOrRegisterId(subject, schema))
-    override final def verifySchema(id: Int, schema: Schema): RIO[Registry, Unit]           = RIO.accessM(_.registry.verifySchema(id, schema))
-  }
-
-  trait Live extends Registry {
-    val client: SchemaRegistryClient
-    override final val registry: Service[Any] = new Service[Any] {
-      private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.Registry.Live")
+  val live: URLayer[Has[SchemaRegistryClient], Registry] = ZLayer.fromService { client =>
+    new Service {
+      private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.registry")
 
       override final def getOrRegisterId(subject: String, schema: Schema): Task[Int] =
         for {

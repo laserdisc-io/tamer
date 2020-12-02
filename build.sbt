@@ -12,16 +12,15 @@ lazy val V = new {
   val doobie        = "0.9.4"
   val kafka         = "2.6.0"
   val logback       = "1.2.3"
-  val `log-effect`  = "0.12.1"
+  val `log-effect`  = "0.14.1"
   val postgres      = "42.2.18"
   val refined       = "0.9.19"
   val scalacheck    = "1.15.1"
   val scalatest     = "3.2.3"
   val silencer      = "1.7.1"
-  val zio           = "1.0.0-RC17"
-  val `zio-interop` = "2.0.0.0-RC10"
-  val `zio-kafka`   = "0.5.0"
-  val `zio-macros`  = "0.6.2"
+  val zio           = "1.0.3"
+  val `zio-interop` = "2.2.0.1"
+  val `zio-kafka`   = "0.13.0"
 }
 
 lazy val D = new {
@@ -79,7 +78,6 @@ lazy val D = new {
   val zio = Seq(
     "dev.zio" %% "zio-interop-cats" % V.`zio-interop`,
     "dev.zio" %% "zio-kafka"        % V.`zio-kafka`,
-    "dev.zio" %% "zio-macros-core"  % V.`zio-macros`,
     "dev.zio" %% "zio-streams"      % V.zio
   )
 }
