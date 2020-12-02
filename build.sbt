@@ -128,21 +128,20 @@ def versionDependent(scalaVersion: String) =
       )
   }
 
-inThisBuild {
-  Seq(
-    organization := "io.laserdisc",
-    scalaVersion := scala_213,
-    crossScalaVersions := Seq(scala_212, scala_213),
-    homepage := Some(url("https://github.com/laserdisc-io/tamer")),
-    licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
-    developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
-    scalacOptions ++= versionDependent(scalaVersion.value),
-    resolvers += "confluent" at "https://packages.confluent.io/maven/"
-  )
-}
+lazy val commonSettings = Seq(
+  organization := "io.laserdisc",
+  scalaVersion := scala_213,
+  crossScalaVersions := Seq(scala_212, scala_213),
+  homepage := Some(url("https://github.com/laserdisc-io/tamer")),
+  licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
+  developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
+  scalacOptions ++= versionDependent(scalaVersion.value),
+  resolvers += "confluent" at "https://packages.confluent.io/maven/"
+)
 
 lazy val tamer = project
   .in(file("core"))
+  .settings(commonSettings)
   .settings(
     name := "tamer",
     libraryDependencies ++= (D.cats ++ D.config ++ D.doobie ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
@@ -158,6 +157,7 @@ lazy val example = project
   .in(file("example"))
   .enablePlugins(JavaAppPackaging)
   .dependsOn(tamer)
+  .settings(commonSettings)
   .settings(
     libraryDependencies ++= D.postgres,
     publish / skip := true
@@ -166,6 +166,7 @@ lazy val example = project
 lazy val root = project
   .in(file("."))
   .aggregate(tamer, example)
+  .settings(commonSettings)
   .settings(
     publish / skip := true,
     addCommandAlias("fmtCheck", ";scalafmtCheckAll;scalafmtSbtCheck"),
