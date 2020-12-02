@@ -15,6 +15,7 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.config.{DbConfig, QueryConfig}
 import zio._
 import zio.interop.catz._
+import tamer.db.Compat.toIterable
 
 import scala.concurrent.ExecutionContext
 
@@ -65,7 +66,7 @@ object Db {
               .chunks
               .transact(tnx)
               .map(c => ChunkWithMetadata(c))
-              .evalTap(c => q.offerAll(c.chunk.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v)))
+              .evalTap(c => q.offerAll(toIterable(c.chunk).map(v => setup.valueToKey(v) -> v)))
               .flatMap(c => Stream.chunk(c.chunk).map(v => ValueWithMetadata(v, c.pulledAt)))
               .compile
               .toList
@@ -75,7 +76,7 @@ object Db {
               values.map(_.value)
             )
           )
-        } yield newState).mapError { case e: Exception => DbError(e.getLocalizedMessage) }
+        } yield newState).mapError(e => DbError(e.getLocalizedMessage))
     }
   }
 

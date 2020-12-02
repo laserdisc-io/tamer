@@ -2,14 +2,12 @@ package tamer
 package config
 
 import cats.implicits._
-import ciris.{ConfigError => CirisConfigError, _}
 import ciris.refined._
-import eu.timepit.refined.auto._
+import ciris.{ConfigError => CirisConfigError, _}
 import eu.timepit.refined.types.numeric.PosInt
 import eu.timepit.refined.types.string.NonEmptyString
-import zio.{IO, Task, ZIO}
 import zio.interop.catz._
-import zio.macros.annotation.accessible
+import zio.{IO, Task, ZIO}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -27,7 +25,7 @@ final case class KafkaConfig(
 )
 final case class TamerConfig(db: DbConfig, query: QueryConfig, kafka: KafkaConfig)
 
-@accessible(">") trait Config extends Serializable {
+trait Config extends Serializable {
   val config: Config.Service[Any]
 }
 
