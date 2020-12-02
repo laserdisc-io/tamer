@@ -34,7 +34,7 @@ jobs:
       - name: Check with Scalafmt
         run: sbt ++2.13.2 fmtCheck
   build:
-    name: Test [${{ matrix.scala }}, ${{ matrix.java }}]
+    name: Test [ ${{ matrix.scala }}, ${{ matrix.java }} ]
     needs: format
     strategy:
       matrix:
@@ -68,7 +68,7 @@ jobs:
             target
             project/target
           key: ${{ runner.os }}-cache-v2-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-      - name: Test [${{ matrix.scala }}, ${{ matrix.java }}]
+      - name: Test [ ${{ matrix.scala }}, ${{ matrix.java }} ]
         run: sbt ++${{ matrix.scala }} fullTest
   publish_212:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
