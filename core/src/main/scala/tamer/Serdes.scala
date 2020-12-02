@@ -37,7 +37,7 @@ object Serde {
             val length  = buffer.limit() - 1 - intByteSize
             val payload = new Array[Byte](length)
             buffer.get(payload, 0, length)
-            AvroInputStream.binary[A].from(payload).build(schema).tryIterator.next
+            AvroInputStream.binary[A].from(payload).build(schema).tryIterator.next()
           }
         } yield res
       }

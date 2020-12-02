@@ -16,6 +16,7 @@ import tamer.config._
 import zio._
 import zio.blocking.Blocking
 import zio.interop.catz._
+import tamer.db.Compat.toIterable
 
 import scala.concurrent.ExecutionContext
 
@@ -47,7 +48,7 @@ object Db {
               .chunks
               .transact(tnx)
               .map(ChunkWithMetadata(_))
-              .evalTap(c => q.offerAll(c.chunk.iterator.to(LazyList).map(v => setup.valueToKey(v) -> v)))
+              .evalTap(c => q.offerAll(toIterable(c.chunk).map(v => setup.valueToKey(v) -> v)))
               .flatMap(c => Stream.chunk(c.chunk).map(ValueWithMetadata(_, c.pulledAt)))
               .compile
               .toList
@@ -57,7 +58,7 @@ object Db {
               values.map(_.value)
             )
           )
-        } yield newState).mapError { case e: Exception => TamerError(e.getLocalizedMessage, e) }
+        } yield newState).mapError(e => TamerError(e.getLocalizedMessage, e))
     }
   }
 

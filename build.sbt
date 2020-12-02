@@ -1,10 +1,15 @@
+import sbt.addCommandAlias
+
+lazy val scala_212 = "2.12.12"
+lazy val scala_213 = "2.13.2"
+
 lazy val V = new {
-  val avro4s        = "4.0.2"
-  val cats          = "2.2.0"
-  val `cats-effect` = "2.2.0"
+  val avro4s        = "4.0.3"
+  val cats          = "2.3.0"
+  val `cats-effect` = "2.3.0"
   val ciris         = "1.2.1"
-  val confluent     = "6.0.0"
-  val doobie        = "0.9.2"
+  val confluent     = "6.0.1"
+  val doobie        = "0.9.4"
   val kafka         = "2.6.0"
   val logback       = "1.2.3"
   val `log-effect`  = "0.13.2"
@@ -12,7 +17,7 @@ lazy val V = new {
   val refined       = "0.9.18"
   val scalacheck    = "1.15.1"
   val scalatest     = "3.2.3"
-  val silencer      = "1.6.0"
+  val silencer      = "1.7.1"
   val zio           = "1.0.3"
   val `zio-interop` = "2.2.0.1"
   val `zio-kafka`   = "0.13.0"
@@ -77,41 +82,64 @@ lazy val D = new {
   )
 }
 
-inThisBuild {
-  Seq(
-    organization := "io.laserdisc",
-    homepage := Some(url("https://github.com/laserdisc-io/tamer")),
-    licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
-    developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
-    scalacOptions ++= Seq(
-      "-deprecation",
-      "-encoding",
-      "UTF-8",
-      "-explaintypes",
-      "-Yrangepos",
-      "-feature",
-      "-language:higherKinds",
-      "-language:existentials",
-      "-language:implicitConversions",
-      "-unchecked",
-      "-Xlint:_,-type-parameter-shadow",
-      "-Xsource:2.13",
-      "-Ywarn-dead-code",
-      "-Ywarn-numeric-widen",
-      "-Ywarn-value-discard",
-      "-Xfatal-warnings",
-      "-Ywarn-unused",
-      "-opt-warnings",
-      "-Xlint:constant",
-      "-Ywarn-extra-implicit",
-      "-Ymacro-annotations"
-    ),
-    resolvers += "confluent" at "https://packages.confluent.io/maven/"
-  )
-}
+lazy val flags = Seq(
+  "-deprecation",
+  "-encoding",
+  "UTF-8",
+  "-explaintypes",
+  "-Yrangepos",
+  "-feature",
+  "-language:higherKinds",
+  "-language:existentials",
+  "-language:implicitConversions",
+  "-unchecked",
+  "-Xlint:_,-type-parameter-shadow",
+  "-Xsource:2.13",
+  "-Ywarn-dead-code",
+  "-Ywarn-numeric-widen",
+  "-Ywarn-value-discard",
+  "-Xfatal-warnings",
+  "-Ywarn-unused",
+  "-opt-warnings",
+  "-Xlint:constant",
+  "-Ywarn-extra-implicit"
+)
+
+def versionDependent(scalaVersion: String) =
+  CrossVersion.partialVersion(scalaVersion) match {
+    case Some((2, major)) if major >= 13 =>
+      flags ++ Seq(
+        "-Wconf:any:error",
+        "-Ymacro-annotations"
+      )
+    case _ =>
+      flags ++ Seq(
+        "-Xfuture",
+        "-Xlint:by-name-right-associative",
+        "-Xlint:unsound-match",
+        "-Yno-adapted-args",
+        "-Ypartial-unification",
+        "-Ywarn-inaccessible",
+        "-Ywarn-infer-any",
+        "-Ywarn-nullary-override",
+        "-Ywarn-nullary-unit"
+      )
+  }
+
+lazy val commonSettings = Seq(
+  organization := "io.laserdisc",
+  scalaVersion := scala_213,
+  crossScalaVersions := Seq(scala_212, scala_213),
+  homepage := Some(url("https://github.com/laserdisc-io/tamer")),
+  licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
+  developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
+  scalacOptions ++= versionDependent(scalaVersion.value),
+  resolvers += "confluent" at "https://packages.confluent.io/maven/"
+)
 
 lazy val tamer = project
   .in(file("core"))
+  .settings(commonSettings)
   .settings(
     name := "tamer",
     libraryDependencies ++= (D.cats ++ D.config ++ D.doobie ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
@@ -127,6 +155,7 @@ lazy val example = project
   .in(file("example"))
   .enablePlugins(JavaAppPackaging)
   .dependsOn(tamer)
+  .settings(commonSettings)
   .settings(
     libraryDependencies ++= D.postgres,
     publish / skip := true
@@ -135,9 +164,15 @@ lazy val example = project
 lazy val root = project
   .in(file("."))
   .aggregate(tamer, example)
+  .settings(commonSettings)
   .settings(
     publish / skip := true,
     addCommandAlias("fmtCheck", ";scalafmtCheckAll;scalafmtSbtCheck"),
     addCommandAlias("fmt", ";test:scalafmtAll;scalafmtAll;scalafmtSbt;test:scalafmtAll"),
-    addCommandAlias("fullBuild", ";fmtCheck;clean;test")
+    addCommandAlias("fullTest", ";clean;test"),
+    addCommandAlias(
+      "setReleaseOptions",
+      "set scalacOptions ++= Seq(\"-opt:l:method\", \"-opt:l:inline\", \"-opt-inline-from:laserdisc.**\", \"-opt-inline-from:<sources>\")"
+    ),
+    addCommandAlias("releaseIt", ";clean;setReleaseOptions;session list;compile;ci-release")
   )
