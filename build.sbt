@@ -1,7 +1,7 @@
 import sbt.addCommandAlias
 
 lazy val scala_212 = "2.12.12"
-lazy val scala_213 = "2.13.2"
+lazy val scala_213 = "2.13.4"
 
 lazy val V = new {
   val avro4s        = "4.0.3"
@@ -110,7 +110,8 @@ def versionDependent(scalaVersion: String) =
     case Some((2, major)) if major >= 13 =>
       flags ++ Seq(
         "-Wconf:any:error",
-        "-Ymacro-annotations"
+        "-Ymacro-annotations",
+        "-Xlint:-byname-implicit"
       )
     case _ =>
       flags ++ Seq(
