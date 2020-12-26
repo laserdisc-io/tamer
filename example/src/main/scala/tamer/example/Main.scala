@@ -1,41 +1,40 @@
 package tamer
 package example
 
-import java.time.Instant
-import java.time.temporal.ChronoUnit._
-
+import tamer.config.{Config, TamerConfig}
+import tamer.db.Db.Datable
+import tamer.db.{DbTransactor, TamerDBConfig}
+import tamer.kafka.Kafka
+import zio.blocking.Blocking
+import zio._
 import doobie.implicits.legacy.instant._
 import doobie.syntax.string._
-import zio.UIO
 
-final case class State(from: Instant, to: Instant)
+import java.time.temporal.ChronoUnit._
+import java.time.{Duration, Instant}
+
 final case class Key(id: String)
-final case class Value(id: String, name: String, description: Option[String], modifiedAt: Instant)
-
-object Source {
-  private[this] implicit final class InstantOps(private val instant: Instant) extends AnyVal {
-    def plus5Minutes: Instant = instant.plus(5, MINUTES)
-    def minus60Days: Instant  = instant.minus(60, DAYS)
-    def orNow: UIO[Instant] =
-      UIO(Instant.now).map {
-        case now if instant.isAfter(now) => now
-        case _                           => instant
-      }
-  }
-  final val setup = UIO(Instant.now.truncatedTo(DAYS)).map { bootTime =>
-    val sixtyDaysAgo = bootTime.minus60Days
-    Setup.avro(
-      State(sixtyDaysAgo, sixtyDaysAgo.plus5Minutes)
-    )(s => sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${s.from} AND modified_at <= ${s.to}""".query[Value])(
-      v => Key(v.id),
-      s => {
-        case QueryResult(_, Nil) => s.to.plus5Minutes.orNow.map(State(s.from, _))
-        case QueryResult(_, values) =>
-          val max = values.map(_.modifiedAt).max // if we can't order in the query we need to do it here...
-          max.plus5Minutes.orNow.map(State(max, _))
-      }
-    )
-  }
+final case class Value(id: String, name: String, description: Option[String], modifiedAt: Instant) extends Datable(modifiedAt)
+object Value {
+  implicit val ordering: Ordering[Value] = (x: Value, y: Value) => x.modifiedAt.compareTo(y.modifiedAt)
 }
 
-object Main extends TamerApp(Source.setup)
+object Main extends zio.App {
+  val transactorLayer: Layer[TamerError, DbTransactor]                   = (Blocking.live ++ Config.live) >>> db.hikariLayer
+  val kafkaLayer: Layer[TamerError, Kafka]                               = Config.live >>> Kafka.live
+  val layer: Layer[TamerError, DbTransactor with Kafka with TamerConfig] = transactorLayer ++ kafkaLayer ++ Config.live
+  def keyExtract(value: Value): Key                                      = Key(value.id)
+  val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = for {
+    boot <- UIO(Instant.now())
+    setup = tamer.db.mkSetup(ts =>
+      sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${ts.from} AND modified_at <= ${ts.to}""".query[Value]
+    )(
+      earliest = boot.minus(60, DAYS),
+      tumblingStep = Duration.of(5, MINUTES),
+      keyExtract = keyExtract
+    )
+    _ <- tamer.db.fetchWithTimeSegment(setup)
+  } yield ()
+
+  override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.provideCustomLayer(layer).exitCode
+}

@@ -1,8 +1,6 @@
 package tamer
 package kafka
 
-import java.security.MessageDigest
-
 import eu.timepit.refined.auto._
 import io.confluent.kafka.schemaregistry.client.{CachedSchemaRegistryClient, SchemaRegistryClient}
 import log.effect.LogWriter
@@ -37,10 +35,6 @@ object Kafka {
   val live: URLayer[KafkaConfig, Kafka] = ZLayer.fromService { cfg =>
     new Service {
       private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.kafka")
-      private[this] def stateKeyTask[A](a: A, s: String)(f: A => String): Task[StateKey] =
-        Task(MessageDigest.getInstance("SHA-1")).map { md =>
-          StateKey(md.digest(f(a).getBytes).take(7).map(b => f"$b%02x").mkString, s)
-        }
 
       override final def runLoop[K, V, State, R](setup: Setup[K, V, State])(
           f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
@@ -83,7 +77,7 @@ object Kafka {
             sp: Producer.Service[Registry with Topic, StateKey, State],
             layer: ULayer[Registry with Topic]
         ) =
-          ZStream.fromEffect(logTask <*> stateKeyTask(setup.defaultState, cfg.state.groupId)(setup.buildQuery(_).sql)).flatMap {
+          ZStream.fromEffect(logTask <*> UIO(StateKey(setup.queryHash.toHexString, cfg.state.groupId))).flatMap { // TODO: no need for UIO, it's pure
             case (log, stateKey) =>
               ZStream
                 .fromEffect(subscribe(sc))

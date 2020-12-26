@@ -19,6 +19,7 @@ lazy val V = new {
   val scalatest     = "3.2.3"
   val silencer      = "1.7.1"
   val zio           = "1.0.3"
+  val `zio-s3`      = "latest.integration"
   val `zio-interop` = "2.2.0.1"
   val `zio-kafka`   = "0.13.0"
 }
@@ -78,7 +79,9 @@ lazy val D = new {
   val zio = Seq(
     "dev.zio" %% "zio-interop-cats" % V.`zio-interop`,
     "dev.zio" %% "zio-kafka"        % V.`zio-kafka`,
-    "dev.zio" %% "zio-streams"      % V.zio
+    "dev.zio" %% "zio-s3"           % V.`zio-s3`,
+    "dev.zio" %% "zio-streams"      % V.zio,
+    "dev.zio" %% "zio-test"         % V.zio
   )
 }
 
@@ -135,7 +138,7 @@ lazy val commonSettings = Seq(
   licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
   developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
   scalacOptions ++= versionDependent(scalaVersion.value),
-  resolvers += "confluent" at "https://packages.confluent.io/maven/"
+  resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/", "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots")
 )
 
 lazy val tamer = project
@@ -143,7 +146,7 @@ lazy val tamer = project
   .settings(commonSettings)
   .settings(
     name := "tamer",
-    libraryDependencies ++= (D.cats ++ D.config ++ D.doobie ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
+    libraryDependencies ++= (D.cats ++ D.config ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
       .map(_.withSources)
       .map(_.withJavadoc),
     libraryDependencies ++= D.avro,
@@ -152,10 +155,19 @@ lazy val tamer = project
     Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )
 
+lazy val doobie = project
+  .in(file("doobie"))
+  .dependsOn(tamer)
+  .settings(commonSettings)
+  .settings(
+    name := "doobie",
+    libraryDependencies ++= D.doobie
+  )
+
 lazy val example = project
   .in(file("example"))
   .enablePlugins(JavaAppPackaging)
-  .dependsOn(tamer)
+  .dependsOn(tamer, doobie)
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= D.postgres,
@@ -164,7 +176,7 @@ lazy val example = project
 
 lazy val root = project
   .in(file("."))
-  .aggregate(tamer, example)
+  .aggregate(tamer, example, doobie)
   .settings(commonSettings)
   .settings(
     publish / skip := true,
