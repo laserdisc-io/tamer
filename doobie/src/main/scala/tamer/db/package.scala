@@ -8,8 +8,8 @@ import doobie.implicits.{toDoobieStreamOps, _}
 import doobie.util.transactor.Transactor
 import eu.timepit.refined.auto._
 import fs2.Stream
-import tamer.config.{Config, DbConfig, dbConfig}
 import tamer.db.Compat.toIterable
+import tamer.db.ConfigDb.{DbConfig, QueryConfig}
 import tamer.db.Db.{Datable, TimeSegment, _}
 import tamer.kafka.Kafka
 import zio.blocking.Blocking
@@ -22,7 +22,7 @@ import scala.concurrent.ExecutionContext
 
 package object db {
   type DbTransactor  = Has[Transactor[Task]]
-  type TamerDBConfig = DbTransactor with Has[Config.Query]
+  type TamerDBConfig = DbTransactor with QueryConfig
 
   private[this] implicit final class InstantOps(private val instant: Instant) extends AnyVal {
     def orNow: UIO[Instant] =
@@ -57,7 +57,7 @@ package object db {
       setup: Setup[K, V, TimeSegment]
   )(state: TimeSegment, q: Queue[(K, V)]): ZIO[TamerDBConfig, TamerError, TimeSegment] =
     (for {
-      cfg   <- ZIO.service[Config.Query]
+      cfg   <- ConfigDb.queryConfig
       tnx   <- ZIO.service[Transactor[Task]]
       query <- UIO(setup.queryBuilder.query(state))
       start <- UIO(Instant.now())
@@ -89,14 +89,14 @@ package object db {
 
   val hikariLayer: ZLayer[Blocking with DbConfig, TamerError, DbTransactor] = ZLayer.fromManaged {
     for {
-      cfg               <- dbConfig.toManaged_
+      cfg               <- ConfigDb.dbConfig.toManaged_
       connectEC         <- ZIO.descriptor.map(_.executor.asEC).toManaged_
       blockingEC        <- blocking.blocking(ZIO.descriptor.map(_.executor.asEC)).toManaged_
       managedTransactor <- mkTransactor(cfg, connectEC, blockingEC)
     } yield managedTransactor
   }
 
-  def mkTransactor(db: Config.Db, connectEC: ExecutionContext, transactEC: ExecutionContext): Managed[TamerError, HikariTransactor[Task]] =
+  def mkTransactor(db: ConfigDb.Db, connectEC: ExecutionContext, transactEC: ExecutionContext): Managed[TamerError, HikariTransactor[Task]] =
     HikariTransactor
       .newHikariTransactor[Task](db.driver, db.uri, db.username, db.password, connectEC, Blocker.liftExecutionContext(transactEC))
       .toManagedZIO
