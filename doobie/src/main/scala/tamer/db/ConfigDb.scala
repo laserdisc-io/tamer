@@ -19,7 +19,7 @@ object ConfigDb {
 
   final case class Db(driver: NonEmptyString, uri: UriString, username: NonEmptyString, password: Password)
   final case class Query(fetchChunkSize: PosInt)
-  final case class DeleteMe(db: Db, query: Query)
+  final case class DatabaseConfig(db: Db, query: Query)
 
   private[this] val dbConfigValue = (
     env("DATABASE_DRIVER").as[NonEmptyString],
@@ -29,7 +29,7 @@ object ConfigDb {
   ).parMapN(Db)
   private[this] val queryConfigValue = env("QUERY_FETCH_CHUNK_SIZE").as[PosInt].map(Query)
 
-  private[this] val deleteMeConfigValue = (dbConfigValue, queryConfigValue).parMapN(DeleteMe.apply)
+  private[this] val deleteMeConfigValue = (dbConfigValue, queryConfigValue).parMapN(DatabaseConfig.apply)
 
   trait Service {
     val dbConfig: URIO[DbConfig, Db]
@@ -38,7 +38,7 @@ object ConfigDb {
 
   val live: Layer[TamerError, Has[Db] with Has[Query]] = ZLayer.fromEffectMany {
     deleteMeConfigValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce)).map {
-      case DeleteMe(db, query) => Has(db) ++ Has(query)
+      case DatabaseConfig(db, query) => Has(db) ++ Has(query)
     }
   }
 }

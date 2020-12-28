@@ -1,7 +1,7 @@
 package tamer
 package example
 
-import tamer.config.{Config}
+import tamer.config.Config
 import tamer.db.Db.Datable
 import tamer.db.{ConfigDb, DbTransactor, TamerDBConfig}
 import tamer.kafka.Kafka
@@ -9,6 +9,8 @@ import zio.blocking.Blocking
 import zio._
 import doobie.implicits.legacy.instant._
 import doobie.syntax.string._
+import log.effect.LogWriter
+import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
 
 import java.time.temporal.ChronoUnit._
@@ -26,7 +28,10 @@ object Main extends zio.App {
   val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]     = ConfigDb.live
   val layer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
   def keyExtract(value: Value): Key                                      = Key(value.id)
-  val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = for {
+  private[this] val logTask: Task[LogWriter[Task]]                       = log4sFromName.provide("tamer.example")
+  val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
+    log  <- logTask
+    _    <- log.info("Starting tamer...")
     boot <- UIO(Instant.now())
     setup = tamer.db.mkSetup(ts =>
       sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${ts.from} AND modified_at <= ${ts.to}""".query[Value]
@@ -35,8 +40,9 @@ object Main extends zio.App {
       tumblingStep = Duration.of(5, MINUTES),
       keyExtract = keyExtract
     )
+    _ <- log.info(s"Tamer initialized with setup $setup")
     _ <- tamer.db.fetchWithTimeSegment(setup)
-  } yield ()
+  } yield ()).mapError(e => TamerError("Could not run tamer example", e))
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.provideCustomLayer(layer).exitCode
 }

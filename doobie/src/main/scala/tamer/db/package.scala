@@ -8,6 +8,8 @@ import doobie.implicits.{toDoobieStreamOps, _}
 import doobie.util.transactor.Transactor
 import eu.timepit.refined.auto._
 import fs2.Stream
+import log.effect.LogWriter
+import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.db.Compat.toIterable
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
 import tamer.db.Db.{Datable, TimeSegment, _}
@@ -53,13 +55,17 @@ package object db {
     Setup[K, V, TimeSegment](qBuilder, timeSegment, keyExtract, stateFold)
   }
 
+  private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.db")
+
   final def iteration[K <: Product, V <: Product](
       setup: Setup[K, V, TimeSegment]
   )(state: TimeSegment, q: Queue[(K, V)]): ZIO[TamerDBConfig, TamerError, TimeSegment] =
     (for {
+      log   <- logTask
       cfg   <- ConfigDb.queryConfig
       tnx   <- ZIO.service[Transactor[Task]]
       query <- UIO(setup.queryBuilder.query(state))
+      _     <- log.info(s"running ${query.sql} with params derived from $state") // TODO: make this debug
       start <- UIO(Instant.now())
       values <-
         query

@@ -61,7 +61,7 @@ object Kafka {
         def sink(q: Queue[(K, V)], p: Producer.Service[Registry with Topic, K, V], layer: ULayer[Registry with Topic]) =
           logTask.flatMap { log =>
             q.takeAll.flatMap {
-              case Nil => log.trace("no data to push") *> ZIO.unit
+              case Nil => log.trace("no data to push").unit
               case kvs =>
                 p.produceChunkAsync(mkRecordChunk(kvs)).provideSomeLayer[Blocking](layer).retry(tenTimes).flatten.unit <*
                   log.info(s"pushed ${kvs.size} messages to ${cfg.sink.topic}")
