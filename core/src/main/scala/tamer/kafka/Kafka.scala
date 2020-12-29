@@ -18,7 +18,7 @@ import zio.kafka.consumer.{CommittableRecord, Consumer, ConsumerSettings, Subscr
 import zio.kafka.producer.{Producer, ProducerSettings}
 import zio.stream.ZStream
 
-final case class StateKey(queryHash: String, groupId: String)
+final case class StateKey(stateKey: String, groupId: String)
 
 object Kafka {
   trait Service {
