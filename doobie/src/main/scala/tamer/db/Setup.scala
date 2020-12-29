@@ -13,11 +13,17 @@ trait QueryBuilder[V, -S] {
   def query(state: S): Query0[V]
 }
 
-trait State {
+trait HashableState {
+  // TODO: Evaluate if this is less invasive as a typeclass, the main cons
+  // TODO:   is loss of expressivity, and since state is probably manually
+  // TODO:   provided by the user (as opposed to automatically generated
+  // TODO:   code) it should be easy to implement this.
 
-  /** Used for hashing purposes1
+  /**  It is required for this hash to be consistent even across executions
+    *  for the same semantic state. This is in contrast with the built-in
+    *  `hashCode` method.
     */
-  val stateId: Int
+  val stateHash: Int
 }
 
 final case class ResultMetadata(queryExecutionTime: Long)
@@ -26,7 +32,7 @@ final case class QueryResult[V](metadata: ResultMetadata, results: List[V])
 case class Setup[
     K <: Product: Encoder: Decoder: SchemaFor,
     V <: Product: Encoder: Decoder: SchemaFor,
-    S <: Product with State: Encoder: Decoder: SchemaFor
+    S <: Product with HashableState: Encoder: Decoder: SchemaFor
 ](
     queryBuilder: QueryBuilder[V, S],
     override val defaultState: S,
@@ -37,5 +43,5 @@ case class Setup[
       Serde[V]().serializer,
       Serde[S]().serde,
       defaultState,
-      queryBuilder.queryId + defaultState.stateId
+      queryBuilder.queryId + defaultState.stateHash
     )
