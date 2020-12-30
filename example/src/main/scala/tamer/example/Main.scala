@@ -31,11 +31,7 @@ object Value {
 }
 
 object Main extends zio.App {
-  val transactorLayer: Layer[TamerError, DbTransactor]                   = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
-  val kafkaLayer: Layer[TamerError, Kafka]                               = Config.live >>> Kafka.live
-  val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]     = ConfigDb.live
-  val layer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
-  val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
+  val program: ZIO[ZEnv, TamerError, Unit] = (for {
     log  <- log4sFromName.provide("tamer.example")
     _    <- log.info("Starting tamer...")
     boot <- UIO(Instant.now())
@@ -48,14 +44,14 @@ object Main extends zio.App {
     )
   } yield ()).mapError(e => TamerError("Could not run tamer example", e))
 
-  override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.provideCustomLayer(layer).exitCode
+  override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
 }
 
-object Main2 extends zio.App {
-  val transactorLayer: Layer[TamerError, DbTransactor]                   = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
-  val kafkaLayer: Layer[TamerError, Kafka]                               = Config.live >>> Kafka.live
-  val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]     = ConfigDb.live
-  val layer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
+object MainGeneralized extends zio.App {
+  val transactorLayer: Layer[TamerError, DbTransactor]                     = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
+  val kafkaLayer: Layer[TamerError, Kafka]                                 = Config.live >>> Kafka.live
+  val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]       = ConfigDb.live
+  val myLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
   val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
     log  <- log4sFromName.provide("tamer.example")
     _    <- log.info("Starting tamer...")
@@ -77,5 +73,5 @@ object Main2 extends zio.App {
     _ <- tamer.db.fetch(setup)
   } yield ()).mapError(e => TamerError("Could not run tamer example", e))
 
-  override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.provideCustomLayer(layer).exitCode
+  override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.provideCustomLayer(myLayer).exitCode
 }

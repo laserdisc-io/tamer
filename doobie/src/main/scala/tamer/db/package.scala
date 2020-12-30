@@ -10,6 +10,7 @@ import eu.timepit.refined.auto._
 import fs2.Stream
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
+import tamer.config.Config
 import tamer.db.Compat.toIterable
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
 import tamer.db.Db.{Datable, TimeSegment, _}
@@ -99,7 +100,7 @@ package object db {
 
   final def fetchWithTimeSegment[K <: Product: Encoder: Decoder: SchemaFor, V <: Product with Datable: Ordering: Encoder: Decoder: SchemaFor](
       queryBuilder: TimeSegment => Query0[V]
-  )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = {
+  )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): ZIO[ZEnv, TamerError, Unit] = {
     val setup = mkSetupWithTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)
     fetch(setup)
   }
@@ -110,8 +111,13 @@ package object db {
       S <: Product with HashableState: Encoder: Decoder: SchemaFor
   ](
       setup: Setup[K, V, S]
-  ): ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] =
-    tamer.kafka.runLoop(setup)(iteration(setup))
+  ): ZIO[ZEnv, TamerError, Unit] = {
+    val kafkaLayer: Layer[TamerError, Kafka]                                      = Config.live >>> Kafka.live
+    val transactorLayer: Layer[TamerError, DbTransactor]                          = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
+    val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]            = ConfigDb.live
+    val defaultLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ queryConfigLayer ++ kafkaLayer
+    tamer.kafka.runLoop(setup)(iteration(setup)).provideCustomLayer(defaultLayer)
+  }
 
   val hikariLayer: ZLayer[Blocking with DbConfig, TamerError, DbTransactor] = ZLayer.fromManaged {
     for {
