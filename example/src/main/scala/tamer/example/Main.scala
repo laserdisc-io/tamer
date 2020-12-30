@@ -18,9 +18,6 @@ import scala.util.hashing.byteswap64
 
 final case class Key(id: String)
 final case class Value(id: String, name: String, description: Option[String], modifiedAt: Instant) extends Datable(modifiedAt)
-object Value {
-  implicit val ordering: Ordering[Value] = (x: Value, y: Value) => x.modifiedAt.compareTo(y.modifiedAt)
-}
 
 object Main extends zio.App {
   val program: ZIO[ZEnv, TamerError, Unit] = (for {
