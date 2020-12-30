@@ -77,7 +77,7 @@ object Kafka {
             sp: Producer.Service[Registry with Topic, StateKey, State],
             layer: ULayer[Registry with Topic]
         ) =
-          ZStream.fromEffect(logTask <*> UIO(StateKey(setup.queryHash.toHexString, cfg.state.groupId))).flatMap { // TODO: no need for UIO, it's pure
+          ZStream.fromEffect(logTask <*> UIO(StateKey(setup.stateKey.toHexString, cfg.state.groupId))).flatMap { // TODO: no need for UIO, it's pure
             case (log, stateKey) =>
               ZStream
                 .fromEffect(subscribe(sc))
