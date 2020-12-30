@@ -8,5 +8,5 @@ abstract class Setup[-K, -V, S](
     val valueSerializer: Serializer[Registry with Topic, V],
     val stateSerde: ZSerde[Registry with Topic, S],
     val defaultState: S,
-    val queryHash: Int
+    val stateKey: String
 )
