@@ -16,14 +16,6 @@ import java.time.temporal.ChronoUnit._
 import java.time.{Duration, Instant}
 import scala.util.hashing.byteswap64
 
-final case class MyState(from: Instant, to: Instant) extends HashableState {
-
-  /** It is required for this hash to be consistent even across executions
-    * for the same semantic state. This is in contrast with the built-in
-    * `hashCode` method.
-    */
-  override val stateHash: Int = (byteswap64(from.getEpochSecond) + byteswap64(to.getEpochSecond)).intValue
-}
 final case class Key(id: String)
 final case class Value(id: String, name: String, description: Option[String], modifiedAt: Instant) extends Datable(modifiedAt)
 object Value {
@@ -45,6 +37,15 @@ object Main extends zio.App {
   } yield ()).mapError(e => TamerError("Could not run tamer example", e))
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
+}
+
+final case class MyState(from: Instant, to: Instant) extends HashableState {
+
+  /** It is required for this hash to be consistent even across executions
+    * for the same semantic state. This is in contrast with the built-in
+    * `hashCode` method.
+    */
+  override val stateHash: Int = (byteswap64(from.getEpochSecond) + byteswap64(to.getEpochSecond)).intValue
 }
 
 object MainGeneralized extends zio.App {
