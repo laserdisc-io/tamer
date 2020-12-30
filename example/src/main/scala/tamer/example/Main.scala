@@ -2,7 +2,7 @@ package tamer
 package example
 
 import tamer.config.Config
-import tamer.db.Db.Datable
+import tamer.db.Db.Timestamped
 import tamer.db.{ConfigDb, DbTransactor, HashableState, InstantOps, QueryResult, TamerDBConfig}
 import tamer.kafka.Kafka
 import zio.blocking.Blocking
@@ -17,7 +17,7 @@ import java.time.{Duration, Instant}
 import scala.util.hashing.byteswap64
 
 final case class Key(id: String)
-final case class Value(id: String, name: String, description: Option[String], modifiedAt: Instant) extends Datable(modifiedAt)
+final case class Value(id: String, name: String, description: Option[String], modifiedAt: Instant) extends Timestamped(modifiedAt)
 
 object Main extends zio.App {
   val program: ZIO[ZEnv, TamerError, Unit] = (for {
@@ -63,7 +63,7 @@ object MainGeneralized extends zio.App {
       stateFoldM = (s: MyState) => {
         case QueryResult(_, results) if results.isEmpty => s.to.plus(5, MINUTES).orNow.map(MyState(s.from, _))
         case QueryResult(_, results) =>
-          val mostRecent = results.sortBy(_.modifiedAt).max.instant
+          val mostRecent = results.sortBy(_.modifiedAt).max.timestamp
           mostRecent.plus(5, MINUTES).orNow.map(MyState(mostRecent, _))
       }
     )

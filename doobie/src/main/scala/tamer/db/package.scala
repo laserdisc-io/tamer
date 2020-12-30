@@ -13,7 +13,7 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.config.Config
 import tamer.db.Compat.toIterable
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
-import tamer.db.Db.{Datable, TimeSegment, _}
+import tamer.db.Db.{Timestamped, TimeSegment, _}
 import tamer.kafka.Kafka
 import zio.blocking.Blocking
 import zio.interop.catz._
@@ -35,7 +35,7 @@ package object db {
       }
   }
 
-  final def mkSetupWithTimeSegment[K <: Product: Encoder: Decoder: SchemaFor, V <: Product with Datable: Ordering: Encoder: Decoder: SchemaFor](
+  final def mkSetupWithTimeSegment[K <: Product: Encoder: Decoder: SchemaFor, V <: Product with Timestamped: Ordering: Encoder: Decoder: SchemaFor](
       queryBuilder: TimeSegment => Query0[V]
   )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): Setup[K, V, TimeSegment] = {
 
@@ -44,7 +44,7 @@ package object db {
     def stateFold(timeSegment: TimeSegment)(queryResult: QueryResult[V]): UIO[TimeSegment] =
       if (queryResult.results.isEmpty) timeSegment.to.plus(tumblingStep).orNow.map(TimeSegment(timeSegment.from, _))
       else {
-        val mostRecent = queryResult.results.max.instant
+        val mostRecent = queryResult.results.max.timestamp
         mostRecent.plus(tumblingStep).orNow.map(TimeSegment(mostRecent, _))
       }
 
@@ -98,7 +98,7 @@ package object db {
       )
     } yield newState).mapError(e => TamerError(e.getLocalizedMessage, e))
 
-  final def fetchWithTimeSegment[K <: Product: Encoder: Decoder: SchemaFor, V <: Product with Datable: Ordering: Encoder: Decoder: SchemaFor](
+  final def fetchWithTimeSegment[K <: Product: Encoder: Decoder: SchemaFor, V <: Product with Timestamped: Ordering: Encoder: Decoder: SchemaFor](
       queryBuilder: TimeSegment => Query0[V]
   )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): ZIO[ZEnv, TamerError, Unit] = {
     val setup = mkSetupWithTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)

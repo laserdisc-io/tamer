@@ -7,10 +7,16 @@ import java.time.Instant
 import scala.util.hashing.byteswap64
 
 object Db {
-  abstract class Datable(val instant: Instant)
-  object Datable {
-    val underlyingOrdering: Ordering[Instant]                    = implicitly[Ordering[Instant]]
-    implicit def ordering[Subtype <: Datable]: Ordering[Subtype] = (x: Datable, y: Datable) => underlyingOrdering.compare(x.instant, y.instant)
+
+  /** By specifying a field here, tamer will order database records according
+    * to this date. Usually you want your latest update timestamp here.
+    * @param timestamp the value tamer will use to order the record by.
+    */
+  abstract class Timestamped(val timestamp: Instant)
+  object Timestamped {
+    val underlyingOrdering: Ordering[Instant] = implicitly[Ordering[Instant]]
+    implicit def ordering[Subtype <: Timestamped]: Ordering[Subtype] =
+      (x: Timestamped, y: Timestamped) => underlyingOrdering.compare(x.timestamp, y.timestamp)
   }
 
   case class ChunkWithMetadata[V](chunk: Chunk[V], pulledAt: Instant = Instant.now())
