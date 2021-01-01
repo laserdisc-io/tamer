@@ -18,6 +18,22 @@ libraryDependencies += "io.laserdisc" %% "tamer" % version
 
 See [here](example/src/main/scala/tamer/example/Main.scala) for a sample application that makes use of Tamer.
 
+## End to end testing
+
+### Database module
+
+Basic manual testing is available for the code in the example module `tamer.example.Main`.
+Thi code covers getting data from a synthetic Postgres database.
+
+Make sure you have docker installed before proceeding.
+
+From the `local` folder launch `docker-compose up` (you can enter `docker-compose down`
+if you want to start from scratch). After that you should be able to access the kafka
+gui from http://localhost:8000.
+
+Start the `runDb.sh` program which contains some example environment variables.
+If tamer works you should see messages appearing in the kafka gui.
+
 ## License
 
 Tamer is licensed under the **[MIT License](LICENSE)** (the "License"); you may not use this software except in

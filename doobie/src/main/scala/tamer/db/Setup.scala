@@ -14,10 +14,6 @@ trait QueryBuilder[V, -S] {
 }
 
 trait HashableState {
-  // TODO: Evaluate if this is less invasive as a typeclass, the main cons
-  // TODO:   is loss of expressivity, and since state is probably manually
-  // TODO:   provided by the user (as opposed to automatically generated
-  // TODO:   code) it should be easy to implement this.
 
   /**  It is required for this hash to be consistent even across executions
     *  for the same semantic state. This is in contrast with the built-in
@@ -44,4 +40,12 @@ case class Setup[
       Serde[S]().serde,
       defaultState,
       queryBuilder.queryId + defaultState.stateHash
-    )
+    ) {
+  override def show: String = s"""
+      |query:             ${queryBuilder.query(defaultState).sql}
+      |query id:          ${queryBuilder.queryId}
+      |default state:     $defaultState
+      |default state id:  ${defaultState.stateHash}
+      |default state key: $stateKey
+      |""".stripMargin.stripLeading()
+}

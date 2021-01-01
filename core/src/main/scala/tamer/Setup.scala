@@ -9,4 +9,6 @@ abstract class Setup[-K, -V, S](
     val stateSerde: ZSerde[Registry with Topic, S],
     val defaultState: S,
     val stateKey: Int
-)
+) {
+  def show: String = "not available, please implement the show method to display setup"
+}

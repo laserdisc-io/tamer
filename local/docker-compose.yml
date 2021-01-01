@@ -121,37 +121,5 @@ services:
       - SCHEMAREGISTRY_URL=http://schema-registry:8081
       - PROXY=true
 
-#  # TODO replace kafka-rest+kafka-ui and schema-registry-ui
-#  kowl:
-#    container_name: local-kowl
-#    image: quay.io/cloudhut/kowl:v1.2.1
-#    depends_on:
-#      - kafka
-#      - schema-registry
-#    # waits for connections to be available
-#    restart: on-failure
-#    ports:
-#      - 8002:8080
-#    hostname: kowl
-#    networks:
-#      - local_kafka_network
-#    entrypoint:
-#      - /bin/ash
-#      - -c
-#      - |
-#        mkdir -p /etc/kowl
-#        cat > /etc/kowl/config.yaml <<EOF
-#          # See: https://github.com/cloudhut/kowl/tree/master/docs/config for reference config files.
-#          kafka:
-#            brokers:
-#              - kafka:29092
-#            schemaRegistry:
-#              enabled: true
-#              urls: ["http://schema-registry:8081"]
-#          server:
-#            listenPort: 8080
-#        EOF
-#        ./kowl --config.filepath=/etc/kowl/config.yaml
-
 networks:
   local_kafka_network:

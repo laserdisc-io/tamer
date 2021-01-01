@@ -9,7 +9,6 @@ import zio.blocking.Blocking
 import zio._
 import doobie.implicits.legacy.instant._
 import doobie.syntax.string._
-import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
 
 import java.time.temporal.ChronoUnit._
@@ -21,8 +20,6 @@ final case class Value(id: String, name: String, description: Option[String], mo
 
 object Main extends zio.App {
   val program: ZIO[ZEnv, TamerError, Unit] = (for {
-    log  <- log4sFromName.provide("tamer.example")
-    _    <- log.info("Starting tamer...")
     boot <- UIO(Instant.now())
     _ <- tamer.db.fetchWithTimeSegment(ts =>
       sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${ts.from} AND modified_at <= ${ts.to}""".query[Value]
@@ -51,8 +48,6 @@ object MainGeneralized extends zio.App {
   val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]       = ConfigDb.live
   val myLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
   val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
-    log  <- log4sFromName.provide("tamer.example")
-    _    <- log.info("Starting tamer...")
     boot <- UIO(Instant.now())
     earliest = boot.minus(60, DAYS)
     setup = tamer.db.mkSetup((s: MyState) =>
@@ -67,7 +62,6 @@ object MainGeneralized extends zio.App {
           mostRecent.plus(5, MINUTES).orNow.map(MyState(mostRecent, _))
       }
     )
-    _ <- log.info(s"Tamer initialized with setup $setup")
     _ <- tamer.db.fetch(setup)
   } yield ()).mapError(e => TamerError("Could not run tamer example", e))
 

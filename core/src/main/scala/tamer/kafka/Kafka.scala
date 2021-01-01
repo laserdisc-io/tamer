@@ -52,8 +52,11 @@ object Kafka {
         val stateKeySerde = Serde[StateKey](isKey = true)
         val stateConsumer = Consumer.make(cSettings)
         val stateProducer = Producer.make(pSettings, stateKeySerde.serializer, setup.stateSerde)
+        val stateKey      = StateKey(setup.stateKey.toHexString, cfg.state.groupId)
         val producer      = Producer.make(pSettings, setup.keySerializer, setup.valueSerializer)
         val queue         = Managed.make(Queue.bounded[(K, V)](cfg.bufferSize))(_.shutdown)
+
+        def printSetup(logWriter: LogWriter[Task]) = logWriter.info(s"initializing kafka loop with setup: \n${setup.show}")
 
         def mkRegistry(src: SchemaRegistryClient, topic: String) = (ZLayer.succeed(src) >>> Registry.live) ++ (ZLayer.succeed(topic) >>> Topic.live)
 
@@ -67,7 +70,6 @@ object Kafka {
                   log.info(s"pushed ${kvs.size} messages to ${cfg.sink.topic}")
             }
           }
-
         def mkRecord(k: StateKey, v: State)      = new ProducerRecord(cfg.state.topic, k, v)
         def waitAssignment(sc: Consumer.Service) = sc.assignment.withFilter(_.nonEmpty).retry(tenTimes)
         def subscribe(sc: Consumer.Service)      = sc.subscribe(stateTopicSub) *> waitAssignment(sc).flatMap(sc.endOffsets(_)).map(_.values.exists(_ > 0L))
@@ -77,41 +79,40 @@ object Kafka {
             sp: Producer.Service[Registry with Topic, StateKey, State],
             layer: ULayer[Registry with Topic]
         ) =
-          ZStream.fromEffect(logTask <*> UIO(StateKey(setup.stateKey.toHexString, cfg.state.groupId))).flatMap { // TODO: no need for UIO, it's pure
-            case (log, stateKey) =>
-              ZStream
-                .fromEffect(subscribe(sc))
-                .flatMap {
-                  case true => ZStream.fromEffect(log.info(s"consumer group ${cfg.state.groupId} resuming consumption from ${cfg.state.topic}"))
-                  case false =>
-                    ZStream.fromEffect {
-                      log.info(s"consumer group ${cfg.state.groupId} never consumed from ${cfg.state.topic}, setting offset to earliest") *>
-                        sp.produceAsync(mkRecord(stateKey, setup.defaultState))
+          ZStream.fromEffect(logTask).tap(printSetup).flatMap { log =>
+            ZStream
+              .fromEffect(subscribe(sc))
+              .flatMap {
+                case true => ZStream.fromEffect(log.info(s"consumer group ${cfg.state.groupId} resuming consumption from ${cfg.state.topic}"))
+                case false =>
+                  ZStream.fromEffect {
+                    log.info(s"consumer group ${cfg.state.groupId} never consumed from ${cfg.state.topic}, setting offset to earliest") *>
+                      sp.produceAsync(mkRecord(stateKey, setup.defaultState))
+                        .provideSomeLayer[Blocking](layer)
+                        .flatten
+                        .flatMap(rm => log.info(s"pushed initial state ${setup.defaultState} to $rm"))
+                  }
+              }
+              .drain ++
+              sc.plainStream(stateKeySerde.deserializer, setup.stateSerde)
+                .provideSomeLayer[Blocking with Clock](layer)
+                .mapM {
+                  case CommittableRecord(record, offset) if record.key == stateKey =>
+                    log.debug(
+                      s"consumer group ${cfg.state.groupId} consumed state ${record.value} from ${offset.topicPartition}@${offset.offset}"
+                    ) *>
+                      f(record.value, q).flatMap { newState =>
+                        sp.produceAsync(mkRecord(stateKey, newState))
                           .provideSomeLayer[Blocking](layer)
                           .flatten
-                          .flatMap(rm => log.info(s"pushed initial state ${setup.defaultState} to $rm"))
-                    }
+                          .flatMap(rmd => log.debug(s"pushed state $newState to $rmd"))
+                          .as(offset)
+                      }
+                  case CommittableRecord(_, offset) =>
+                    log.debug(
+                      s"consumer group ${cfg.state.groupId} ignored state (wrong key) from ${offset.topicPartition}@${offset.offset}"
+                    ) *> UIO(offset)
                 }
-                .drain ++
-                sc.plainStream(stateKeySerde.deserializer, setup.stateSerde)
-                  .provideSomeLayer[Blocking with Clock](layer)
-                  .mapM {
-                    case CommittableRecord(record, offset) if record.key == stateKey =>
-                      log.debug(
-                        s"consumer group ${cfg.state.groupId} consumed state ${record.value} from ${offset.topicPartition}@${offset.offset}"
-                      ) *>
-                        f(record.value, q).flatMap { newState =>
-                          sp.produceAsync(mkRecord(stateKey, newState))
-                            .provideSomeLayer[Blocking](layer)
-                            .flatten
-                            .flatMap(rmd => log.debug(s"pushed state $newState to $rmd"))
-                            .as(offset)
-                        }
-                    case CommittableRecord(_, offset) =>
-                      log.debug(
-                        s"consumer group ${cfg.state.groupId} ignored state (wrong key) from ${offset.topicPartition}@${offset.offset}"
-                      ) *> UIO(offset)
-                  }
           }
 
         ZStream

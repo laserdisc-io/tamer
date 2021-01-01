@@ -29,7 +29,7 @@ object ConfigDb {
   ).parMapN(Db)
   private[this] val queryConfigValue = env("QUERY_FETCH_CHUNK_SIZE").as[PosInt].map(Query)
 
-  private[this] val deleteMeConfigValue = (dbConfigValue, queryConfigValue).parMapN(DatabaseConfig.apply)
+  private[this] val configValue = (dbConfigValue, queryConfigValue).parMapN(DatabaseConfig.apply)
 
   trait Service {
     val dbConfig: URIO[DbConfig, Db]
@@ -37,7 +37,7 @@ object ConfigDb {
   }
 
   val live: Layer[TamerError, Has[Db] with Has[Query]] = ZLayer.fromEffectMany {
-    deleteMeConfigValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce)).map {
+    configValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce)).map {
       case DatabaseConfig(db, query) => Has(db) ++ Has(query)
     }
   }
