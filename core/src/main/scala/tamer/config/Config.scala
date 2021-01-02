@@ -42,10 +42,6 @@ object Config {
     kafkaStateConfigValue
   ).parMapN(Kafka)
 
-  trait Service {
-    val kafkaConfig: URIO[KafkaConfig, Kafka]
-  }
-
   val live: Layer[TamerError, KafkaConfig] = ZLayer.fromEffect {
     kafkaConfigValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce))
   }

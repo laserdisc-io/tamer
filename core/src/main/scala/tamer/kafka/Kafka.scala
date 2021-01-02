@@ -21,7 +21,7 @@ import zio.stream.ZStream
 final case class StateKey(stateKey: String, groupId: String)
 
 object Kafka {
-  trait Service {
+  sealed trait Service {
     def runLoop[K, V, State, R](setup: Setup[K, V, State])(
         f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
     ): ZIO[R with Blocking with Clock, TamerError, Unit]

@@ -136,14 +136,14 @@ lazy val commonSettings = Seq(
   licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
   developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
   scalacOptions ++= versionDependent(scalaVersion.value),
-  resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/", "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots")
+  resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/")
 )
 
 lazy val tamer = project
   .in(file("core"))
   .settings(commonSettings)
   .settings(
-    name := "tamer",
+    name := "tamer-core",
     libraryDependencies ++= (D.cats ++ D.config ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
       .map(_.withSources)
       .map(_.withJavadoc),
@@ -158,7 +158,7 @@ lazy val doobie = project
   .dependsOn(tamer)
   .settings(commonSettings)
   .settings(
-    name := "doobie",
+    name := "tamer-doobie",
     libraryDependencies ++= D.doobie
   )
 

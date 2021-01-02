@@ -13,7 +13,6 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.config.Config
 import tamer.db.Compat.toIterable
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
-import tamer.db.Db.{Timestamped, TimeSegment, _}
 import tamer.kafka.Kafka
 import zio.blocking.Blocking
 import zio.interop.catz._
@@ -24,8 +23,13 @@ import java.time.{Duration, Instant}
 import scala.concurrent.ExecutionContext
 
 package object db {
-  type DbTransactor  = Has[Transactor[Task]]
-  type TamerDBConfig = DbTransactor with QueryConfig
+  final type DbTransactor  = Has[Transactor[Task]]
+  final type TamerDBConfig = DbTransactor with QueryConfig
+
+  private final val kafkaLayer: Layer[TamerError, Kafka]                                      = Config.live >>> Kafka.live
+  private final val transactorLayer: Layer[TamerError, DbTransactor]                          = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
+  private final val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]            = ConfigDb.live
+  private final val defaultLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ queryConfigLayer ++ kafkaLayer
 
   implicit final class InstantOps(private val instant: Instant) extends AnyVal {
     def orNow: UIO[Instant] =
@@ -35,39 +39,9 @@ package object db {
       }
   }
 
-  final def mkSetupWithTimeSegment[K <: Product: Encoder: Decoder: SchemaFor, V <: Product with Timestamped: Ordering: Encoder: Decoder: SchemaFor](
-      queryBuilder: TimeSegment => Query0[V]
-  )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): Setup[K, V, TimeSegment] = {
+  private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.db")
 
-    val timeSegment = TimeSegment(earliest, earliest.plus(tumblingStep))
-
-    def stateFold(timeSegment: TimeSegment)(queryResult: QueryResult[V]): UIO[TimeSegment] =
-      if (queryResult.results.isEmpty) timeSegment.to.plus(tumblingStep).orNow.map(TimeSegment(timeSegment.from, _))
-      else {
-        val mostRecent = queryResult.results.max.timestamp
-        mostRecent.plus(tumblingStep).orNow.map(TimeSegment(mostRecent, _))
-      }
-
-    mkSetup(queryBuilder)(timeSegment, keyExtract, stateFold)
-  }
-
-  final def mkSetup[
-      K <: Product: Encoder: Decoder: SchemaFor,
-      V <: Product: Encoder: Decoder: SchemaFor,
-      S <: Product with HashableState: Encoder: Decoder: SchemaFor
-  ](
-      queryBuilder: S => Query0[V]
-  )(defaultState: S, keyExtract: V => K, stateFoldM: S => QueryResult[V] => UIO[S]): Setup[K, V, S] = {
-    val qBuilder = new QueryBuilder[V, S] {
-      override val queryId: Int               = queryBuilder(defaultState).sql.hashCode
-      override def query(state: S): Query0[V] = queryBuilder(state)
-    }
-    Setup[K, V, S](queryBuilder = qBuilder, defaultState = defaultState, keyExtract = keyExtract, stateFoldM = stateFoldM)
-  }
-
-  private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.db")
-
-  final def iteration[K <: Product, V <: Product, S <: Product with HashableState](
+  private final def iteration[K <: Product, V <: Product, S <: Product with HashableState](
       setup: Setup[K, V, S]
   )(state: S, q: Queue[(K, V)]): ZIO[TamerDBConfig, TamerError, S] =
     (for {
@@ -101,7 +75,7 @@ package object db {
   final def fetchWithTimeSegment[K <: Product: Encoder: Decoder: SchemaFor, V <: Product with Timestamped: Ordering: Encoder: Decoder: SchemaFor](
       queryBuilder: TimeSegment => Query0[V]
   )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): ZIO[ZEnv, TamerError, Unit] = {
-    val setup = mkSetupWithTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)
+    val setup = Setup.fromTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)
     fetch(setup)
   }
 
@@ -111,15 +85,10 @@ package object db {
       S <: Product with HashableState: Encoder: Decoder: SchemaFor
   ](
       setup: Setup[K, V, S]
-  ): ZIO[ZEnv, TamerError, Unit] = {
-    val kafkaLayer: Layer[TamerError, Kafka]                                      = Config.live >>> Kafka.live
-    val transactorLayer: Layer[TamerError, DbTransactor]                          = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
-    val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]            = ConfigDb.live
-    val defaultLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ queryConfigLayer ++ kafkaLayer
+  ): ZIO[ZEnv, TamerError, Unit] =
     tamer.kafka.runLoop(setup)(iteration(setup)).provideCustomLayer(defaultLayer)
-  }
 
-  val hikariLayer: ZLayer[Blocking with DbConfig, TamerError, DbTransactor] = ZLayer.fromManaged {
+  final val hikariLayer: ZLayer[Blocking with DbConfig, TamerError, DbTransactor] = ZLayer.fromManaged {
     for {
       cfg               <- ConfigDb.dbConfig.toManaged_
       connectEC         <- ZIO.descriptor.map(_.executor.asEC).toManaged_
@@ -128,7 +97,11 @@ package object db {
     } yield managedTransactor
   }
 
-  def mkTransactor(db: ConfigDb.Db, connectEC: ExecutionContext, transactEC: ExecutionContext): Managed[TamerError, HikariTransactor[Task]] =
+  private final def mkTransactor(
+      db: ConfigDb.Db,
+      connectEC: ExecutionContext,
+      transactEC: ExecutionContext
+  ): Managed[TamerError, HikariTransactor[Task]] =
     HikariTransactor
       .newHikariTransactor[Task](db.driver, db.uri, db.username, db.password, connectEC, Blocker.liftExecutionContext(transactEC))
       .toManagedZIO
