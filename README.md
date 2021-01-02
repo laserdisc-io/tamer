@@ -23,7 +23,7 @@ See [here](example/src/main/scala/tamer/example/Main.scala) for a sample applica
 ### Database module
 
 Basic manual testing is available for the code in the example module `tamer.example.Main`.
-Thi code covers getting data from a synthetic Postgres database.
+This code covers getting data from a synthetic Postgres database.
 
 Make sure you have docker installed before proceeding.
 
