@@ -78,7 +78,8 @@ lazy val D = new {
   val zio = Seq(
     "dev.zio" %% "zio-interop-cats" % V.`zio-interop`,
     "dev.zio" %% "zio-kafka"        % V.`zio-kafka`,
-    "dev.zio" %% "zio-streams"      % V.zio
+    "dev.zio" %% "zio-streams"      % V.zio,
+    "dev.zio" %% "zio-test"         % V.zio
   )
 }
 
@@ -135,15 +136,15 @@ lazy val commonSettings = Seq(
   licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
   developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
   scalacOptions ++= versionDependent(scalaVersion.value),
-  resolvers += "confluent" at "https://packages.confluent.io/maven/"
+  resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/")
 )
 
 lazy val tamer = project
   .in(file("core"))
   .settings(commonSettings)
   .settings(
-    name := "tamer",
-    libraryDependencies ++= (D.cats ++ D.config ++ D.doobie ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
+    name := "tamer-core",
+    libraryDependencies ++= (D.cats ++ D.config ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
       .map(_.withSources)
       .map(_.withJavadoc),
     libraryDependencies ++= D.avro,
@@ -152,10 +153,19 @@ lazy val tamer = project
     Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )
 
+lazy val doobie = project
+  .in(file("doobie"))
+  .dependsOn(tamer)
+  .settings(commonSettings)
+  .settings(
+    name := "tamer-doobie",
+    libraryDependencies ++= D.doobie
+  )
+
 lazy val example = project
   .in(file("example"))
   .enablePlugins(JavaAppPackaging)
-  .dependsOn(tamer)
+  .dependsOn(tamer, doobie)
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= D.postgres,
@@ -164,7 +174,7 @@ lazy val example = project
 
 lazy val root = project
   .in(file("."))
-  .aggregate(tamer, example)
+  .aggregate(tamer, example, doobie)
   .settings(commonSettings)
   .settings(
     publish / skip := true,
