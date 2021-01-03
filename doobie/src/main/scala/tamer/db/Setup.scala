@@ -1,8 +1,8 @@
-package tamer.db
+package tamer
+package db
 
 import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
 import doobie.Query0
-import tamer.Serde
 import zio.UIO
 
 import java.time.{Duration, Instant}
@@ -27,7 +27,7 @@ trait HashableState {
 final case class ResultMetadata(queryExecutionTime: Long)
 final case class QueryResult[V](metadata: ResultMetadata, results: List[V])
 
-case class Setup[
+final case class Setup[
     K <: Product: Encoder: Decoder: SchemaFor,
     V <: Product: Encoder: Decoder: SchemaFor,
     S <: Product with HashableState: Encoder: Decoder: SchemaFor
@@ -36,7 +36,7 @@ case class Setup[
     override val defaultState: S,
     keyExtract: V => K,
     stateFoldM: S => QueryResult[V] => UIO[S]
-) extends tamer.Setup[K, V, S](
+) extends _root_.tamer.Setup[K, V, S](
       Serde[K](isKey = true).serializer,
       Serde[V]().serializer,
       Serde[S]().serde,

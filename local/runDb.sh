@@ -17,4 +17,4 @@ export KAFKA_STATE_CLIENT_ID=state-client
 SCRIPT_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit; pwd -P)
 cd "$SCRIPT_PATH"/.. || exit
 
-sbt "example/runMain tamer.example.Main" -jvm-debug 5005
+sbt "example/runMain tamer.example.DatabaseSimple" -jvm-debug 5005

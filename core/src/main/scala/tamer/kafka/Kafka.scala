@@ -14,14 +14,14 @@ import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
 import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
-import zio.kafka.consumer.{CommittableRecord, Consumer, ConsumerSettings, Subscription}
+import zio.kafka.consumer.{CommittableRecord, Consumer, ConsumerSettings, Offset, Subscription}
 import zio.kafka.producer.{Producer, ProducerSettings}
 import zio.stream.ZStream
 
 final case class StateKey(stateKey: String, groupId: String)
 
 object Kafka {
-  sealed trait Service {
+  trait Service {
     def runLoop[K, V, State, R](setup: Setup[K, V, State])(
         f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
     ): ZIO[R with Blocking with Clock, TamerError, Unit]
@@ -78,7 +78,7 @@ object Kafka {
             q: Queue[(K, V)],
             sp: Producer.Service[Registry with Topic, StateKey, State],
             layer: ULayer[Registry with Topic]
-        ) =
+        ): ZStream[R with Blocking with Clock, Throwable, Offset] =
           ZStream.fromEffect(logTask).tap(printSetup).flatMap { log =>
             ZStream
               .fromEffect(subscribe(sc))
