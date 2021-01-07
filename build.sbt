@@ -19,6 +19,7 @@ lazy val V = new {
   val scalatest     = "3.2.3"
   val silencer      = "1.7.1"
   val zio           = "1.0.3"
+  val `zio-s3`      = "latest.integration"
   val `zio-interop` = "2.2.0.1"
   val `zio-kafka`   = "0.13.0"
 }
@@ -59,6 +60,10 @@ lazy val D = new {
 
   val refined = Seq(
     "eu.timepit" %% "refined" % V.refined
+  )
+
+  val s3 = Seq(
+    "dev.zio" %% "zio-s3" % V.`zio-s3`
   )
 
   val serialization = Seq(
@@ -162,10 +167,19 @@ lazy val doobie = project
     libraryDependencies ++= D.doobie
   )
 
+lazy val s3 = project
+  .in(file("s3"))
+  .dependsOn(tamer)
+  .settings(commonSettings)
+  .settings(
+    name := "tamer-s3",
+    libraryDependencies ++= D.s3
+  )
+
 lazy val example = project
   .in(file("example"))
   .enablePlugins(JavaAppPackaging)
-  .dependsOn(tamer, doobie)
+  .dependsOn(tamer, doobie, s3)
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= D.postgres,

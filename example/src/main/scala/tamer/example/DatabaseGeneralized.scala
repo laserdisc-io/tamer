@@ -2,10 +2,10 @@ package tamer.example
 
 import doobie.implicits.legacy.instant._
 import doobie.syntax.string._
-import tamer.{TamerError, db}
+import tamer.{HashableState, TamerError, db}
 import tamer.config.Config
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
-import tamer.db.{ConfigDb, DbTransactor, HashableState, InstantOps, QueryResult, Setup, TamerDBConfig}
+import tamer.db.{ConfigDb, DbTransactor, InstantOps, QueryResult, Setup, TamerDBConfig}
 import tamer.kafka.Kafka
 import zio._
 import zio.blocking.Blocking

@@ -9,6 +9,10 @@
         </encoder>
     </appender>
 
+    <logger name="tamer" level="debug">
+        <appender-ref ref="STDOUT"/>
+    </logger>
+
     <root level="${LOG_LEVEL}">
         <appender-ref ref="STDOUT"/>
     </root>

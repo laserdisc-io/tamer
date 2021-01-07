@@ -3,22 +3,22 @@ version: '3.1'
 
 services:
 
-  db:
-    image: postgres
-    restart: always
-    environment:
-      POSTGRES_PASSWORD: example
-    volumes:
-      - ./data:/docker-entrypoint-initdb.d
-    ports:
-      - 5432:5432
-
-  adminer:
-    image: adminer
-    restart: always
-    ports:
-      - 8080:8080
-
+#  db:
+#    image: postgres
+#    restart: always
+#    environment:
+#      POSTGRES_PASSWORD: example
+#    volumes:
+#      - ./data:/docker-entrypoint-initdb.d
+#    ports:
+#      - 5432:5432
+#
+#  adminer:
+#    image: adminer
+#    restart: always
+#    ports:
+#      - 8080:8080
+#
   zookeeper:
     container_name: local-zookeeper
     image: confluentinc/cp-zookeeper:6.0.0
@@ -120,6 +120,15 @@ services:
     environment:
       - SCHEMAREGISTRY_URL=http://schema-registry:8081
       - PROXY=true
+
+  minio:
+    image: 'docker.io/bitnami/minio'
+    environment:
+      - MINIO_ACCESS_KEY=
+    ports:
+      - '9000:9000'
+    volumes:
+      - './minio/data:/data'
 
 networks:
   local_kafka_network:
