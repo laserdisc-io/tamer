@@ -84,7 +84,8 @@ lazy val D = new {
     "dev.zio" %% "zio-interop-cats" % V.`zio-interop`,
     "dev.zio" %% "zio-kafka"        % V.`zio-kafka`,
     "dev.zio" %% "zio-streams"      % V.zio,
-    "dev.zio" %% "zio-test"         % V.zio
+    "dev.zio" %% "zio-test"         % V.zio,
+    "dev.zio" %% "zio-test-sbt"     % V.zio
   )
 }
 
@@ -173,7 +174,8 @@ lazy val s3 = project
   .settings(commonSettings)
   .settings(
     name := "tamer-s3",
-    libraryDependencies ++= D.s3
+    libraryDependencies ++= D.s3,
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
   )
 
 lazy val example = project
@@ -194,7 +196,7 @@ lazy val root = project
     publish / skip := true,
     addCommandAlias("fmtCheck", ";scalafmtCheckAll;scalafmtSbtCheck"),
     addCommandAlias("fmt", ";test:scalafmtAll;scalafmtAll;scalafmtSbt;test:scalafmtAll"),
-    addCommandAlias("fullTest", ";clean;test"),
+    addCommandAlias("fullTest", ";clean;test;s3/test"),
     addCommandAlias(
       "setReleaseOptions",
       "set scalacOptions ++= Seq(\"-opt:l:method\", \"-opt:l:inline\", \"-opt-inline-from:laserdisc.**\", \"-opt-inline-from:<sources>\")"
