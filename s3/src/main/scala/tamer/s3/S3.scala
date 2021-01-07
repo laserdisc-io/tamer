@@ -48,7 +48,7 @@ object S3 {
         .take(1000)          // TODO: put sensible value
         .timeout(60.seconds) // TODO: put sensible value (constrained by setup.minimumIntervalForBucketFetch)
         .runCollect
-        .map(_.toList.appended(initialObjListing))
+        .map(_.toList :+ initialObjListing)
       listOfFilenames = allObjListings
         .flatMap(objListing => objListing.objectSummaries)
         .map(_.key)
