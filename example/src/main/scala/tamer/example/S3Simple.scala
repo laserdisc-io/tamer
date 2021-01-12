@@ -2,14 +2,13 @@ package tamer.example
 
 import software.amazon.awssdk.regions.Region
 import tamer.TamerError
-import tamer.s3.LastProcessedInstant
+import tamer.s3.{LastProcessedInstant, ZonedDateTimeFormatter}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.s3.{ConnectionError, InvalidCredentials, S3, S3Credentials}
 import zio.{ExitCode, Layer, URIO, ZIO}
 
 import java.net.URI
-import java.time.format.DateTimeFormatterBuilder
 import java.time.{Instant, ZoneId}
 
 object S3Simple extends zio.App {
@@ -17,11 +16,11 @@ object S3Simple extends zio.App {
     S3Credentials.fromAll.map(s3Credentials => zio.s3.live(Region.AF_SOUTH_1, s3Credentials, Some(new URI("http://localhost:9000"))))
 
   val program: ZIO[Blocking with Clock with S3, TamerError, Unit] = for {
-    _ <- tamer.s3.S3.fetch(
+    _ <- tamer.s3.fetch(
       bucketName = "myBucket",
       prefix = "myFolder/myPrefix",
       afterwards = LastProcessedInstant(Instant.parse("2020-12-03T10:15:30.00Z")),
-      dateTimeFormatter = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd HH:mm:ss").toFormatter().withZone(ZoneId.of("Europe/Rome"))
+      dateTimeFormatter = ZonedDateTimeFormatter.fromPattern("yyyy-MM-dd HH:mm:ss", ZoneId.of("Europe/Rome"))
     )
   } yield ()
 

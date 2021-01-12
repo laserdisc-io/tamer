@@ -1,30 +1,26 @@
 package tamer.s3
 
 import cats.implicits._
+import ciris.refined.refTypeConfigDecoder
 import ciris.{ConfigException, ConfigValue, env}
+import eu.timepit.refined.types.numeric.PosInt
 import tamer.TamerError
 import zio.interop.catz.{taskConcurrentInstance, zioContextShift}
 import zio.{Has, Layer, Task}
+
+import scala.concurrent.duration.FiniteDuration
 
 object ConfigS3 {
   type S3Configuration = Has[S3Config]
 
   final case class S3Config(
-      accessKeyId: Option[String],
-      secretAccessKey: Option[String],
-      profileName: Option[String],
-      credentialProfilesFile: Option[String],
-      region: Option[String],
-      serviceEndpoint: Option[String]
+      minimumIntervalToFetchNewFiles: Option[FiniteDuration],
+      keysPaginationMax: Option[PosInt]
   )
 
   private[this] val s3ConfigValue: ConfigValue[S3Config] = (
-    env("ACCESS_KEY_ID").as[String].option,
-    env("SECRET_ACCESS_KEY").as[String].option,
-    env("PROFILE_NAME").as[String].option,
-    env("CREDENTIAL_PROFILES_FILE").as[String].option,
-    env("REGION").as[String].option,
-    env("SERVICE_ENDPOINT").option
+    env("MINIMUM_INTERVAL_TO_FETCH_NEW_FILES").as[FiniteDuration].option,
+    env("KEYS_PAGINATION_MAX").as[PosInt].option
   ).parMapN(S3Config)
 
   val live: Layer[TamerError, S3Configuration] =
