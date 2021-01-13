@@ -59,11 +59,13 @@ package object s3 {
         .timeout(timeoutForFetchAllKeys)
         .runCollect
         .map(_.toList :+ initialObjListing)
-      listOfFilenames = allObjListings
+      keyList = allObjListings
         .flatMap(objListing => objListing.objectSummaries)
         .map(_.key)
-      previousListOfKeys <- keysR.getAndSet(listOfFilenames)
-    } yield if (listOfFilenames.sorted == previousListOfKeys.sorted) KeysChanged(false) else KeysChanged(true)
+      _                  <- log.debug(s"Current key list has ${keyList.length} elements")
+      _                  <- log.debug(s"The first and last elements are ${keyList.sorted.headOption} and ${keyList.sorted.lastOption}")
+      previousListOfKeys <- keysR.getAndSet(keyList)
+    } yield if (keyList.sorted == previousListOfKeys.sorted) KeysChanged(false) else KeysChanged(true)
   }
 
   final def fetch[V <: Product: Encoder: Decoder: SchemaFor](
@@ -124,11 +126,9 @@ package object s3 {
       nextState = LastProcessedInstant(nextInstant.getOrElse(afterwards.instant))
       _    <- log.debug(s"Next state computed to be $nextState")
       keys <- keysR.get
-      _    <- log.debug(s"Current keys cache has ${keys.length} elements")
-      _    <- log.debug(s"The first and last elements are ${keys.headOption} and ${keys.lastOption}")
       _ <- whenSome(nextInstant) { instant =>
         val optKey = deriveKey(instant, setup.zonedDateTimeFormatter.value, keys)
-        log.debug(s"will ask for key $optKey") *> optKey
+        log.debug(s"Will ask for key $optKey") *> optKey
           .map(key =>
             zio.s3
               .getObject(setup.bucketName, key)
