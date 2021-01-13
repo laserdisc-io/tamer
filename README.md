@@ -28,11 +28,25 @@ This code covers getting data from a synthetic Postgres database.
 
 Make sure you have docker installed before proceeding.
 
-From the `local` folder launch `docker-compose up` (you can enter `docker-compose down`
+From the `doobie/local` folder launch `docker-compose up` (you can enter `docker-compose down`
 if you want to start from scratch). After that you should be able to access the kafka
 gui from [http://localhost:8000](http://localhost:8000).
 
 Start the `runDb.sh` program which contains some example environment variables.
+If tamer works you should see messages appearing in the kafka gui.
+
+### S3 module
+
+Basic manual testing is available for the code in the example module `tamer.example.S3Simple`.
+This code covers getting data from a synthetic S3 bucket.
+
+Make sure you have docker installed before proceeding.
+
+From the `s3/local` folder launch `docker-compose up` (you can enter `docker-compose down`
+if you want to start from scratch). After that you should be able to access the kafka
+gui from [http://localhost:8000](http://localhost:8000).
+
+Start the `runS3.sh` program which contains some example environment variables.
 If tamer works you should see messages appearing in the kafka gui.
 
 ## License
