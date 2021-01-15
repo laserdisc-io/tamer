@@ -15,15 +15,6 @@ trait QueryBuilder[V, -S] {
   def query(state: S): Query0[V]
 }
 
-trait HashableState {
-
-  /**  It is required for this hash to be consistent even across executions
-    *  for the same semantic state. This is in contrast with the built-in
-    *  `hashCode` method.
-    */
-  val stateHash: Int
-}
-
 final case class ResultMetadata(queryExecutionTime: Long)
 final case class QueryResult[V](metadata: ResultMetadata, results: List[V])
 
