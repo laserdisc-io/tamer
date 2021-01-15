@@ -190,13 +190,13 @@ lazy val example = project
 
 lazy val root = project
   .in(file("."))
-  .aggregate(tamer, example, doobie)
+  .aggregate(tamer, example, doobie, s3)
   .settings(commonSettings)
   .settings(
     publish / skip := true,
     addCommandAlias("fmtCheck", ";scalafmtCheckAll;scalafmtSbtCheck"),
     addCommandAlias("fmt", ";test:scalafmtAll;scalafmtAll;scalafmtSbt;test:scalafmtAll"),
-    addCommandAlias("fullTest", ";clean;test;s3/test"),
+    addCommandAlias("fullTest", ";clean;test"),
     addCommandAlias(
       "setReleaseOptions",
       "set scalacOptions ++= Seq(\"-opt:l:method\", \"-opt:l:inline\", \"-opt-inline-from:laserdisc.**\", \"-opt-inline-from:<sources>\")"
