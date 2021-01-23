@@ -5,7 +5,14 @@
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/io.laserdisc/tamer_2.13/badge.svg?kill_cache=1&color=orange)](https://search.maven.org/artifact/io.laserdisc/tamer_2.13/)
 [![Scala Steward badge](https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=)](https://scala-steward.org)
 
-Tamer is a domesticated JDBC source connector for Kafka
+Tamer is a domesticated Kafka source connector.
+
+It puts the developer completely in control of how data is ingested and what state is preserved (in a compacted Kafka topic).
+As an example, it allows for a JDBC source to pull a window of data (say, 5 minutes), starting from some time in the past, as fast as possible.
+At every "pull", the developer can decide what to do next (e.g. should the window be increased/decreased? Should the pull slow down?).
+
+Tamer currently supports two possible source types: any SQL data store Doobie can handle (e.g. Postgres, MySQL, etc) and cloud storages that "speak" the AWS S3 protocol.
+Some sensible defaults are provided out of the box but many customisations are possible.
 
 ## Usage
 
