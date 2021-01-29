@@ -21,7 +21,7 @@ lazy val V = new {
   val zio           = "1.0.4"
   val `zio-s3`      = "0.2.5"
   val `zio-interop` = "2.2.0.1"
-  val `zio-kafka`   = "0.13.0"
+  val `zio-kafka`   = "0.14.0"
 }
 
 lazy val D = new {
