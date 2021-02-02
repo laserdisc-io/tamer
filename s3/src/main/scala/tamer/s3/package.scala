@@ -8,7 +8,7 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.config.Config
 import tamer.kafka.Kafka
 import zio.ZIO.{effectSuspendTotal, unit}
-import zio.blocking.Blocking
+import zio.blocking.{Blocking, blocking}
 import zio.clock.Clock
 import zio.duration.durationInt
 import zio.s3.S3
@@ -89,7 +89,7 @@ package object s3 {
         .scheduleFrom(KeysChanged(true))(Schedule.once andThen cappedExponentialBackoff.untilInput(_ == KeysChanged(true)))
         .forever
         .fork
-      _ <- tamer.kafka.runLoop(setup)(iteration(setup, keysR))
+      _ <- tamer.kafka.runLoop(setup)(dedupingIterationBlocking(setup, keysR))
     } yield ()).provideSomeLayer[Blocking with Clock with zio.s3.S3](kafkaLayer)
   }
 
@@ -116,7 +116,7 @@ package object s3 {
     sortedFileDates.headOption
   }
 
-  final def iteration[V <: Product: Encoder: Decoder: SchemaFor](
+  private final def iteration[V <: Product: Encoder: Decoder: SchemaFor](
       setup: Setup[V],
       keysR: KeysR
   )(afterwards: LastProcessedInstant, q: Queue[(tamer.s3.S3Object, V)]): ZIO[zio.s3.S3, TamerError, LastProcessedInstant] =
@@ -138,4 +138,25 @@ package object s3 {
           .getOrElse(ZIO.fail(TamerError(s"File not found with date $instant")))
       }
     } yield nextState).mapError(e => TamerError("Error while doing iteration", e))
+
+  private final def dedupingIteration[V <: Product: Encoder: Decoder: SchemaFor](
+      setup: Setup[V],
+      keysR: KeysR
+  )(currentState: LastProcessedInstant, q: Queue[(tamer.s3.S3Object, V)]): ZIO[zio.s3.S3 with Clock, TamerError, LastProcessedInstant] =
+    (iteration(setup, keysR)(currentState, q) <&> logTask)
+      .flatMap { case (nextState, log) =>
+        if (nextState == currentState)
+          log.info(s"State is still $currentState, waiting ${setup.minimumIntervalForBucketFetch}") *>
+            clock.sleep(setup.minimumIntervalForBucketFetch) *>
+            dedupingIteration(setup, keysR)(currentState, q)
+        else UIO(nextState)
+      }
+      .mapError(t => TamerError("Error while wrapping iteration", t))
+
+  private final def dedupingIterationBlocking[V <: Product: Encoder: Decoder: SchemaFor](
+      setup: Setup[V],
+      keysR: KeysR
+  )(currentState: LastProcessedInstant, q: Queue[(tamer.s3.S3Object, V)]) =
+    blocking(dedupingIteration(setup, keysR)(currentState, q))
+  // FIXME: should spawn thread only if necessary but since for S3 this operation is likely time consuming this is acceptable as workaround
 }
