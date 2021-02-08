@@ -2,7 +2,7 @@ package tamer.s3
 
 import zio.Ref
 import zio.test.Assertion._
-import zio.test.{DefaultRunnableSpec, ZSpec, suite, testM, _}
+import zio.test.{DefaultRunnableSpec, ZSpec, _}
 
 import java.time.format.DateTimeFormatterBuilder
 import java.time.{ZoneId, ZonedDateTime}

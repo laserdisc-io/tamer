@@ -1,6 +1,6 @@
 import sbt.addCommandAlias
 
-lazy val scala_212 = "2.12.12"
+lazy val scala_212 = "2.12.13"
 lazy val scala_213 = "2.13.4"
 
 lazy val V = new {
@@ -17,11 +17,11 @@ lazy val V = new {
   val refined       = "0.9.20"
   val scalacheck    = "1.15.2"
   val scalatest     = "3.2.3"
-  val silencer      = "1.7.1"
-  val zio           = "1.0.4"
+  val silencer      = "1.7.2"
+  val zio           = "1.0.4-2"
   val `zio-s3`      = "0.2.5"
   val `zio-interop` = "2.2.0.1"
-  val `zio-kafka`   = "0.13.0"
+  val `zio-kafka`   = "0.14.0"
 }
 
 lazy val D = new {
