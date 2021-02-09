@@ -3,16 +3,16 @@ package s3
 
 import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
 import eu.timepit.refined.types.numeric.PosInt
-import zio.stream.Transducer
+import zio.stream.ZTransducer
 
 import java.time.Duration
 import scala.util.hashing.MurmurHash3.stringHash
 
-final case class Setup[V <: Product: Encoder: Decoder: SchemaFor](
+final case class Setup[R, V <: Product: Encoder: Decoder: SchemaFor](
     bucketName: String,
     prefix: String,
     afterwards: LastProcessedInstant,
-    transducer: Transducer[TamerError, Byte, V],
+    transducer: ZTransducer[R, TamerError, Byte, V],
     parallelism: PosInt,
     zonedDateTimeFormatter: ZonedDateTimeFormatter,
     minimumIntervalForBucketFetch: Duration
@@ -24,13 +24,21 @@ final case class Setup[V <: Product: Encoder: Decoder: SchemaFor](
       stringHash(bucketName) + stringHash(prefix) + afterwards.instant.getEpochSecond.intValue
     )
 object Setup {
-  final def fromZonedDateTimeFormatter[V <: Product: Encoder: Decoder: SchemaFor](
+  final def fromZonedDateTimeFormatter[R, V <: Product: Encoder: Decoder: SchemaFor](
       bucketName: String,
       filePathPrefix: String,
       afterwards: LastProcessedInstant,
-      transducer: Transducer[TamerError, Byte, V],
+      transducer: ZTransducer[R, TamerError, Byte, V],
       parallelism: PosInt,
       zonedDateTimeFormatter: ZonedDateTimeFormatter,
       minimumIntervalForBucketFetch: Duration
-  ): Setup[V] = Setup[V](bucketName, filePathPrefix, afterwards, transducer, parallelism, zonedDateTimeFormatter, minimumIntervalForBucketFetch)
+  ): Setup[R, V] = Setup[R, V](
+    bucketName,
+    filePathPrefix,
+    afterwards,
+    transducer,
+    parallelism,
+    zonedDateTimeFormatter,
+    minimumIntervalForBucketFetch
+  )
 }

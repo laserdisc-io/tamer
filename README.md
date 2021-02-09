@@ -56,6 +56,13 @@ gui from [http://localhost:8000](http://localhost:8000).
 Start the `runS3.sh` program which contains some example environment variables.
 If tamer works you should see messages appearing in the kafka gui.
 
+#### Known Issues
+
+The file list from the bucket is not synchronized with the main thread. This means that
+oftentimes, when tamer resumes, you have to wait the minimum time interval between S3 fetches
+before seeing some activity. This happens because the main thread may start processing before
+the file list is downloaded. This should not impinge on functionality.
+
 ## License
 
 Tamer is licensed under the **[MIT License](LICENSE)** (the "License"); you may not use this software except in
