@@ -23,8 +23,9 @@ case class KeysChanged(differenceFound: Boolean) extends AnyVal
 
 package object s3 {
 
-  /** executes the provided ZIO if the passed option contains a value, passing the content to the ZIO itself
-    */
+  /**
+   * executes the provided ZIO if the passed option contains a value, passing the content to the ZIO itself
+   */
   def whenSome[R, E, A](a: =>Option[A])(zio: A => ZIO[R, E, Any]): ZIO[R, E, Unit] =
     effectSuspendTotal(if (a.isDefined) zio(a.get).unit else unit)
 
@@ -35,19 +36,21 @@ package object s3 {
   type KeysR = Ref[List[String]]
   val createRefToListOfKeys: UIO[KeysR] = Ref.make(List.empty[String])
 
-  private val defaultTransducer: Transducer[Nothing, Byte, Line] = ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line)
+  private val defaultTransducer: Transducer[Nothing, Byte, Line] =
+    ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line)
 
   def updateListOfKeys(
-      keysR: KeysR,
-      bucketName: String,
-      prefix: String,
-      minimumIntervalForBucketFetch: Duration
+    keysR: KeysR,
+    bucketName: String,
+    prefix: String,
+    minimumIntervalForBucketFetch: Duration
   ): ZIO[S3 with Clock, Throwable, KeysChanged] = {
     val paginationMaxKeys         = 1000L
     val paginationMaxPages        = 1000L
     val defaultTimeoutBucketFetch = 60.seconds
     val timeoutForFetchAllKeys: Duration =
-      if (minimumIntervalForBucketFetch < defaultTimeoutBucketFetch) minimumIntervalForBucketFetch else defaultTimeoutBucketFetch
+      if (minimumIntervalForBucketFetch < defaultTimeoutBucketFetch) minimumIntervalForBucketFetch
+      else defaultTimeoutBucketFetch
 
     for {
       log               <- logTask
@@ -68,34 +71,48 @@ package object s3 {
     } yield if (keyList.sorted == previousListOfKeys.sorted) KeysChanged(false) else KeysChanged(true)
   }
 
-  final def fetch[V <: Product: Encoder: Decoder: SchemaFor](
-      bucketName: String,
-      prefix: String,
-      afterwards: LastProcessedInstant,
-      transducer: Transducer[TamerError, Byte, V] = defaultTransducer,
-      parallelism: PosInt = 1,
-      dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
-      minimumIntervalForBucketFetch: Duration = 5.minutes,
-      maximumIntervalForBucketFetch: Duration = 5.minutes
-  ): ZIO[Blocking with Clock with zio.s3.S3, TamerError, Unit] = {
+  final def fetch[R, V <: Product: Encoder: Decoder: SchemaFor](
+    bucketName: String,
+    prefix: String,
+    afterwards: LastProcessedInstant,
+    transducer: ZTransducer[R, TamerError, Byte, V] = defaultTransducer,
+    parallelism: PosInt = 1,
+    dateTimeFormatter: ZonedDateTimeFormatter =
+      ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
+    minimumIntervalForBucketFetch: Duration = 5.minutes,
+    maximumIntervalForBucketFetch: Duration = 5.minutes
+  ): ZIO[R with Blocking with Clock with zio.s3.S3, TamerError, Unit] = {
     val setup =
-      Setup.fromZonedDateTimeFormatter[V](bucketName, prefix, afterwards, transducer, parallelism, dateTimeFormatter, minimumIntervalForBucketFetch)
+      Setup.fromZonedDateTimeFormatter[R, V](
+        bucketName,
+        prefix,
+        afterwards,
+        transducer,
+        parallelism,
+        dateTimeFormatter,
+        minimumIntervalForBucketFetch
+      )
     (for {
       keysR <- createRefToListOfKeys
-      cappedExponentialBackoff = Schedule.exponential(minimumIntervalForBucketFetch) || Schedule.spaced(maximumIntervalForBucketFetch)
+      cappedExponentialBackoff = Schedule.exponential(minimumIntervalForBucketFetch) || Schedule.spaced(
+        maximumIntervalForBucketFetch
+      )
 
       updateListOfKeysM = updateListOfKeys(keysR, setup.bucketName, setup.prefix, minimumIntervalForBucketFetch)
       _ <- updateListOfKeysM
-        .scheduleFrom(KeysChanged(true))(Schedule.once andThen cappedExponentialBackoff.untilInput(_ == KeysChanged(true)))
+        .scheduleFrom(KeysChanged(true))(
+          Schedule.once andThen cappedExponentialBackoff.untilInput(_ == KeysChanged(true))
+        )
         .forever
         .fork
       _ <- tamer.kafka.runLoop(setup)(dedupingIterationBlocking(setup, keysR))
-    } yield ()).provideSomeLayer[Blocking with Clock with zio.s3.S3](kafkaLayer)
+    } yield ()).provideSomeLayer[R with Blocking with Clock with zio.s3.S3](kafkaLayer)
   }
 
   def suffixWithoutFileExtension(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): String = {
-    val dotCountInDate      = dateTimeFormatter.format(Instant.EPOCH).count(_ == '.')
-    val keyWithoutExtension = if (key.count(_ == '.') > dotCountInDate) key.split('.').splitAt(dotCountInDate + 1)._1.mkString(".") else key
+    val dotCountInDate = dateTimeFormatter.format(Instant.EPOCH).count(_ == '.')
+    val keyWithoutExtension =
+      if (key.count(_ == '.') > dotCountInDate) key.split('.').splitAt(dotCountInDate + 1)._1.mkString(".") else key
     keyWithoutExtension.stripPrefix(prefix)
   }
   def parseInstantFromKey(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): Instant =
@@ -103,10 +120,10 @@ package object s3 {
   def deriveKey(instant: Instant, dateTimeFormatter: DateTimeFormatter, keys: List[String]): Option[String] =
     keys.find(_.contains(dateTimeFormatter.format(instant)))
   def getNextInstant(
-      keysR: KeysR,
-      afterwards: LastProcessedInstant,
-      prefix: String,
-      dateTimeFormatter: DateTimeFormatter
+    keysR: KeysR,
+    afterwards: LastProcessedInstant,
+    prefix: String,
+    dateTimeFormatter: DateTimeFormatter
   ): ZIO[Any, Nothing, Option[Instant]] = keysR.get.map { keys =>
     val sortedFileDates = keys
       .map(key => parseInstantFromKey(key, prefix, dateTimeFormatter))
@@ -116,10 +133,13 @@ package object s3 {
     sortedFileDates.headOption
   }
 
-  private final def iteration[V <: Product: Encoder: Decoder: SchemaFor](
-      setup: Setup[V],
-      keysR: KeysR
-  )(afterwards: LastProcessedInstant, q: Queue[(tamer.s3.S3Object, V)]): ZIO[zio.s3.S3, TamerError, LastProcessedInstant] =
+  private final def iteration[R, V <: Product: Encoder: Decoder: SchemaFor](
+    setup: Setup[R, V],
+    keysR: KeysR
+  )(
+    afterwards: LastProcessedInstant,
+    q: Queue[(tamer.s3.S3Object, V)]
+  ): ZIO[R with zio.s3.S3, TamerError, LastProcessedInstant] =
     (for {
       log         <- logTask
       nextInstant <- getNextInstant(keysR, afterwards, setup.prefix, setup.zonedDateTimeFormatter.value)
@@ -139,10 +159,13 @@ package object s3 {
       }
     } yield nextState).mapError(e => TamerError("Error while doing iteration", e))
 
-  private final def dedupingIteration[V <: Product: Encoder: Decoder: SchemaFor](
-      setup: Setup[V],
-      keysR: KeysR
-  )(currentState: LastProcessedInstant, q: Queue[(tamer.s3.S3Object, V)]): ZIO[zio.s3.S3 with Clock, TamerError, LastProcessedInstant] =
+  private final def dedupingIteration[R, V <: Product: Encoder: Decoder: SchemaFor](
+    setup: Setup[R, V],
+    keysR: KeysR
+  )(
+    currentState: LastProcessedInstant,
+    q: Queue[(tamer.s3.S3Object, V)]
+  ): ZIO[R with zio.s3.S3 with Clock, TamerError, LastProcessedInstant] =
     (iteration(setup, keysR)(currentState, q) <&> logTask)
       .flatMap { case (nextState, log) =>
         if (nextState == currentState)
@@ -153,9 +176,9 @@ package object s3 {
       }
       .mapError(t => TamerError("Error while wrapping iteration", t))
 
-  private final def dedupingIterationBlocking[V <: Product: Encoder: Decoder: SchemaFor](
-      setup: Setup[V],
-      keysR: KeysR
+  private final def dedupingIterationBlocking[R, V <: Product: Encoder: Decoder: SchemaFor](
+    setup: Setup[R, V],
+    keysR: KeysR
   )(currentState: LastProcessedInstant, q: Queue[(tamer.s3.S3Object, V)]) =
     blocking(dedupingIteration(setup, keysR)(currentState, q))
   // FIXME: should spawn thread only if necessary but since for S3 this operation is likely time consuming this is acceptable as workaround
