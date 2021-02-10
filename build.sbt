@@ -5,8 +5,8 @@ lazy val scala_213 = "2.13.4"
 
 lazy val V = new {
   val avro4s        = "4.0.4"
-  val cats          = "2.3.1"
-  val `cats-effect` = "2.3.1"
+  val cats          = "2.4.0"
+  val `cats-effect` = "2.4.0"
   val ciris         = "1.2.1"
   val confluent     = "6.0.1"
   val doobie        = "0.10.0"
