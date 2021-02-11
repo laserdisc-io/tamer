@@ -7,7 +7,7 @@ import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.config.Config
 import tamer.kafka.Kafka
-import zio.ZIO.{effectSuspendTotal, unit}
+import zio.ZIO.{when, whenCase}
 import zio.blocking.{Blocking, blocking}
 import zio.clock.Clock
 import zio.duration.durationInt
@@ -22,12 +22,6 @@ import scala.math.Ordering.Implicits.infixOrderingOps
 case class KeysChanged(differenceFound: Boolean) extends AnyVal
 
 package object s3 {
-
-  /** executes the provided ZIO if the passed option contains a value, passing the content to the ZIO itself
-    */
-  def whenSome[R, E, A](a: =>Option[A])(zio: A => ZIO[R, E, Any]): ZIO[R, E, Unit] =
-    effectSuspendTotal(if (a.isDefined) zio(a.get).unit else unit)
-
   private final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.s3")
 
   private final val kafkaLayer: Layer[TamerError, Kafka] = Config.live >>> Kafka.live
@@ -42,7 +36,8 @@ package object s3 {
       keysR: KeysR,
       bucketName: String,
       prefix: String,
-      minimumIntervalForBucketFetch: Duration
+      minimumIntervalForBucketFetch: Duration,
+      keysChangedToken: Queue[Unit]
   ): ZIO[S3 with Clock, Throwable, KeysChanged] = {
     val paginationMaxKeys         = 1000L
     val paginationMaxPages        = 1000L
@@ -68,7 +63,7 @@ package object s3 {
       _                  <- log.debug(s"The first and last elements are ${keyList.sorted.headOption} and ${keyList.sorted.lastOption}")
       previousListOfKeys <- keysR.getAndSet(keyList)
     } yield if (keyList.sorted == previousListOfKeys.sorted) KeysChanged(false) else KeysChanged(true)
-  }
+  }.tap(keysChanged => when(keysChanged.differenceFound)(keysChangedToken.offer(())))
 
   final def fetch[R, V <: Product: Encoder: Decoder: SchemaFor](
       bucketName: String,
@@ -96,14 +91,15 @@ package object s3 {
         maximumIntervalForBucketFetch
       )
 
-      updateListOfKeysM = updateListOfKeys(keysR, setup.bucketName, setup.prefix, minimumIntervalForBucketFetch)
+      keysChangedToken <- Queue.dropping[Unit](requestedCapacity = 1)
+      updateListOfKeysM = updateListOfKeys(keysR, setup.bucketName, setup.prefix, minimumIntervalForBucketFetch, keysChangedToken)
       _ <- updateListOfKeysM
         .scheduleFrom(KeysChanged(true))(
           Schedule.once andThen cappedExponentialBackoff.untilInput(_ == KeysChanged(true))
         )
         .forever
         .fork
-      _ <- tamer.kafka.runLoop(setup)(dedupingIterationBlocking(setup, keysR))
+      _ <- tamer.kafka.runLoop(setup)(dedupingIterationBlocking(setup, keysR, keysChangedToken))
     } yield ()).provideSomeLayer[R with Blocking with Clock with zio.s3.S3](kafkaLayer)
   }
 
@@ -144,7 +140,7 @@ package object s3 {
       nextState = LastProcessedInstant(nextInstant.getOrElse(afterwards.instant))
       _    <- log.debug(s"Next state computed to be $nextState")
       keys <- keysR.get
-      _ <- whenSome(nextInstant) { instant =>
+      _ <- whenCase(nextInstant) { case Some(instant) =>
         val optKey = deriveKey(instant, setup.zonedDateTimeFormatter.value, keys)
         log.debug(s"Will ask for key $optKey") *> optKey
           .map(key =>
@@ -159,7 +155,8 @@ package object s3 {
 
   private final def dedupingIteration[R, V <: Product: Encoder: Decoder: SchemaFor](
       setup: Setup[R, V],
-      keysR: KeysR
+      keysR: KeysR,
+      keysChangedToken: Queue[Unit]
   )(
       currentState: LastProcessedInstant,
       q: Queue[(tamer.s3.S3Object, V)]
@@ -168,16 +165,17 @@ package object s3 {
       .flatMap { case (nextState, log) =>
         if (nextState == currentState)
           log.info(s"State is still $currentState, waiting ${setup.minimumIntervalForBucketFetch}") *>
-            clock.sleep(setup.minimumIntervalForBucketFetch) *>
-            dedupingIteration(setup, keysR)(currentState, q)
+            keysChangedToken.take *>
+            dedupingIteration(setup, keysR, keysChangedToken)(currentState, q)
         else UIO(nextState)
       }
       .mapError(t => TamerError("Error while wrapping iteration", t))
 
   private final def dedupingIterationBlocking[R, V <: Product: Encoder: Decoder: SchemaFor](
       setup: Setup[R, V],
-      keysR: KeysR
+      keysR: KeysR,
+      keysChangedToken: Queue[Unit]
   )(currentState: LastProcessedInstant, q: Queue[(tamer.s3.S3Object, V)]) =
-    blocking(dedupingIteration(setup, keysR)(currentState, q))
+    blocking(dedupingIteration(setup, keysR, keysChangedToken)(currentState, q))
   // FIXME: should spawn thread only if necessary but since for S3 this operation is likely time consuming this is acceptable as workaround
 }
