@@ -8,7 +8,7 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.config.Config
 import tamer.kafka.Kafka
 import zio.ZIO.{when, whenCase}
-import zio.blocking.{Blocking, blocking}
+import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
 import zio.s3.S3
@@ -99,7 +99,7 @@ package object s3 {
         )
         .forever
         .fork
-      _ <- tamer.kafka.runLoop(setup)(dedupingIterationBlocking(setup, keysR, keysChangedToken))
+      _ <- tamer.kafka.runLoop(setup)(dedupingIteration(setup, keysR, keysChangedToken))
     } yield ()).provideSomeLayer[R with Blocking with Clock with zio.s3.S3](kafkaLayer)
   }
 
@@ -170,12 +170,4 @@ package object s3 {
         else UIO(nextState)
       }
       .mapError(t => TamerError("Error while wrapping iteration", t))
-
-  private final def dedupingIterationBlocking[R, V <: Product: Encoder: Decoder: SchemaFor](
-      setup: Setup[R, V],
-      keysR: KeysR,
-      keysChangedToken: Queue[Unit]
-  )(currentState: LastProcessedInstant, q: Queue[(tamer.s3.S3Object, V)]) =
-    blocking(dedupingIteration(setup, keysR, keysChangedToken)(currentState, q))
-  // FIXME: should spawn thread only if necessary but since for S3 this operation is likely time consuming this is acceptable as workaround
 }
