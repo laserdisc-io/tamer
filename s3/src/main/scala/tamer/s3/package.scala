@@ -7,7 +7,7 @@ import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.config.Config
 import tamer.kafka.Kafka
-import zio.ZIO.{when, whenCase}
+import zio.ZIO.when
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
@@ -16,7 +16,7 @@ import zio.stream.{Transducer, ZTransducer}
 import zio.{Queue, Task, ZIO, _}
 
 import java.time.format.DateTimeFormatter
-import java.time.{Duration, Instant, ZoneId}
+import java.time.{Duration, ZoneId}
 import scala.math.Ordering.Implicits.infixOrderingOps
 
 case class KeysChanged(differenceFound: Boolean) extends AnyVal
@@ -27,6 +27,7 @@ package object s3 {
   private final val kafkaLayer: Layer[TamerError, Kafka] = Config.live >>> Kafka.live
 
   type KeysR = Ref[List[String]]
+  type Keys  = List[String]
   val createRefToListOfKeys: UIO[KeysR] = Ref.make(List.empty[String])
 
   private val defaultTransducer: Transducer[Nothing, Byte, Line] =
@@ -55,7 +56,7 @@ package object s3 {
         .take(paginationMaxPages)
         .timeout(timeoutForFetchAllKeys)
         .runCollect
-        .map(_.toList :+ initialObjListing)
+        .map(_.toList)
       keyList = allObjListings
         .flatMap(objListing => objListing.objectSummaries)
         .map(_.key)
@@ -65,10 +66,11 @@ package object s3 {
     } yield if (keyList.sorted == previousListOfKeys.sorted) KeysChanged(false) else KeysChanged(true)
   }.tap(keysChanged => when(keysChanged.differenceFound)(keysChangedToken.offer(())))
 
-  final def fetch[R, V <: Product: Encoder: Decoder: SchemaFor](
+  final def fetchAccordingToSuffixDate[R, K <: Product: Encoder: Decoder: SchemaFor, V <: Product: Encoder: Decoder: SchemaFor](
       bucketName: String,
       prefix: String,
       afterwards: LastProcessedInstant,
+      deriveKafkaKey: (LastProcessedInstant, V) => K = (l: LastProcessedInstant, _: V) => l,
       transducer: ZTransducer[R, TamerError, Byte, V] = defaultTransducer,
       parallelism: PosInt = 1,
       dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
@@ -76,98 +78,71 @@ package object s3 {
       maximumIntervalForBucketFetch: Duration = 5.minutes
   ): ZIO[R with Blocking with Clock with zio.s3.S3, TamerError, Unit] = {
     val setup =
-      Setup.fromZonedDateTimeFormatter[R, V](
+      Setup.mkTimeBased[R, K, V](
         bucketName,
         prefix,
         afterwards,
         transducer,
         parallelism,
         dateTimeFormatter,
-        minimumIntervalForBucketFetch
+        minimumIntervalForBucketFetch,
+        maximumIntervalForBucketFetch,
+        deriveKafkaKey
       )
-    (for {
+    fetch(setup).provideSomeLayer[R with Blocking with Clock with zio.s3.S3](kafkaLayer)
+  }
+
+  final def fetch[
+      R,
+      K <: Product: Encoder: Decoder: SchemaFor,
+      V <: Product: Encoder: Decoder: SchemaFor,
+      S <: Product: Encoder: Decoder: SchemaFor
+  ](
+      setup: Setup[R, K, V, S]
+  ): ZIO[R with zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit] =
+    for {
       keysR <- createRefToListOfKeys
-      cappedExponentialBackoff = Schedule.exponential(minimumIntervalForBucketFetch) || Schedule.spaced(
-        maximumIntervalForBucketFetch
+      cappedExponentialBackoff: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(setup.minimumIntervalForBucketFetch) || Schedule.spaced(
+        setup.maximumIntervalForBucketFetch
       )
 
       keysChangedToken <- Queue.dropping[Unit](requestedCapacity = 1)
-      updateListOfKeysM = updateListOfKeys(keysR, setup.bucketName, setup.prefix, minimumIntervalForBucketFetch, keysChangedToken)
+      updateListOfKeysM = updateListOfKeys(keysR, setup.bucketName, setup.prefix, setup.minimumIntervalForBucketFetch, keysChangedToken)
       _ <- updateListOfKeysM
         .scheduleFrom(KeysChanged(true))(
           Schedule.once andThen cappedExponentialBackoff.untilInput(_ == KeysChanged(true))
         )
         .forever
         .fork
-      _ <- tamer.kafka.runLoop(setup)(dedupingIteration(setup, keysR, keysChangedToken))
-    } yield ()).provideSomeLayer[R with Blocking with Clock with zio.s3.S3](kafkaLayer)
-  }
+      _ <- tamer.kafka.runLoop(setup)(iteration(setup, keysR, keysChangedToken))
+    } yield ()
 
-  def suffixWithoutFileExtension(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): String = {
-    val dotCountInDate = dateTimeFormatter.format(Instant.EPOCH).count(_ == '.')
-    val keyWithoutExtension =
-      if (key.count(_ == '.') > dotCountInDate) key.split('.').splitAt(dotCountInDate + 1)._1.mkString(".") else key
-    keyWithoutExtension.stripPrefix(prefix)
-  }
-  def parseInstantFromKey(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): Instant =
-    Instant.from(dateTimeFormatter.parse(suffixWithoutFileExtension(key, prefix, dateTimeFormatter)))
-  def deriveKey(instant: Instant, dateTimeFormatter: DateTimeFormatter, keys: List[String]): Option[String] =
-    keys.find(_.contains(dateTimeFormatter.format(instant)))
-  def getNextInstant(
-      keysR: KeysR,
-      afterwards: LastProcessedInstant,
-      prefix: String,
-      dateTimeFormatter: DateTimeFormatter
-  ): ZIO[Any, Nothing, Option[Instant]] = keysR.get.map { keys =>
-    val sortedFileDates = keys
-      .map(key => parseInstantFromKey(key, prefix, dateTimeFormatter))
-      .filter(_.isAfter(afterwards.instant))
-      .sorted
-
-    sortedFileDates.headOption
-  }
-
-  private final def iteration[R, V <: Product: Encoder: Decoder: SchemaFor](
-      setup: Setup[R, V],
-      keysR: KeysR
-  )(
-      afterwards: LastProcessedInstant,
-      q: Queue[(tamer.s3.S3Object, V)]
-  ): ZIO[R with zio.s3.S3, TamerError, LastProcessedInstant] =
-    (for {
-      log         <- logTask
-      nextInstant <- getNextInstant(keysR, afterwards, setup.prefix, setup.zonedDateTimeFormatter.value)
-      nextState = LastProcessedInstant(nextInstant.getOrElse(afterwards.instant))
-      _    <- log.debug(s"Next state computed to be $nextState")
-      keys <- keysR.get
-      _ <- whenCase(nextInstant) { case Some(instant) =>
-        val optKey = deriveKey(instant, setup.zonedDateTimeFormatter.value, keys)
-        log.debug(s"Will ask for key $optKey") *> optKey
-          .map(key =>
-            zio.s3
-              .getObject(setup.bucketName, key)
-              .transduce(setup.transducer)
-              .foreach(value => q.offer(tamer.s3.S3Object(setup.bucketName, key) -> value))
-          )
-          .getOrElse(ZIO.fail(TamerError(s"File not found with date $instant")))
-      }
-    } yield nextState).mapError(e => TamerError("Error while doing iteration", e))
-
-  private final def dedupingIteration[R, V <: Product: Encoder: Decoder: SchemaFor](
-      setup: Setup[R, V],
+  private final def iteration[
+      R,
+      K <: Product: Encoder: Decoder: SchemaFor,
+      V <: Product: Encoder: Decoder: SchemaFor,
+      S <: Product: Encoder: Decoder: SchemaFor
+  ](
+      setup: Setup[R, K, V, S],
       keysR: KeysR,
       keysChangedToken: Queue[Unit]
   )(
-      currentState: LastProcessedInstant,
-      q: Queue[(tamer.s3.S3Object, V)]
-  ): ZIO[R with zio.s3.S3 with Clock, TamerError, LastProcessedInstant] =
-    (iteration(setup, keysR)(currentState, q) <&> logTask)
-      .flatMap { case (nextState, log) =>
-        if (nextState == currentState)
-          log.info(s"State is still $currentState, waiting ${setup.minimumIntervalForBucketFetch}") *>
-            keysChangedToken.take *>
-            dedupingIteration(setup, keysR, keysChangedToken)(currentState, q)
-        else UIO(nextState)
-      }
-      .mapError(t => TamerError("Error while wrapping iteration", t))
+      currentState: S,
+      q: Queue[(K, V)]
+  ): ZIO[R with zio.s3.S3, TamerError, S] =
+    (for {
+      log       <- logTask
+      nextState <- setup.getNextState(keysR, currentState, keysChangedToken)
+      _         <- log.debug(s"Next state computed to be $nextState")
+      keys      <- keysR.get
+      optKey = setup.selectObjectForState(nextState, keys)
+      _ <- log.debug(s"Will ask for key $optKey") *> optKey
+        .map(key =>
+          zio.s3
+            .getObject(setup.bucketName, key)
+            .transduce(setup.transducer)
+            .foreach(value => q.offer(setup.deriveKafkaRecordKey(nextState, value) -> value))
+        )
+        .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
+    } yield nextState).mapError(e => TamerError("Error while doing iterationTimeBased", e))
 }

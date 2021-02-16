@@ -1,5 +1,6 @@
 package tamer.s3
 
+import tamer.s3.Setup.{parseInstantFromKey, suffixWithoutFileExtension}
 import zio.test.Assertion._
 import zio.test._
 
@@ -31,13 +32,6 @@ object DateParsingSpec extends DefaultRunnableSpec {
       val dateTimeFormatter = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd HH:mm:ss").toFormatter().withZone(ZoneId.of("Europe/Rome"))
 
       assert(parseInstantFromKey(key, prefix, dateTimeFormatter))(equalTo(ZonedDateTime.parse("2021-01-01T00:01:44+01:00[Europe/Rome]").toInstant))
-    },
-    test("Should derive key in simple case") {
-      val instant           = ZonedDateTime.parse("2021-01-01T00:01:44+01:00[Europe/Rome]").toInstant
-      val dateTimeFormatter = new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd HH:mm:ss").toFormatter().withZone(ZoneId.of("Europe/Rome"))
-      val keys              = List("myFolder/myPrefix2021-01-01 00:01:44.empty")
-
-      assert(deriveKey(instant, dateTimeFormatter, keys))(isSome(equalTo("myFolder/myPrefix2021-01-01 00:01:44.empty")))
     }
   )
 }

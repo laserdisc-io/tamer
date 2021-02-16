@@ -4,41 +4,99 @@ package s3
 import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
 import eu.timepit.refined.types.numeric.PosInt
 import zio.stream.ZTransducer
+import zio.{Queue, UIO, ZIO}
 
-import java.time.Duration
+import java.time.format.DateTimeFormatter
+import java.time.{Duration, Instant}
 import scala.util.hashing.MurmurHash3.stringHash
 
-final case class Setup[R, V <: Product: Encoder: Decoder: SchemaFor](
+final case class Setup[
+    R,
+    K <: Product: Encoder: Decoder: SchemaFor,
+    V <: Product: Encoder: Decoder: SchemaFor,
+    S <: Product: Decoder: Encoder: SchemaFor
+](
     bucketName: String,
     prefix: String,
-    afterwards: LastProcessedInstant,
+    override val defaultState: S,
+    override val stateKey: Int,
     transducer: ZTransducer[R, TamerError, Byte, V],
     parallelism: PosInt,
-    zonedDateTimeFormatter: ZonedDateTimeFormatter,
-    minimumIntervalForBucketFetch: Duration
-) extends _root_.tamer.Setup[S3Object, V, LastProcessedInstant](
-      Serde[S3Object](isKey = true).serializer,
+    minimumIntervalForBucketFetch: Duration,
+    maximumIntervalForBucketFetch: Duration,
+    getNextState: (KeysR, S, Queue[Unit]) => UIO[S],
+    deriveKafkaRecordKey: (S, V) => K,
+    selectObjectForState: (S, Keys) => Option[String]
+) extends _root_.tamer.Setup[K, V, S](
+      Serde[K](isKey = true).serializer,
       Serde[V]().serializer,
-      Serde[LastProcessedInstant]().serde,
-      defaultState = afterwards,
-      stringHash(bucketName) + stringHash(prefix) + afterwards.instant.getEpochSecond.intValue
+      Serde[S]().serde,
+      defaultState = defaultState,
+      stateKey = stateKey
     )
 object Setup {
-  final def fromZonedDateTimeFormatter[R, V <: Product: Encoder: Decoder: SchemaFor](
+  private[s3] final def suffixWithoutFileExtension(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): String = {
+    val dotCountInDate = dateTimeFormatter.format(Instant.EPOCH).count(_ == '.')
+    val keyWithoutExtension =
+      if (key.count(_ == '.') > dotCountInDate) key.split('.').splitAt(dotCountInDate + 1)._1.mkString(".") else key
+    keyWithoutExtension.stripPrefix(prefix)
+  }
+  private[s3] final def parseInstantFromKey(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): Instant =
+    Instant.from(dateTimeFormatter.parse(suffixWithoutFileExtension(key, prefix, dateTimeFormatter)))
+  private final def getNextInstant(
+      keysR: KeysR,
+      afterwards: LastProcessedInstant,
+      prefix: String,
+      dateTimeFormatter: DateTimeFormatter
+  ): ZIO[Any, Nothing, Option[Instant]] = keysR.get.map { keys =>
+    val sortedFileDates = keys
+      .map(key => parseInstantFromKey(key, prefix, dateTimeFormatter))
+      .filter(_.isAfter(afterwards.instant))
+      .sorted
+
+    sortedFileDates.headOption
+  }
+  private[s3] final def getNextState(prefix: String, dateTimeFormatter: DateTimeFormatter)(
+      keysR: KeysR,
+      afterwards: LastProcessedInstant,
+      keysChangedToken: Queue[Unit]
+  ): UIO[LastProcessedInstant] = {
+    val retryAfterWaitingForKeyListChange =
+      keysChangedToken.take *> getNextState(prefix, dateTimeFormatter)(keysR, afterwards, keysChangedToken)
+    getNextInstant(keysR, afterwards, prefix, dateTimeFormatter)
+      .flatMap {
+        case None                                                   => retryAfterWaitingForKeyListChange
+        case Some(sameInstant) if sameInstant == afterwards.instant => retryAfterWaitingForKeyListChange
+        case Some(newInstant)                                       => UIO(LastProcessedInstant(newInstant))
+      }
+  }
+
+  private final def selectObjectForInstant(
+      zonedDateTimeFormatter: ZonedDateTimeFormatter
+  )(lastProcessedInstant: LastProcessedInstant, keys: Keys): Option[String] =
+    keys.find(_.contains(zonedDateTimeFormatter.value.format(lastProcessedInstant.instant)))
+
+  final def mkTimeBased[R, K <: Product: Encoder: Decoder: SchemaFor, V <: Product: Encoder: Decoder: SchemaFor](
       bucketName: String,
       filePathPrefix: String,
       afterwards: LastProcessedInstant,
       transducer: ZTransducer[R, TamerError, Byte, V],
       parallelism: PosInt,
       zonedDateTimeFormatter: ZonedDateTimeFormatter,
-      minimumIntervalForBucketFetch: Duration
-  ): Setup[R, V] = Setup[R, V](
+      minimumIntervalForBucketFetch: Duration,
+      maximumIntervalForBucketFetch: Duration,
+      deriveKafkaRecordKey: (LastProcessedInstant, V) => K
+  ): Setup[R, K, V, LastProcessedInstant] = Setup[R, K, V, LastProcessedInstant](
     bucketName,
     filePathPrefix,
     afterwards,
+    stringHash(bucketName) + stringHash(filePathPrefix) + afterwards.instant.getEpochSecond.intValue,
     transducer,
     parallelism,
-    zonedDateTimeFormatter,
-    minimumIntervalForBucketFetch
+    minimumIntervalForBucketFetch,
+    maximumIntervalForBucketFetch,
+    getNextState(filePathPrefix, zonedDateTimeFormatter.value),
+    deriveKafkaRecordKey,
+    selectObjectForInstant(zonedDateTimeFormatter)
   )
 }
