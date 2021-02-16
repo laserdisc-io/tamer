@@ -5,7 +5,7 @@ import eu.timepit.refined.auto._
 import eu.timepit.refined.types.numeric.PosInt
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import tamer.config.Config
+import tamer.config.{Config, KafkaConfig}
 import tamer.kafka.Kafka
 import zio.ZIO.when
 import zio.blocking.Blocking
@@ -24,7 +24,7 @@ case class KeysChanged(differenceFound: Boolean) extends AnyVal
 package object s3 {
   private final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.s3")
 
-  private final val kafkaLayer: Layer[TamerError, Kafka] = Config.live >>> Kafka.live
+  private final def kafkaLayer(kafkaConfigLayer: Layer[TamerError, KafkaConfig]): Layer[TamerError, Kafka] = kafkaConfigLayer >>> Kafka.live
 
   type KeysR = Ref[List[String]]
   type Keys  = List[String]
@@ -75,7 +75,8 @@ package object s3 {
       parallelism: PosInt = 1,
       dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
       minimumIntervalForBucketFetch: Duration = 5.minutes,
-      maximumIntervalForBucketFetch: Duration = 5.minutes
+      maximumIntervalForBucketFetch: Duration = 5.minutes,
+      kafkaConfigLayer: Layer[TamerError, KafkaConfig] = Config.live
   ): ZIO[R with Blocking with Clock with zio.s3.S3, TamerError, Unit] = {
     val setup =
       Setup.mkTimeBased[R, K, V](
@@ -89,7 +90,7 @@ package object s3 {
         maximumIntervalForBucketFetch,
         deriveKafkaKey
       )
-    fetch(setup).provideSomeLayer[R with Blocking with Clock with zio.s3.S3](kafkaLayer)
+    fetch(setup).provideSomeLayer[R with Blocking with Clock with zio.s3.S3](kafkaLayer(kafkaConfigLayer))
   }
 
   final def fetch[
