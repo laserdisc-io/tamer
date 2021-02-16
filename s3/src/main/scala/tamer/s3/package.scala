@@ -11,7 +11,7 @@ import zio.ZIO.when
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
-import zio.s3.S3
+import zio.s3.{ListObjectOptions, S3}
 import zio.stream.{Transducer, ZTransducer}
 import zio.{Queue, Task, ZIO, _}
 
@@ -50,7 +50,7 @@ package object s3 {
     for {
       log               <- logTask
       _                 <- log.info(s"getting list of keys in bucket $bucketName with prefix $prefix")
-      initialObjListing <- zio.s3.listObjects(bucketName, prefix, paginationMaxKeys)
+      initialObjListing <- zio.s3.listObjects(bucketName, ListObjectOptions.from(prefix, paginationMaxKeys))
       allObjListings <- zio.s3
         .paginate(initialObjListing)
         .take(paginationMaxPages)
