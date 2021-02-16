@@ -48,7 +48,7 @@ object S3Generalized extends zio.App {
       .map(key => key.stripPrefix(prefix).toLong)
       .filter(number => afterwards.number < number)
 
-    sortedFileNumbers.minOption
+    if (sortedFileNumbers.isEmpty) None else Some(sortedFileNumbers.min)
   }
   private final def getNextState(prefix: String)(
       keysR: KeysR,
