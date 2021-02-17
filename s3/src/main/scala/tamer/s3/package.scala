@@ -5,7 +5,6 @@ import eu.timepit.refined.auto._
 import eu.timepit.refined.types.numeric.PosInt
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import tamer.config.Config.{KafkaSink, KafkaState}
 import tamer.config.{Config, KafkaConfig}
 import tamer.kafka.Kafka
 import zio.ZIO.when
