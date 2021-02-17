@@ -5,6 +5,7 @@ import eu.timepit.refined.auto._
 import eu.timepit.refined.types.numeric.PosInt
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
+import tamer.config.Config.{KafkaSink, KafkaState}
 import tamer.config.{Config, KafkaConfig}
 import tamer.kafka.Kafka
 import zio.ZIO.when
@@ -66,6 +67,28 @@ package object s3 {
     } yield if (keyList.sorted == previousListOfKeys.sorted) KeysChanged(false) else KeysChanged(true)
   }.tap(keysChanged => when(keysChanged.differenceFound)(keysChangedToken.offer(())))
 
+//  val defaultConfigLayers: Layer[TamerError, KafkaConfig with Has[AppConfig]] =
+//    Config.live ++ (zio.system.System.live >>> AppConfig.live.mapError(e =>
+//      TamerError("Error loading configuration", e)
+//    ))
+//  val kafkaConfigLayer: ZLayer[Clock with Has[AppConfig] with KafkaConfig, Nothing, KafkaConfig] =
+//    (for { // TODO: actually bring this into the library to create the default
+//      // TODO: and ask only for the object or make this less fucking painful!!!!
+//      kafka  <- ZIO.service[Config.Kafka]
+//      config <- ZIO.service[AppConfig]
+//      now    <- clock.instant
+//           } yield kafka.copy(
+//      sink = KafkaSink(config.taniumAssetPhysicalHost.value),
+//      state = KafkaState(
+//        topic = config.taniumAssetPhysicalHost.value + ".tape",
+//        groupId = "taniumHostGroup",
+//        clientId = s"tanium.connector.${getClass.getPackage.getImplementationVersion}.${now.toString}"
+//      )
+//    )).toLayer
+
+//  val defaultConfig: ZIO[KafkaConfig, TamerError, Config.Kafka] = ZIO.service[Config.Kafka]
+  val bau: Layer[TamerError, KafkaConfig] = Config.live
+
   final def fetchAccordingToSuffixDate[R, K <: Product: Encoder: Decoder: SchemaFor, V <: Product: Encoder: Decoder: SchemaFor](
       bucketName: String,
       prefix: String,
@@ -76,7 +99,7 @@ package object s3 {
       dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
       minimumIntervalForBucketFetch: Duration = 5.minutes,
       maximumIntervalForBucketFetch: Duration = 5.minutes,
-      kafkaConfigLayer: Layer[TamerError, KafkaConfig] = Config.live
+      kafkaConfig: Task[Config.Kafka] = ZIO.service[Config.Kafka].provideLayer(Config.live)
   ): ZIO[R with Blocking with Clock with zio.s3.S3, TamerError, Unit] = {
     val setup =
       Setup.mkTimeBased[R, K, V](
@@ -90,7 +113,9 @@ package object s3 {
         maximumIntervalForBucketFetch,
         deriveKafkaKey
       )
-    fetch(setup).provideSomeLayer[R with Blocking with Clock with zio.s3.S3](kafkaLayer(kafkaConfigLayer))
+    fetch(setup).provideSomeLayer[R with Blocking with Clock with zio.s3.S3](
+      kafkaLayer(kafkaConfig.toLayer.mapError(e => TamerError("Error while fetching default kafka configuration", e)))
+    )
   }
 
   final def fetch[
