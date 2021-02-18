@@ -63,8 +63,10 @@ package object s3 {
       _                  <- log.debug(s"Current key list has ${keyList.length} elements")
       _                  <- log.debug(s"The first and last elements are ${keyList.sorted.headOption} and ${keyList.sorted.lastOption}")
       previousListOfKeys <- keysR.getAndSet(keyList)
-    } yield if (keyList.sorted == previousListOfKeys.sorted) KeysChanged(false) else KeysChanged(true)
-  }.tap(keysChanged => when(keysChanged.differenceFound)(keysChangedToken.offer(())))
+      detectedKeyListChanged = keyList.sorted != previousListOfKeys.sorted
+      _ <- when(detectedKeyListChanged)(log.debug("Detected change in key list") *> keysChangedToken.offer(()))
+    } yield if (detectedKeyListChanged) KeysChanged(true) else KeysChanged(false)
+  }
 
   val bau: Layer[TamerError, KafkaConfig] = Config.live
 
