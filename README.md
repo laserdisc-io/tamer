@@ -16,14 +16,19 @@ Some sensible defaults are provided out of the box but many customisations are p
 
 ## Usage
 
-Add Tamer as a dependency to your project:
+Add one of Tamer's modules as a dependency to your project:
 
 ```
 // check the current version on Maven Central (or use the badge above)
-libraryDependencies += "io.laserdisc" %% "tamer" % version
+libraryDependencies += "io.laserdisc" %% "tamer-doobie" % version
+```
+or
+```
+// check the current version on Maven Central (or use the badge above)
+libraryDependencies += "io.laserdisc" %% "tamer-s3" % version
 ```
 
-See [here](example/src/main/scala/tamer/example/DatabaseSimple.scala) for a sample application that makes use of Tamer.
+See [here](example/src/main/scala/tamer/example/DatabaseSimple.scala) for a sample application that makes use of Tamer's Doobie module for ingesting data from a JDBC datasource.
 
 ## End to end testing
 
