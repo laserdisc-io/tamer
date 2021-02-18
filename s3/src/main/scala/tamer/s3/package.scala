@@ -66,26 +66,6 @@ package object s3 {
     } yield if (keyList.sorted == previousListOfKeys.sorted) KeysChanged(false) else KeysChanged(true)
   }.tap(keysChanged => when(keysChanged.differenceFound)(keysChangedToken.offer(())))
 
-//  val defaultConfigLayers: Layer[TamerError, KafkaConfig with Has[AppConfig]] =
-//    Config.live ++ (zio.system.System.live >>> AppConfig.live.mapError(e =>
-//      TamerError("Error loading configuration", e)
-//    ))
-//  val kafkaConfigLayer: ZLayer[Clock with Has[AppConfig] with KafkaConfig, Nothing, KafkaConfig] =
-//    (for { // TODO: actually bring this into the library to create the default
-//      // TODO: and ask only for the object or make this less fucking painful!!!!
-//      kafka  <- ZIO.service[Config.Kafka]
-//      config <- ZIO.service[AppConfig]
-//      now    <- clock.instant
-//           } yield kafka.copy(
-//      sink = KafkaSink(config.taniumAssetPhysicalHost.value),
-//      state = KafkaState(
-//        topic = config.taniumAssetPhysicalHost.value + ".tape",
-//        groupId = "taniumHostGroup",
-//        clientId = s"tanium.connector.${getClass.getPackage.getImplementationVersion}.${now.toString}"
-//      )
-//    )).toLayer
-
-//  val defaultConfig: ZIO[KafkaConfig, TamerError, Config.Kafka] = ZIO.service[Config.Kafka]
   val bau: Layer[TamerError, KafkaConfig] = Config.live
 
   final def fetchAccordingToSuffixDate[R, K <: Product: Encoder: Decoder: SchemaFor, V <: Product: Encoder: Decoder: SchemaFor](
