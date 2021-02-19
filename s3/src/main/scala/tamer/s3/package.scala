@@ -68,8 +68,6 @@ package object s3 {
     } yield if (detectedKeyListChanged) KeysChanged(true) else KeysChanged(false)
   }
 
-  val bau: Layer[TamerError, KafkaConfig] = Config.live
-
   final def fetchAccordingToSuffixDate[R, K <: Product: Encoder: Decoder: SchemaFor, V <: Product: Encoder: Decoder: SchemaFor](
       bucketName: String,
       prefix: String,

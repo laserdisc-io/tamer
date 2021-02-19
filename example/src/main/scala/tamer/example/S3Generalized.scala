@@ -59,9 +59,8 @@ object S3Generalized extends zio.App {
       keysChangedToken.take *> getNextState(prefix)(keysR, afterwards, keysChangedToken)
     getNextNumber(keysR, afterwards, prefix)
       .flatMap {
-        case None                                        => retryAfterWaitingForKeyListChange
-        case Some(number) if number == afterwards.number => retryAfterWaitingForKeyListChange
-        case Some(differentNumber)                       => UIO(LastProcessedNumber(differentNumber))
+        case Some(number) if number > afterwards.number => UIO(LastProcessedNumber(number))
+        case _                                          => retryAfterWaitingForKeyListChange
       }
   }
 

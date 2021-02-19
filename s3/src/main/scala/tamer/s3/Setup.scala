@@ -65,9 +65,8 @@ object Setup {
       keysChangedToken.take *> getNextState(prefix, dateTimeFormatter)(keysR, afterwards, keysChangedToken)
     getNextInstant(keysR, afterwards, prefix, dateTimeFormatter)
       .flatMap {
-        case None                                                   => retryAfterWaitingForKeyListChange
-        case Some(sameInstant) if sameInstant == afterwards.instant => retryAfterWaitingForKeyListChange
-        case Some(newInstant)                                       => UIO(LastProcessedInstant(newInstant))
+        case Some(newInstant) if newInstant.isAfter(afterwards.instant) => UIO(LastProcessedInstant(newInstant))
+        case _                                                          => retryAfterWaitingForKeyListChange
       }
   }
 
