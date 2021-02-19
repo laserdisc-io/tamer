@@ -16,7 +16,7 @@ object S3Simple extends zio.App {
     S3Credentials.fromAll.map(s3Credentials => zio.s3.live(Region.AF_SOUTH_1, s3Credentials, Some(new URI("http://localhost:9000"))))
 
   val program: ZIO[Blocking with Clock with S3, TamerError, Unit] = for {
-    _ <- tamer.s3.fetch(
+    _ <- tamer.s3.fetchAccordingToSuffixDate(
       bucketName = "myBucket",
       prefix = "myFolder/myPrefix",
       afterwards = LastProcessedInstant(Instant.parse("2020-12-03T10:15:30.00Z")),

@@ -1,6 +1,7 @@
 package tamer.s3
 
-import zio.Ref
+import tamer.s3.Setup.getNextState
+import zio.{Queue, Ref}
 import zio.test.Assertion._
 import zio.test.{DefaultRunnableSpec, ZSpec, _}
 
@@ -15,8 +16,11 @@ object S3Spec extends DefaultRunnableSpec {
       val prefix            = "myFolder/myPrefix"
       val instant           = ZonedDateTime.parse("2021-01-01T00:01:44+01:00[Europe/Rome]").toInstant
       val makeKeys          = Ref.make(List("myFolder/myPrefix2021-01-01 00:01:44.empty"))
+      val makeQueue         = Queue.dropping[Unit](requestedCapacity = 1).tap(_.offer(()))
 
-      makeKeys.flatMap(keysR => assertM(getNextInstant(keysR, afterwards, prefix, dateTimeFormatter))(isSome(equalTo(instant))))
+      (makeQueue <&> makeKeys).flatMap { case (keysQ, keysR) =>
+        assertM(getNextState(prefix, dateTimeFormatter)(keysR, afterwards, keysQ).map(_.instant))(equalTo(instant))
+      }
     }
   )
 }
