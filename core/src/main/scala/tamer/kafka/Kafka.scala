@@ -14,11 +14,9 @@ import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
 import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
-import zio.kafka.consumer.{CommittableRecord, Consumer, ConsumerSettings, Offset, Subscription}
+import zio.kafka.consumer._
 import zio.kafka.producer.{Producer, ProducerSettings}
 import zio.stream.ZStream
-
-import scala.collection.mutable.ListBuffer
 
 final case class StateKey(stateKey: String, groupId: String)
 
