@@ -66,7 +66,7 @@ object Kafka {
               .fromQueue(q)
               .map { case (k, v) => new ProducerRecord(cfg.sink.topic, k, v) }
               .groupedWithin(cfg.bufferSize, 1.second)
-              .mapM(recordChunk =>
+              .tap(recordChunk =>
                 p.produceChunkAsync(recordChunk)
                   .provideSomeLayer[Blocking](layer)
                   .retry(tenTimes)
