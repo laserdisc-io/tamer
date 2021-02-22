@@ -62,44 +62,22 @@ object Kafka {
 
         def mkRegistry(src: SchemaRegistryClient, topic: String) = (ZLayer.succeed(src) >>> Registry.live) ++ (ZLayer.succeed(topic) >>> Topic.live)
 
-        def takeBetweenWithin[B](q: Queue[B], min: Int, max: Int, duration: Duration): URIO[Clock, List[B]] =
-          ZIO.effectSuspendTotal {
-            val buffer = ListBuffer[B]()
-
-            def takeRemainder(min: Int, max: Int): UIO[Any] =
-              q.takeUpTo(max)
-                .flatMap { bs =>
-                  val remaining = min - bs.length
-                  if (remaining == 1)
-                    q.take.flatMap(b => ZIO.effectTotal(buffer ++= bs += b))
-                  else if (remaining > 1) {
-                    q.take.flatMap { b =>
-                      ZIO.effectSuspendTotal {
-                        buffer ++= bs += b
-                        takeRemainder(remaining - 1, max - bs.length - 1)
-                      }
-                    }
-                  } else
-                    ZIO.effectTotal(buffer ++= bs)
-                }
-                .unless(max < min)
-
-            val race = takeRemainder(min, max) raceFirst clock.sleep(duration)
-            race.as(buffer.toList)
-          }
-
-        def takeNWithin[B](q: Queue[B], n: Int, duration: Duration): URIO[Clock, List[B]] = takeBetweenWithin(q, n, n, duration)
-
-        def mkRecordChunk(kvs: List[(K, V)]) = Chunk.fromIterable(kvs.map { case (k, v) => new ProducerRecord(cfg.sink.topic, k, v) })
         def sink(q: Queue[(K, V)], p: Producer.Service[Registry with Topic, K, V], layer: ULayer[Registry with Topic]) =
           logTask.flatMap { log =>
-            takeNWithin(q, cfg.bufferSize, 1.second)
-              .flatMap {
-                case Nil => log.trace("no data to push").unit
-                case kvs =>
-                  p.produceChunkAsync(mkRecordChunk(kvs)).provideSomeLayer[Blocking](layer).retry(tenTimes).flatten.unit <*
-                    log.info(s"pushed ${kvs.size} messages to ${cfg.sink.topic}")
+            ZStream
+              .fromQueue(q)
+              .groupedWithin(cfg.bufferSize, 1.second)
+              .tap {
+                case emptyChunk if emptyChunk.isEmpty => log.trace("no data to push").unit
+                case kvChunk =>
+                  p.produceChunkAsync(kvChunk.map { case (k, v) => new ProducerRecord(cfg.sink.topic, k, v) })
+                    .provideSomeLayer[Blocking](layer)
+                    .retry(tenTimes)
+                    .flatten
+                    .unit <*
+                    log.info(s"pushed ${kvChunk.size} messages to ${cfg.sink.topic}")
               }
+              .runDrain
           }
         def mkRecord(k: StateKey, v: State)      = new ProducerRecord(cfg.state.topic, k, v)
         def waitAssignment(sc: Consumer.Service) = sc.assignment.withFilter(_.nonEmpty).retry(tenTimes)
