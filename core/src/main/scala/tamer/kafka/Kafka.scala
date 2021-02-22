@@ -66,13 +66,11 @@ object Kafka {
               .fromQueue(q)
               .map { case (k, v) => new ProducerRecord(cfg.sink.topic, k, v) }
               .groupedWithin(cfg.bufferSize, 1.second)
-              .map(recordChunk =>
+              .mapM(recordChunk =>
                 p.produceChunkAsync(recordChunk)
                   .provideSomeLayer[Blocking](layer)
                   .retry(tenTimes)
-                  .flatten
-                  .unit <*
-                  log.info(s"pushed ${recordChunk.size} messages to ${cfg.sink.topic}")
+                  .flatten <* log.info(s"pushed ${recordChunk.size} messages to ${cfg.sink.topic}")
               )
               .runDrain
           }
