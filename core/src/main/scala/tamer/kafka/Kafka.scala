@@ -64,17 +64,16 @@ object Kafka {
           logTask.flatMap { log =>
             ZStream
               .fromQueue(q)
+              .map { case (k, v) => new ProducerRecord(cfg.sink.topic, k, v) }
               .groupedWithin(cfg.bufferSize, 1.second)
-              .tap {
-                case emptyChunk if emptyChunk.isEmpty => log.trace("no data to push").unit
-                case kvChunk =>
-                  p.produceChunkAsync(kvChunk.map { case (k, v) => new ProducerRecord(cfg.sink.topic, k, v) })
-                    .provideSomeLayer[Blocking](layer)
-                    .retry(tenTimes)
-                    .flatten
-                    .unit <*
-                    log.info(s"pushed ${kvChunk.size} messages to ${cfg.sink.topic}")
-              }
+              .map(recordChunk =>
+                p.produceChunkAsync(recordChunk)
+                  .provideSomeLayer[Blocking](layer)
+                  .retry(tenTimes)
+                  .flatten
+                  .unit <*
+                  log.info(s"pushed ${recordChunk.size} messages to ${cfg.sink.topic}")
+              )
               .runDrain
           }
         def mkRecord(k: StateKey, v: State)      = new ProducerRecord(cfg.state.topic, k, v)
