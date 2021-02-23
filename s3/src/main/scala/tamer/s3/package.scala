@@ -120,13 +120,13 @@ package object s3 {
 
       keysChangedToken <- Queue.dropping[Unit](requestedCapacity = 1)
       updateListOfKeysM = updateListOfKeys(keysR, setup.bucketName, setup.prefix, setup.minimumIntervalForBucketFetch, keysChangedToken)
-      _ <- updateListOfKeysM
+      updateKeysFiber <- updateListOfKeysM
         .scheduleFrom(KeysChanged(true))(
           Schedule.once andThen cappedExponentialBackoff.untilInput(_ == KeysChanged(true))
         )
         .forever
         .fork
-      _ <- tamer.kafka.runLoop(setup)(iteration(setup, keysR, keysChangedToken))
+      _ <- tamer.kafka.runLoop(setup)(iteration(setup, keysR, keysChangedToken)).ensuring(updateKeysFiber.interrupt)
     } yield ()
 
   private final def iteration[
