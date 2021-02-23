@@ -47,6 +47,11 @@ package object s3 {
       if (minimumIntervalForBucketFetch < defaultTimeoutBucketFetch) minimumIntervalForBucketFetch
       else defaultTimeoutBucketFetch
 
+    def warnAboutSpuriousKeys(log: LogWriter[Task], keyList: List[String]) = {
+      val witness = keyList.find(key => !key.startsWith(prefix)).getOrElse("")
+      log.warn(s"""Server returned $witness (and maybe more files) which don't match prefix "$prefix".""")
+    }
+
     for {
       log               <- logTask
       _                 <- log.info(s"getting list of keys in bucket $bucketName with prefix $prefix")
@@ -60,10 +65,12 @@ package object s3 {
       keyList = allObjListings
         .flatMap(objListing => objListing.objectSummaries)
         .map(_.key)
-      _                  <- log.debug(s"Current key list has ${keyList.length} elements")
-      _                  <- log.debug(s"The first and last elements are ${keyList.sorted.headOption} and ${keyList.sorted.lastOption}")
-      previousListOfKeys <- keysR.getAndSet(keyList)
-      detectedKeyListChanged = keyList.sorted != previousListOfKeys.sorted
+      cleanKeyList = keyList.filterNot(_.startsWith(prefix))
+      _                  <- when(keyList.size != cleanKeyList.size)(warnAboutSpuriousKeys(log, keyList))
+      _                  <- log.debug(s"Current key list has ${cleanKeyList.length} elements")
+      _                  <- log.debug(s"The first and last elements are ${cleanKeyList.sorted.headOption} and ${cleanKeyList.sorted.lastOption}")
+      previousListOfKeys <- keysR.getAndSet(cleanKeyList)
+      detectedKeyListChanged = cleanKeyList.sorted != previousListOfKeys.sorted
       _ <- when(detectedKeyListChanged)(log.debug("Detected change in key list") *> keysChangedToken.offer(()))
     } yield if (detectedKeyListChanged) KeysChanged(true) else KeysChanged(false)
   }
