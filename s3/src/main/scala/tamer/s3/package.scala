@@ -49,7 +49,7 @@ package object s3 {
 
     def warnAboutSpuriousKeys(log: LogWriter[Task], keyList: List[String]) = {
       val witness = keyList.find(key => !key.startsWith(prefix)).getOrElse("")
-      log.warn(s"""Server returned $witness (and maybe more files) which don't match prefix "$prefix".""")
+      log.warn(s"""Server returned '$witness' (and maybe more files) which don't match prefix "$prefix"""")
     }
 
     for {
@@ -65,7 +65,7 @@ package object s3 {
       keyList = allObjListings
         .flatMap(objListing => objListing.objectSummaries)
         .map(_.key)
-      cleanKeyList = keyList.filterNot(_.startsWith(prefix))
+      cleanKeyList = keyList.filter(_.startsWith(prefix))
       _                  <- when(keyList.size != cleanKeyList.size)(warnAboutSpuriousKeys(log, keyList))
       _                  <- log.debug(s"Current key list has ${cleanKeyList.length} elements")
       _                  <- log.debug(s"The first and last elements are ${cleanKeyList.sorted.headOption} and ${cleanKeyList.sorted.lastOption}")
