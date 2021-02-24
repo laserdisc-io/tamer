@@ -18,7 +18,7 @@ object S3Spec extends DefaultRunnableSpec {
       val makeKeys          = Ref.make(List("myFolder/myPrefix2021-01-01 00:01:44.empty"))
       val makeQueue         = Queue.dropping[Unit](requestedCapacity = 1).tap(_.offer(()))
 
-      (makeQueue <&> makeKeys).flatMap { case (keysQ, keysR) =>
+      (makeQueue <*> makeKeys).flatMap { case (keysQ, keysR) =>
         assertM(getNextState(prefix, dateTimeFormatter)(keysR, afterwards, keysQ).map(_.instant))(equalTo(instant))
       }
     }
