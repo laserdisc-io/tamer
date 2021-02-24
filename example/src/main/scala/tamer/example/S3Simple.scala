@@ -22,7 +22,9 @@ object S3Simple extends zio.App {
       bucketName = "myBucket",
       prefix = "myFolder/myPrefix",
       afterwards = LastProcessedInstant(Instant.parse("2020-12-03T10:15:30.00Z")),
-      dateTimeFormatter = ZonedDateTimeFormatter.fromPattern("yyyy-MM-dd HH:mm:ss", ZoneId.of("Europe/Rome"))
+      context = TamerS3SuffixDateFetcher.Context(
+        dateTimeFormatter = ZonedDateTimeFormatter.fromPattern("yyyy-MM-dd HH:mm:ss", ZoneId.of("Europe/Rome")),
+      ),
     )
   } yield ()
 

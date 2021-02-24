@@ -16,8 +16,7 @@ import java.time.{Duration, ZoneId}
 
 
 class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
-  private val defaultTransducer: Transducer[Nothing, Byte, Line] =
-    ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line)
+
 
   def fetchAccordingToSuffixDate[
     K <: Product : Encoder : Decoder : SchemaFor,
@@ -26,13 +25,10 @@ class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
      bucketName: String,
      prefix: String,
      afterwards: LastProcessedInstant,
-     deriveKafkaKey: (LastProcessedInstant, V) => K = (l: LastProcessedInstant, _: V) => l,
-     transducer: ZTransducer[Any, TamerError, Byte, V] = defaultTransducer,
-     parallelism: PosInt = 1,
-     dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
-     minimumIntervalForBucketFetch: Duration = 5.minutes,
-     maximumIntervalForBucketFetch: Duration = 5.minutes,
+     context: TamerS3SuffixDateFetcher.Context[K, V],
    ): ZIO[Blocking with Clock with zio.s3.S3 with Kafka, TamerError, Unit] = {
+    import context._
+
     val setup =
       Setup.mkTimeBased[K, V](
         bucketName,
@@ -48,4 +44,18 @@ class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
     tamerS3.fetch(setup)
   }
 
+}
+
+object TamerS3SuffixDateFetcher {
+  private val defaultTransducer: Transducer[Nothing, Byte, Line] =
+    ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line)
+
+  case class Context[K, V] (
+                             deriveKafkaKey: (LastProcessedInstant, V) => K = (l: LastProcessedInstant, _: V) => l,
+                             transducer: ZTransducer[Any, TamerError, Byte, V] = defaultTransducer,
+                             parallelism: PosInt = 1,
+                             dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
+                             minimumIntervalForBucketFetch: Duration = 5.minutes,
+                             maximumIntervalForBucketFetch: Duration = 5.minutes,
+                           )
 }
