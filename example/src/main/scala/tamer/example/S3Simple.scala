@@ -1,24 +1,23 @@
 package tamer.example
 
 import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.model.S3Exception
 import tamer.TamerError
+import tamer.kafka.Kafka
 import tamer.s3.TamerS3.TamerS3Impl
 import tamer.s3.{LastProcessedInstant, TamerS3, TamerS3SuffixDateFetcher, ZonedDateTimeFormatter}
 import zio.blocking.Blocking
 import zio.clock.Clock
-import zio.s3.{ConnectionError, InvalidCredentials, S3, S3Credentials}
-import zio.{ExitCode, Layer, URIO, ZIO}
+import zio.s3._
+import zio.{ExitCode, Has, URIO, ZIO, ZLayer}
 
 import java.net.URI
 import java.time.{Instant, ZoneId}
 
 object S3Simple extends zio.App {
-  val mkS3Layer: ZIO[Blocking, InvalidCredentials, Layer[ConnectionError, S3]] =
-    S3Credentials.fromAll.map(s3Credentials => zio.s3.live(Region.AF_SOUTH_1, s3Credentials, Some(new URI("http://localhost:9000"))))
+  private val tamer: TamerS3 = new TamerS3Impl()
 
-  val tamer: TamerS3 = new TamerS3Impl()
-
-  val program: ZIO[Blocking with Clock with S3, TamerError, Unit] = for {
+  private val program: ZIO[Blocking with Clock with S3 with Kafka, TamerError, Unit] = for {
     _ <- new TamerS3SuffixDateFetcher(tamer).fetchAccordingToSuffixDate(
       bucketName = "myBucket",
       prefix = "myFolder/myPrefix",
@@ -27,5 +26,10 @@ object S3Simple extends zio.App {
     )
   } yield ()
 
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = mkS3Layer.flatMap(s3Layer => program.provideCustomLayer(s3Layer)).exitCode
+  private lazy val credsLayer: ZLayer[Blocking, InvalidCredentials, Has[S3Credentials]] = ZLayer.fromEffect(S3Credentials.fromAll)
+  private lazy val s3Layer: ZLayer[Has[S3Credentials], ConnectionError, S3] = ZLayer.fromServiceManaged(a => Live.connect(Region.AF_SOUTH_1, a, Some(new URI("http://localhost:9000"))))
+  private lazy val fullS3Layer: ZLayer[Blocking, S3Exception, S3] = credsLayer >>> s3Layer
+  private lazy val fullLayer: ZLayer[Blocking, RuntimeException, S3 with Kafka] = fullS3Layer ++ Kafka.configuredForLive
+
+  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = program.provideCustomLayer(fullLayer).exitCode
 }
