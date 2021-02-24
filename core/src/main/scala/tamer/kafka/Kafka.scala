@@ -7,9 +7,9 @@ import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.KafkaException
-import tamer.config._
+import tamer.config.{KafkaConfig, _}
 import tamer.registry._
-import zio._
+import zio.{Layer, _}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
@@ -31,6 +31,10 @@ object Kafka {
     case ke: KafkaException => TamerError(ke.getLocalizedMessage, ke)
     case te: TamerError     => te
   }
+
+  def configured(configLayer: Layer[TamerError, KafkaConfig]): ZLayer[Any, TamerError, Kafka] = (configLayer >>> live).mapError(e => TamerError("Error while fetching default kafka configuration", e))
+
+  lazy val configuredForLive: ZLayer[Any, TamerError, Kafka] = configured(Config.live)
 
   lazy val live: URLayer[KafkaConfig, Kafka] = ZLayer.fromService { cfg =>
     new Service {
