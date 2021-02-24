@@ -32,7 +32,7 @@ object Kafka {
     case te: TamerError     => te
   }
 
-  val live: URLayer[KafkaConfig, Kafka] = ZLayer.fromService { cfg =>
+  lazy val live: URLayer[KafkaConfig, Kafka] = ZLayer.fromService { cfg =>
     new Service {
       private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.kafka")
 
@@ -116,10 +116,10 @@ object Kafka {
           }
 
         ZStream
-          .fromEffect(logTask <&> registryTask)
+          .fromEffect(logTask <*> registryTask)
           .flatMap { case (log, src) =>
             ZStream
-              .managed(stateConsumer <&> stateProducer <&> producer <&> queue)
+              .managed(stateConsumer <*> stateProducer <*> producer <*> queue)
               .flatMap { case (((sc, sp), p), q) =>
                 val sinkRegistry  = mkRegistry(src, cfg.sink.topic)
                 val stateRegistry = mkRegistry(src, cfg.state.topic)
