@@ -116,10 +116,10 @@ object Kafka {
           }
 
         ZStream
-          .fromEffect(logTask <&> registryTask)
+          .fromEffect(logTask <*> registryTask)
           .flatMap { case (log, src) =>
             ZStream
-              .managed(stateConsumer <&> stateProducer <&> producer <&> queue)
+              .managed(stateConsumer <*> stateProducer <*> producer <*> queue)
               .flatMap { case (((sc, sp), p), q) =>
                 val sinkRegistry  = mkRegistry(src, cfg.sink.topic)
                 val stateRegistry = mkRegistry(src, cfg.state.topic)
