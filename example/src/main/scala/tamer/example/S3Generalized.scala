@@ -25,7 +25,7 @@ final case class Line(str: String)
 final case class LastProcessedNumber(number: Long)
 
 object S3Generalized extends zio.App {
-  val mkS3Layer: ZIO[Blocking, InvalidCredentials, Layer[RuntimeException, S3 with Kafka]] =
+  lazy val mkS3Layer: ZIO[Blocking, InvalidCredentials, Layer[RuntimeException, S3 with Kafka]] =
     S3Credentials.fromAll.map { s3Credentials =>
       val kafkaState: Config.KafkaState = Config.KafkaState("state-topic", "groupid", "clientid")
       val kafkaSink: Config.KafkaSink   = Config.KafkaSink("sink-topic")

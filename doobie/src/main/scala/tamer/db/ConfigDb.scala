@@ -34,7 +34,7 @@ object ConfigDb {
 
   private[this] val configValue = (dbConfigValue, queryConfigValue).parMapN(DatabaseConfig.apply)
 
-  val live: Layer[TamerError, DbConfig with QueryConfig] = ZLayer.fromEffectMany {
+  lazy val live: Layer[TamerError, DbConfig with QueryConfig] = ZLayer.fromEffectMany {
     configValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce)).map {
       case DatabaseConfig(db, query) => Has(db) ++ Has(query)
     }
