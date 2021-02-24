@@ -26,10 +26,10 @@ package object db {
   final type DbTransactor  = Has[Transactor[Task]]
   final type TamerDBConfig = DbTransactor with QueryConfig
 
-  private final val kafkaLayer: Layer[TamerError, Kafka]                                      = Config.live >>> Kafka.live
-  private final val transactorLayer: Layer[TamerError, DbTransactor]                          = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
-  private final val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]            = ConfigDb.live
-  private final val defaultLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ queryConfigLayer ++ kafkaLayer
+  private final lazy val kafkaLayer: Layer[TamerError, Kafka]                                      = Config.live >>> Kafka.live
+  private final lazy val transactorLayer: Layer[TamerError, DbTransactor]                          = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
+  private final lazy val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]            = ConfigDb.live
+  private final lazy val defaultLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ queryConfigLayer ++ kafkaLayer
 
   implicit final class InstantOps(private val instant: Instant) extends AnyVal {
     def orNow: UIO[Instant] =

@@ -32,7 +32,7 @@ object Kafka {
     case te: TamerError     => te
   }
 
-  val live: URLayer[KafkaConfig, Kafka] = ZLayer.fromService { cfg =>
+  lazy val live: URLayer[KafkaConfig, Kafka] = ZLayer.fromService { cfg =>
     new Service {
       private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.kafka")
 
