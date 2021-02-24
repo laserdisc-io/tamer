@@ -24,11 +24,11 @@ final case class MyState(from: Instant, to: Instant) extends HashableState {
 }
 
 object DatabaseGeneralized extends zio.App {
-  val transactorLayer: Layer[TamerError, DbTransactor]                     = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
-  val kafkaLayer: Layer[TamerError, Kafka]                                 = Config.live >>> Kafka.live
-  val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]       = ConfigDb.live
-  val myLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
-  val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
+  lazy val transactorLayer: Layer[TamerError, DbTransactor]                     = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
+  lazy val kafkaLayer: Layer[TamerError, Kafka]                                 = Config.live >>> Kafka.live
+  lazy val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]       = ConfigDb.live
+  lazy val myLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
+  lazy val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
     boot <- UIO(Instant.now())
     earliest = boot.minus(60, DAYS)
     setup = Setup((s: MyState) =>
