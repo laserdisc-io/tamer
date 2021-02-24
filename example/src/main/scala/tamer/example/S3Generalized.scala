@@ -9,6 +9,7 @@ import software.amazon.awssdk.regions.Region
 import tamer.TamerError
 import tamer.config.Config
 import tamer.kafka.Kafka
+import tamer.s3.TamerS3.TamerS3Impl
 import tamer.s3.{Keys, KeysR, Setup}
 import zio.blocking.Blocking
 import zio.clock.Clock
@@ -67,7 +68,7 @@ object S3Generalized extends zio.App {
   private final def selectObjectForInstant(lastProcessedNumber: LastProcessedNumber): Option[String] =
     Some(s"myFolder2/myPrefix${lastProcessedNumber.number}")
 
-  private val setup: Setup[Any, LastProcessedNumber, Line, LastProcessedNumber] = Setup(
+  private val setup: Setup[LastProcessedNumber, Line, LastProcessedNumber] = Setup(
     bucketName = "myBucket",
     prefix = "myFolder2/myPrefix",
     defaultState = LastProcessedNumber(0),
@@ -82,7 +83,7 @@ object S3Generalized extends zio.App {
   )
 
   val program: ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit] = for {
-    _ <- tamer.s3.fetch(setup)
+    _ <- new TamerS3Impl().fetch(setup)
   } yield ()
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = mkS3Layer.flatMap(layer => program.provideCustomLayer(layer)).exitCode

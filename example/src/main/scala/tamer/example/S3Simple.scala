@@ -2,7 +2,8 @@ package tamer.example
 
 import software.amazon.awssdk.regions.Region
 import tamer.TamerError
-import tamer.s3.{LastProcessedInstant, ZonedDateTimeFormatter}
+import tamer.s3.TamerS3.TamerS3Impl
+import tamer.s3.{LastProcessedInstant, TamerS3, TamerS3SuffixDateFetcher, ZonedDateTimeFormatter}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.s3.{ConnectionError, InvalidCredentials, S3, S3Credentials}
@@ -15,8 +16,10 @@ object S3Simple extends zio.App {
   val mkS3Layer: ZIO[Blocking, InvalidCredentials, Layer[ConnectionError, S3]] =
     S3Credentials.fromAll.map(s3Credentials => zio.s3.live(Region.AF_SOUTH_1, s3Credentials, Some(new URI("http://localhost:9000"))))
 
+  val tamer: TamerS3 = new TamerS3Impl()
+
   val program: ZIO[Blocking with Clock with S3, TamerError, Unit] = for {
-    _ <- tamer.s3.fetchAccordingToSuffixDate(
+    _ <- new TamerS3SuffixDateFetcher(tamer).fetchAccordingToSuffixDate(
       bucketName = "myBucket",
       prefix = "myFolder/myPrefix",
       afterwards = LastProcessedInstant(Instant.parse("2020-12-03T10:15:30.00Z")),

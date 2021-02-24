@@ -11,7 +11,6 @@ import java.time.{Duration, Instant}
 import scala.util.hashing.MurmurHash3.stringHash
 
 final case class Setup[
-    R,
     K <: Product: Encoder: Decoder: SchemaFor,
     V <: Product: Encoder: Decoder: SchemaFor,
     S <: Product: Decoder: Encoder: SchemaFor
@@ -20,7 +19,7 @@ final case class Setup[
     prefix: String,
     override val defaultState: S,
     override val stateKey: Int,
-    transducer: ZTransducer[R, TamerError, Byte, V],
+    transducer: ZTransducer[Any, TamerError, Byte, V],
     parallelism: PosInt,
     minimumIntervalForBucketFetch: Duration,
     maximumIntervalForBucketFetch: Duration,
@@ -75,17 +74,17 @@ object Setup {
   )(lastProcessedInstant: LastProcessedInstant, keys: Keys): Option[String] =
     keys.find(_.contains(zonedDateTimeFormatter.value.format(lastProcessedInstant.instant)))
 
-  final def mkTimeBased[R, K <: Product: Encoder: Decoder: SchemaFor, V <: Product: Encoder: Decoder: SchemaFor](
+  final def mkTimeBased[K <: Product: Encoder: Decoder: SchemaFor, V <: Product: Encoder: Decoder: SchemaFor](
       bucketName: String,
       filePathPrefix: String,
       afterwards: LastProcessedInstant,
-      transducer: ZTransducer[R, TamerError, Byte, V],
+      transducer: ZTransducer[Any, TamerError, Byte, V],
       parallelism: PosInt,
       zonedDateTimeFormatter: ZonedDateTimeFormatter,
       minimumIntervalForBucketFetch: Duration,
       maximumIntervalForBucketFetch: Duration,
       deriveKafkaRecordKey: (LastProcessedInstant, V) => K
-  ): Setup[R, K, V, LastProcessedInstant] = Setup[R, K, V, LastProcessedInstant](
+  ): Setup[ K, V, LastProcessedInstant] = Setup[K, V, LastProcessedInstant](
     bucketName,
     filePathPrefix,
     afterwards,
