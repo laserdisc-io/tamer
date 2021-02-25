@@ -126,7 +126,7 @@ object Kafka {
                 val sinkRegistry  = mkRegistry(src, cfg.sink.topic)
                 val stateRegistry = mkRegistry(src, cfg.state.topic)
                 val queueStream   = ZStream.fromChunkQueueWithShutdown(chunkQueue)
-                ZStream.fromEffect(sink(queueStream, p, sinkRegistry).forever.fork <* log.info("running sink perpetually")).flatMap { fiber =>
+                ZStream.fromEffect(sink(queueStream, p, sinkRegistry).fork <* log.info("running sink perpetually")).flatMap { fiber =>
                   source(sc, chunkQueue, sp, stateRegistry).ensuringFirst {
                     fiber.interrupt *> log.info("sink interrupted").ignore *> sink(queueStream, p, sinkRegistry).run <* log
                       .info("sink queue drained")
