@@ -43,7 +43,7 @@ package object db {
 
   private final def iteration[K <: Product, V <: Product, S <: Product with HashableState](
       setup: Setup[K, V, S]
-  )(state: S, q: Queue[(K, V)]): ZIO[TamerDBConfig, TamerError, S] =
+  )(state: S, q: Queue[Chunk[(K, V)]]): ZIO[TamerDBConfig, TamerError, S] =
     (for {
       log   <- logTask
       cfg   <- ConfigDb.queryConfig
@@ -57,7 +57,7 @@ package object db {
           .chunks
           .transact(tnx)
           .map(ChunkWithMetadata(_))
-          .evalTap(c => q.offerAll(toIterable(c.chunk).map(v => setup.keyExtract(v) -> v)))
+          .evalTap(c => q.offer(Chunk.fromIterable(toIterable(c.chunk).map(v => setup.keyExtract(v) -> v))))
           .flatMap(c => Stream.chunk(c.chunk).map(ValueWithMetadata(_, c.pulledAt)))
           .compile
           .toList

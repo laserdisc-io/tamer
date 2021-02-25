@@ -140,7 +140,7 @@ package object s3 {
       keysChangedToken: Queue[Unit]
   )(
       currentState: S,
-      q: Queue[(K, V)]
+      q: Queue[Chunk[(K, V)]]
   ): ZIO[R with zio.s3.S3, TamerError, S] =
     (for {
       log       <- logTask
@@ -153,7 +153,8 @@ package object s3 {
           zio.s3
             .getObject(setup.bucketName, key)
             .transduce(setup.transducer)
-            .foreach(value => q.offer(setup.deriveKafkaRecordKey(nextState, value) -> value))
+            .map(value => (setup.deriveKafkaRecordKey(nextState, value), value))
+            .foreachChunk(q.offer)
         )
         .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
     } yield nextState).mapError(e => TamerError("Error while doing iterationTimeBased", e))

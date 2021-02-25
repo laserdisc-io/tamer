@@ -23,7 +23,7 @@ final case class StateKey(stateKey: String, groupId: String)
 object Kafka {
   trait Service {
     def runLoop[K, V, State, R](setup: Setup[K, V, State])(
-        f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
+        f: (State, Queue[Chunk[(K, V)]]) => ZIO[R, TamerError, State]
     ): ZIO[R with Blocking with Clock, TamerError, Unit]
   }
 
@@ -37,7 +37,7 @@ object Kafka {
       private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.kafka")
 
       override final def runLoop[K, V, State, R](setup: Setup[K, V, State])(
-          f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
+          f: (State, Queue[Chunk[(K, V)]]) => ZIO[R, TamerError, State]
       ): ZIO[R with Blocking with Clock, TamerError, Unit] = {
         val registryTask            = Task(new CachedSchemaRegistryClient(cfg.schemaRegistryUrl, 4))
         val tenTimes                = Schedule.recurs(10) && Schedule.exponential(25.milliseconds)
@@ -54,19 +54,16 @@ object Kafka {
         val stateProducer = Producer.make(pSettings, stateKeySerde.serializer, setup.stateSerde)
         val stateKey      = StateKey(setup.stateKey.toHexString, cfg.state.groupId)
         val producer      = Producer.make(pSettings, setup.keySerializer, setup.valueSerializer)
-        val queue         = Managed.make(Queue.bounded[(K, V)](cfg.bufferSize))(_.shutdown)
+        val chunkQueueM   = Queue.bounded[Chunk[(K, V)]](cfg.bufferSize)
 
         def printSetup(logWriter: LogWriter[Task]) = logWriter.info(s"initializing kafka loop with setup: \n${setup.show}")
 
         def mkRegistry(src: SchemaRegistryClient, topic: String) = (ZLayer.succeed(src) >>> Registry.live) ++ (ZLayer.succeed(topic) >>> Topic.live)
 
-        def sink(q: Queue[(K, V)], p: Producer.Service[Registry with Topic, K, V], layer: ULayer[Registry with Topic]) =
+        def sink(q: ZStream[Any, Nothing, (K, V)], p: Producer.Service[Registry with Topic, K, V], layer: ULayer[Registry with Topic]) =
           logTask.flatMap { log =>
-            ZStream
-              .fromQueue(q)
-              .map { case (k, v) => new ProducerRecord(cfg.sink.topic, k, v) }
-              .groupedWithin(cfg.bufferSize, 1.second)
-              .tap(recordChunk =>
+            q.map { case (k, v) => new ProducerRecord(cfg.sink.topic, k, v) }
+              .mapChunksM(recordChunk =>
                 p.produceChunkAsync(recordChunk)
                   .provideSomeLayer[Blocking](layer)
                   .retry(tenTimes)
@@ -79,7 +76,7 @@ object Kafka {
         def subscribe(sc: Consumer.Service)      = sc.subscribe(stateTopicSub) *> waitAssignment(sc).flatMap(sc.endOffsets(_)).map(_.values.exists(_ > 0L))
         def source(
             sc: Consumer.Service,
-            q: Queue[(K, V)],
+            q: Queue[Chunk[(K, V)]],
             sp: Producer.Service[Registry with Topic, StateKey, State],
             layer: ULayer[Registry with Topic]
         ): ZStream[R with Blocking with Clock, Throwable, Offset] =
@@ -105,13 +102,14 @@ object Kafka {
                     log.debug(
                       s"consumer group ${cfg.state.groupId} consumed state ${record.value} from ${offset.topicPartition}@${offset.offset}"
                     ) *>
-                      f(record.value, q).flatMap { newState =>
-                        sp.produceAsync(mkRecord(stateKey, newState))
-                          .provideSomeLayer[Blocking](layer)
-                          .flatten
-                          .flatMap(rmd => log.debug(s"pushed state $newState to $rmd"))
-                          .as(offset)
-                      }
+                      f(record.value, q)
+                        .flatMap { newState =>
+                          sp.produceAsync(mkRecord(stateKey, newState))
+                            .provideSomeLayer[Blocking](layer)
+                            .flatten
+                            .flatMap(rmd => log.debug(s"pushed state $newState to $rmd"))
+                            .as(offset)
+                        }
                   case CommittableRecord(_, offset) =>
                     log.debug(
                       s"consumer group ${cfg.state.groupId} ignored state (wrong key) from ${offset.topicPartition}@${offset.offset}"
@@ -120,16 +118,19 @@ object Kafka {
           }
 
         ZStream
-          .fromEffect(logTask <&> registryTask)
-          .flatMap { case (log, src) =>
+          .fromEffect(logTask <*> registryTask <*> chunkQueueM)
+          .flatMap { case ((log, src), chunkQueue) =>
             ZStream
-              .managed(stateConsumer <&> stateProducer <&> producer <&> queue)
-              .flatMap { case (((sc, sp), p), q) =>
+              .managed(stateConsumer <*> stateProducer <*> producer)
+              .flatMap { case ((sc, sp), p) =>
                 val sinkRegistry  = mkRegistry(src, cfg.sink.topic)
                 val stateRegistry = mkRegistry(src, cfg.state.topic)
-                ZStream.fromEffect(sink(q, p, sinkRegistry).forever.fork <* log.info("running sink perpetually")).flatMap { fiber =>
-                  source(sc, q, sp, stateRegistry).ensuringFirst {
-                    fiber.interrupt *> log.info("sink interrupted").ignore *> sink(q, p, sinkRegistry).run <* log.info("sink queue drained").ignore
+                val queueStream   = ZStream.fromChunkQueueWithShutdown(chunkQueue)
+                ZStream.fromEffect(sink(queueStream, p, sinkRegistry).forever.fork <* log.info("running sink perpetually")).flatMap { fiber =>
+                  source(sc, chunkQueue, sp, stateRegistry).ensuringFirst {
+                    fiber.interrupt *> log.info("sink interrupted").ignore *> sink(queueStream, p, sinkRegistry).run <* log
+                      .info("sink queue drained")
+                      .ignore
                   }
                 }
               }
