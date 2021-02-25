@@ -37,8 +37,8 @@ object S3Generalized extends zio.App {
   lazy val mkS3Layer: ZIO[Blocking, InvalidCredentials, Layer[RuntimeException, S3 with Kafka]] =
     S3Credentials.fromAll.map { s3Credentials =>
       val kafkaState: Config.KafkaState = Config.KafkaState("state-topic", "groupid", "clientid")
-      val kafkaSink: Config.KafkaSink = Config.KafkaSink("sink-topic")
-      val hostList = refineV[NonEmpty And Forall[IPv4 Or Uri]](List("localhost:9092"))
+      val kafkaSink: Config.KafkaSink   = Config.KafkaSink("sink-topic")
+      val hostList                      = refineV[NonEmpty And Forall[IPv4 Or Uri]](List("localhost:9092"))
       val kafkaConfigLayer: Layer[String, Has[Config.Kafka]] =
         ZIO.fromEither(hostList.map(hl => Config.Kafka(hl, "http://localhost:8081", FD(10, "seconds"), 50, kafkaSink, kafkaState))).toLayer
       val kafkaLayer: Layer[TamerError, Kafka] = kafkaConfigLayer.mapError(e => TamerError(e)) >>> Kafka.live
@@ -49,10 +49,10 @@ object S3Generalized extends zio.App {
     ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line.apply)
 
   private final def getNextNumber(
-                                   keysR: KeysR,
-                                   afterwards: LastProcessedNumber,
-                                   prefix: String
-                                 ): ZIO[Any, Nothing, Option[Long]] = keysR.get.map { keys =>
+      keysR: KeysR,
+      afterwards: LastProcessedNumber,
+      prefix: String
+  ): ZIO[Any, Nothing, Option[Long]] = keysR.get.map { keys =>
     val sortedFileNumbers = keys
       .map(key => key.stripPrefix(prefix).toLong)
       .filter(number => afterwards.number < number)
@@ -61,16 +61,16 @@ object S3Generalized extends zio.App {
   }
 
   private final def getNextState(prefix: String)(
-    keysR: KeysR,
-    afterwards: LastProcessedNumber,
-    keysChangedToken: Queue[Unit]
+      keysR: KeysR,
+      afterwards: LastProcessedNumber,
+      keysChangedToken: Queue[Unit]
   ): UIO[LastProcessedNumber] = {
     val retryAfterWaitingForKeyListChange =
       keysChangedToken.take *> getNextState(prefix)(keysR, afterwards, keysChangedToken)
     getNextNumber(keysR, afterwards, prefix)
       .flatMap {
         case Some(number) if number > afterwards.number => UIO(LastProcessedNumber(number))
-        case _ => retryAfterWaitingForKeyListChange
+        case _                                          => retryAfterWaitingForKeyListChange
       }
   }
 
@@ -85,13 +85,13 @@ object S3Generalized extends zio.App {
     parallelism = 1,
     S3Configuration.Timeouts(
       minimumIntervalForBucketFetch = 1.second,
-      maximumIntervalForBucketFetch = 1.minute,
+      maximumIntervalForBucketFetch = 1.minute
     ),
     S3Configuration.StateTransitions(
       initialState = LastProcessedNumber(0),
       getNextState = getNextState("myFolder2/myPrefix"),
       deriveKafkaRecordKey = (l: LastProcessedNumber, _: Line) => l,
-      selectObjectForState = (l: LastProcessedNumber, _: Keys) => selectObjectForInstant(l),
+      selectObjectForState = (l: LastProcessedNumber, _: Keys) => selectObjectForInstant(l)
     )
   )
 

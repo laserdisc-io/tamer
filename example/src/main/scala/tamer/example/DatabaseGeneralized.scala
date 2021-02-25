@@ -25,18 +25,14 @@ object MyState {
 }
 
 object DatabaseGeneralized extends zio.App {
-  lazy val transactorLayer: Layer[TamerError, DbTransactor] = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
-  lazy val kafkaLayer: Layer[TamerError, Kafka] = Config.live >>> Kafka.live
-  lazy val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig] = ConfigDb.live
+  lazy val transactorLayer: Layer[TamerError, DbTransactor]                     = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
+  lazy val kafkaLayer: Layer[TamerError, Kafka]                                 = Config.live >>> Kafka.live
+  lazy val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]       = ConfigDb.live
   lazy val myLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
   lazy val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
     boot <- UIO(Instant.now())
     earliest = boot.minus(60, DAYS)
-    setup = DoobieConfiguration((s: MyState) => {
-      import doobie.implicits.legacy.instant._
-      sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${s.from} AND modified_at <= ${s.to}""".query[Value]
-    }
-    )(
+    setup = DoobieConfiguration(query)(
       defaultState = MyState(earliest, earliest.plus(5, MINUTES)),
       keyExtract = (value: Value) => Key(value.id),
       stateFoldM = (s: MyState) => {
@@ -48,6 +44,11 @@ object DatabaseGeneralized extends zio.App {
     )
     _ <- tamer.db.fetch(setup)
   } yield ()).mapError(e => TamerError("Could not run tamer example", e))
+
+  private def query(s: MyState): doobie.Query0[Value] = {
+    import doobie.implicits.legacy.instant._
+    sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${s.from} AND modified_at <= ${s.to}""".query[Value]
+  }
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.provideCustomLayer(myLayer).exitCode
 }

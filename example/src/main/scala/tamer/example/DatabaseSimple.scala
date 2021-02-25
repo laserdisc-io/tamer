@@ -20,7 +20,6 @@ object Value {
   implicit val codec = AvroCodec.codec[Value]
 }
 
-
 object DatabaseSimple extends zio.App {
   import doobie.implicits.legacy.instant._
   val program: ZIO[ZEnv, TamerError, Unit] = (for {

@@ -10,7 +10,7 @@ object Line {
 
 final case class LastProcessedInstant(instant: Instant)
 
-object LastProcessedInstant  {
+object LastProcessedInstant {
   implicit val codec = AvroCodec.codec[LastProcessedInstant]
 
 }

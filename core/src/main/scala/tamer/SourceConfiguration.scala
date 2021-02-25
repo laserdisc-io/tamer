@@ -18,32 +18,31 @@ object HashableState {
 }
 
 case class SourceConfiguration[-K, -V, S](
-                                              serde: SourceConfiguration.SourceSerde[K, V, S],
-                                              defaultState: S,
-                                              tamerStateKafkaRecordKey: Int,
-                                              repr: String,
-                                            )
+    serde: SourceConfiguration.SourceSerde[K, V, S],
+    defaultState: S,
+    tamerStateKafkaRecordKey: Int,
+    repr: String
+)
 
 object SourceConfiguration {
 
   case class SourceSerde[-K, -V, S](
-                                     keySerializer: Serializer[Registry with Topic, K],
-                                     valueSerializer: Serializer[Registry with Topic, V],
-                                     stateSerde: ZSerde[Registry with Topic, S],
-                                   )
+      keySerializer: Serializer[Registry with Topic, K],
+      valueSerializer: Serializer[Registry with Topic, V],
+      stateSerde: ZSerde[Registry with Topic, S]
+  )
 
   object SourceSerde {
     def apply[
-      K <: Product : Codec,
-      V <: Product : Codec,
-      S <: Product : Codec,
-    ](): SourceSerde[K, V, S] = {
+        K <: Product: Codec,
+        V <: Product: Codec,
+        S <: Product: Codec
+    ](): SourceSerde[K, V, S] =
       SourceSerde(
         Serde[K](isKey = true).serializer,
         Serde[V]().serializer,
-        Serde[S]().serde,
+        Serde[S]().serde
       )
-    }
   }
 
 }

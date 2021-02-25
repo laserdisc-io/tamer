@@ -22,10 +22,10 @@ case class ValueWithMetadata[V](value: V, pulledAt: Instant = Instant.now())
 
 case class TimeSegment(from: Instant, to: Instant)
 
-object TimeSegment  {
+object TimeSegment {
   implicit val codec = AvroCodec.codec[TimeSegment]
 
   implicit object TimeSegmentHashable extends HashableState[TimeSegment] {
-    override def stateHash(s: TimeSegment): Int =  (byteswap64(s.from.getEpochSecond) + byteswap64(s.to.getEpochSecond)).intValue
+    override def stateHash(s: TimeSegment): Int = (byteswap64(s.from.getEpochSecond) + byteswap64(s.to.getEpochSecond)).intValue
   }
 }

@@ -15,33 +15,34 @@ import zio.{Queue, Ref, Schedule, Task, UIO, ZIO}
 import java.time.Duration
 import scala.math.Ordering.Implicits.infixOrderingOps
 
-
 trait TamerS3 {
   def fetch[
-    K <: Product : Codec,
-    V <: Product : Codec,
-    S <: Product : Codec,
+      K <: Product: Codec,
+      V <: Product: Codec,
+      S <: Product: Codec
   ](
-     setup: S3Configuration[K, V, S]
-   ): ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit]
+      setup: S3Configuration[K, V, S]
+  ): ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit]
 }
 
 object TamerS3 {
   class TamerS3Impl extends TamerS3 {
 
-    private val createRefToListOfKeys: UIO[KeysR] = Ref.make(List.empty[String])
+    private val createRefToListOfKeys: UIO[KeysR]    = Ref.make(List.empty[String])
     private final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.s3")
 
     final def fetch[
-      K <: Product : Codec,
-      V <: Product : Codec,
-      S <: Product : Codec,
+        K <: Product: Codec,
+        V <: Product: Codec,
+        S <: Product: Codec
     ](
-       setup: S3Configuration[K, V, S]
-     ): ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit] =
+        setup: S3Configuration[K, V, S]
+    ): ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit] =
       for {
         keysR <- createRefToListOfKeys
-        cappedExponentialBackoff: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(setup.timeouts.minimumIntervalForBucketFetch) || Schedule.spaced(
+        cappedExponentialBackoff: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(
+          setup.timeouts.minimumIntervalForBucketFetch
+        ) || Schedule.spaced(
           setup.timeouts.maximumIntervalForBucketFetch
         )
 
@@ -56,17 +57,15 @@ object TamerS3 {
         _ <- tamer.kafka.runLoop(setup.generic)(iteration(setup, keysR, keysChangedToken)).ensuring(updateKeysFiber.interrupt)
       } yield ()
 
-
-
     private def updateListOfKeys(
-                                  keysR: KeysR,
-                                  bucketName: String,
-                                  prefix: String,
-                                  minimumIntervalForBucketFetch: Duration,
-                                  keysChangedToken: Queue[Unit]
-                                ): ZIO[S3 with Clock, Throwable, KeysChanged] = {
-      val paginationMaxKeys = 1000L
-      val paginationMaxPages = 1000L
+        keysR: KeysR,
+        bucketName: String,
+        prefix: String,
+        minimumIntervalForBucketFetch: Duration,
+        keysChangedToken: Queue[Unit]
+    ): ZIO[S3 with Clock, Throwable, KeysChanged] = {
+      val paginationMaxKeys         = 1000L
+      val paginationMaxPages        = 1000L
       val defaultTimeoutBucketFetch = 60.seconds
       val timeoutForFetchAllKeys: Duration =
         if (minimumIntervalForBucketFetch < defaultTimeoutBucketFetch) minimumIntervalForBucketFetch
@@ -78,8 +77,8 @@ object TamerS3 {
       }
 
       for {
-        log <- logTask
-        _ <- log.info(s"getting list of keys in bucket $bucketName with prefix $prefix")
+        log               <- logTask
+        _                 <- log.info(s"getting list of keys in bucket $bucketName with prefix $prefix")
         initialObjListing <- zio.s3.listObjects(bucketName, ListObjectOptions.from(prefix, paginationMaxKeys))
         allObjListings <- zio.s3
           .paginate(initialObjListing)
@@ -91,9 +90,9 @@ object TamerS3 {
           .flatMap(objListing => objListing.objectSummaries)
           .map(_.key)
         cleanKeyList = keyList.filter(_.startsWith(prefix))
-        _ <- when(keyList.size != cleanKeyList.size)(warnAboutSpuriousKeys(log, keyList))
-        _ <- log.debug(s"Current key list has ${cleanKeyList.length} elements")
-        _ <- log.debug(s"The first and last elements are ${cleanKeyList.sorted.headOption} and ${cleanKeyList.sorted.lastOption}")
+        _                  <- when(keyList.size != cleanKeyList.size)(warnAboutSpuriousKeys(log, keyList))
+        _                  <- log.debug(s"Current key list has ${cleanKeyList.length} elements")
+        _                  <- log.debug(s"The first and last elements are ${cleanKeyList.sorted.headOption} and ${cleanKeyList.sorted.lastOption}")
         previousListOfKeys <- keysR.getAndSet(cleanKeyList)
         detectedKeyListChanged = cleanKeyList.sorted != previousListOfKeys.sorted
         _ <- when(detectedKeyListChanged)(log.debug("Detected change in key list") *> keysChangedToken.offer(()))
@@ -101,22 +100,22 @@ object TamerS3 {
     }
 
     private final def iteration[
-      K <: Product : Codec,
-      V <: Product : Codec,
-      S <: Product : Codec,
+        K <: Product: Codec,
+        V <: Product: Codec,
+        S <: Product: Codec
     ](
-       setup: S3Configuration[K, V, S],
-       keysR: KeysR,
-       keysChangedToken: Queue[Unit]
-     )(
-       currentState: S,
-       q: Queue[(K, V)]
-     ): ZIO[zio.s3.S3, TamerError, S] =
+        setup: S3Configuration[K, V, S],
+        keysR: KeysR,
+        keysChangedToken: Queue[Unit]
+    )(
+        currentState: S,
+        q: Queue[(K, V)]
+    ): ZIO[zio.s3.S3, TamerError, S] =
       (for {
-        log <- logTask
+        log       <- logTask
         nextState <- setup.transitions.getNextState(keysR, currentState, keysChangedToken)
-        _ <- log.debug(s"Next state computed to be $nextState")
-        keys <- keysR.get
+        _         <- log.debug(s"Next state computed to be $nextState")
+        keys      <- keysR.get
         optKey = setup.transitions.selectObjectForState(nextState, keys)
         _ <- log.debug(s"Will ask for key $optKey") *> optKey
           .map(key =>
@@ -130,5 +129,3 @@ object TamerS3 {
   }
 
 }
-
-

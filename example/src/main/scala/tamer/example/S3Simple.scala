@@ -23,14 +23,15 @@ object S3Simple extends zio.App {
       prefix = "myFolder/myPrefix",
       afterwards = LastProcessedInstant(Instant.parse("2020-12-03T10:15:30.00Z")),
       context = TamerS3SuffixDateFetcher.Context(
-        dateTimeFormatter = ZonedDateTimeFormatter.fromPattern("yyyy-MM-dd HH:mm:ss", ZoneId.of("Europe/Rome")),
-      ),
+        dateTimeFormatter = ZonedDateTimeFormatter.fromPattern("yyyy-MM-dd HH:mm:ss", ZoneId.of("Europe/Rome"))
+      )
     )
   } yield ()
 
   private lazy val credsLayer: ZLayer[Blocking, InvalidCredentials, Has[S3Credentials]] = ZLayer.fromEffect(S3Credentials.fromAll)
-  private lazy val s3Layer: ZLayer[Has[S3Credentials], ConnectionError, S3] = ZLayer.fromServiceManaged(creds => zio.s3.live(Region.AF_SOUTH_1, creds, Some(new URI("http://localhost:9000"))).build.map(_.get))
-  private lazy val fullS3Layer: ZLayer[Blocking, S3Exception, S3] = credsLayer >>> s3Layer
+  private lazy val s3Layer: ZLayer[Has[S3Credentials], ConnectionError, S3] =
+    ZLayer.fromServiceManaged(creds => zio.s3.live(Region.AF_SOUTH_1, creds, Some(new URI("http://localhost:9000"))).build.map(_.get))
+  private lazy val fullS3Layer: ZLayer[Blocking, S3Exception, S3]               = credsLayer >>> s3Layer
   private lazy val fullLayer: ZLayer[Blocking, RuntimeException, S3 with Kafka] = fullS3Layer ++ Kafka.configuredForLive
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = program.provideCustomLayer(fullLayer).exitCode
