@@ -41,7 +41,7 @@ class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
 
 object TamerS3SuffixDateFetcher {
   private val defaultTransducer: Transducer[Nothing, Byte, Line] =
-    ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line)
+    ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line.apply)
 
   case class Context[K, V] (
                              deriveKafkaKey: (LastProcessedInstant, V) => K = (l: LastProcessedInstant, _: V) => l,

@@ -17,8 +17,6 @@ import java.time.{Instant, ZoneId}
 object S3Simple extends zio.App {
   private val tamer: TamerS3 = new TamerS3Impl()
 
-  import _root_.tamer.AvroEncodable._
-
   private val program: ZIO[Blocking with Clock with S3 with Kafka, TamerError, Unit] = for {
     _ <- new TamerS3SuffixDateFetcher(tamer).fetchAccordingToSuffixDate(
       bucketName = "myBucket",

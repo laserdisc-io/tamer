@@ -5,7 +5,7 @@ import tamer.config.Config
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
 import tamer.db.{ConfigDb, DbTransactor, DoobieConfiguration, InstantOps, QueryResult, TamerDBConfig}
 import tamer.kafka.Kafka
-import tamer.{HashableState, TamerError, db}
+import tamer.{AvroCodec, HashableState, TamerError, db}
 import zio._
 import zio.blocking.Blocking
 
@@ -16,6 +16,7 @@ import scala.util.hashing.byteswap64
 final case class MyState(from: Instant, to: Instant)
 
 object MyState {
+  implicit val codec = AvroCodec.codec[MyState]
 
   implicit object MyStateHashable extends HashableState[MyState] {
     override def stateHash(s: MyState): Int = (byteswap64(s.from.getEpochSecond) + byteswap64(s.to.getEpochSecond)).intValue
@@ -28,7 +29,6 @@ object DatabaseGeneralized extends zio.App {
   lazy val kafkaLayer: Layer[TamerError, Kafka] = Config.live >>> Kafka.live
   lazy val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig] = ConfigDb.live
   lazy val myLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
-  import tamer.AvroEncodable._
   lazy val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
     boot <- UIO(Instant.now())
     earliest = boot.minus(60, DAYS)

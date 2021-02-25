@@ -6,7 +6,7 @@ import eu.timepit.refined.boolean.{And, Or}
 import eu.timepit.refined.collection.{Forall, NonEmpty}
 import eu.timepit.refined.string.{IPv4, Uri}
 import software.amazon.awssdk.regions.Region
-import tamer.TamerError
+import tamer.{AvroCodec, TamerError}
 import tamer.config.Config
 import tamer.kafka.Kafka
 import tamer.s3.TamerS3.TamerS3Impl
@@ -23,8 +23,15 @@ import scala.concurrent.duration.{FiniteDuration => FD}
 import scala.util.hashing.MurmurHash3.stringHash
 
 final case class Line(str: String)
+object Line {
+  implicit val codec = AvroCodec.codec[Line]
+}
 
 final case class LastProcessedNumber(number: Long)
+
+object LastProcessedNumber {
+  implicit val codec = AvroCodec.codec[LastProcessedNumber]
+}
 
 object S3Generalized extends zio.App {
   lazy val mkS3Layer: ZIO[Blocking, InvalidCredentials, Layer[RuntimeException, S3 with Kafka]] =
@@ -39,7 +46,7 @@ object S3Generalized extends zio.App {
     }
 
   private val myTransducer: Transducer[Nothing, Byte, Line] =
-    ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line)
+    ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line.apply)
 
   private final def getNextNumber(
                                    keysR: KeysR,
@@ -70,7 +77,6 @@ object S3Generalized extends zio.App {
   private final def selectObjectForInstant(lastProcessedNumber: LastProcessedNumber): Option[String] =
     Some(s"myFolder2/myPrefix${lastProcessedNumber.number}")
 
-  import tamer.AvroEncodable._
   private val setup: S3Configuration[LastProcessedNumber, Line, LastProcessedNumber] = S3Configuration(
     bucketName = "myBucket",
     prefix = "myFolder2/myPrefix",

@@ -9,27 +9,33 @@ import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.KafkaException
 import tamer.config.{KafkaConfig, _}
 import tamer.registry._
-import zio.{Layer, _}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
 import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
-import zio.kafka.consumer.{CommittableRecord, Consumer, ConsumerSettings, Offset, Subscription}
+import zio.kafka.consumer._
 import zio.kafka.producer.{Producer, ProducerSettings}
 import zio.stream.ZStream
+import zio.{Layer, _}
 
 final case class StateKey(stateKey: String, groupId: String)
 
+object StateKey {
+  implicit def codec = AvroCodec.codec[StateKey]
+
+}
+
 object Kafka {
+
   trait Service {
     def runLoop[K, V, State, R](setup: SourceConfiguration[K, V, State])(
-        f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
+      f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
     ): ZIO[R with Blocking with Clock, TamerError, Unit]
   }
 
   private[this] final val tamerErrors: PartialFunction[Throwable, TamerError] = {
     case ke: KafkaException => TamerError(ke.getLocalizedMessage, ke)
-    case te: TamerError     => te
+    case te: TamerError => te
   }
 
   def configured(configLayer: Layer[TamerError, KafkaConfig]): ZLayer[Any, TamerError, Kafka] = (configLayer >>> live).mapError(e => TamerError("Error while fetching default kafka configuration", e))
@@ -41,31 +47,31 @@ object Kafka {
       private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.kafka")
 
       override final def runLoop[K, V, State, R](setup: SourceConfiguration[K, V, State])(
-          f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
+        f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
       ): ZIO[R with Blocking with Clock, TamerError, Unit] = {
-        val registryTask            = Task(new CachedSchemaRegistryClient(cfg.schemaRegistryUrl, 4))
-        val tenTimes                = Schedule.recurs(10) && Schedule.exponential(25.milliseconds)
+        val registryTask = Task(new CachedSchemaRegistryClient(cfg.schemaRegistryUrl, 4))
+        val tenTimes = Schedule.recurs(10) && Schedule.exponential(25.milliseconds)
         val offsetRetrievalStrategy = OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest)
         val cSettings = ConsumerSettings(cfg.brokers)
           .withGroupId(cfg.state.groupId)
           .withClientId(cfg.state.clientId)
           .withCloseTimeout(cfg.closeTimeout.zio)
           .withOffsetRetrieval(offsetRetrievalStrategy)
-        val pSettings     = ProducerSettings(cfg.brokers).withCloseTimeout(cfg.closeTimeout.zio)
+        val pSettings = ProducerSettings(cfg.brokers).withCloseTimeout(cfg.closeTimeout.zio)
         val stateTopicSub = Subscription.topics(cfg.state.topic)
-        import AvroEncodable._
         val stateKeySerde = Serde[StateKey](isKey = true)
         val stateConsumer = Consumer.make(cSettings)
         val stateProducer = Producer.make(pSettings, stateKeySerde.serializer, setup.serde.stateSerde)
-        val stateKey      = StateKey(setup.tamerStateKafkaRecordKey.toHexString, cfg.state.groupId)
-        val producer      = Producer.make(pSettings, setup.serde.keySerializer, setup.serde.valueSerializer)
-        val queue         = Managed.make(Queue.bounded[(K, V)](cfg.bufferSize))(_.shutdown)
+        val stateKey = StateKey(setup.tamerStateKafkaRecordKey.toHexString, cfg.state.groupId)
+        val producer = Producer.make(pSettings, setup.serde.keySerializer, setup.serde.valueSerializer)
+        val queue = Managed.make(Queue.bounded[(K, V)](cfg.bufferSize))(_.shutdown)
 
         def printSetup(logWriter: LogWriter[Task]) = logWriter.info(s"initializing kafka loop with setup: \n${setup.repr}")
 
         def mkRegistry(src: SchemaRegistryClient, topic: String) = (ZLayer.succeed(src) >>> Registry.live) ++ (ZLayer.succeed(topic) >>> Topic.live)
 
         def mkRecordChunk(kvs: List[(K, V)]) = Chunk.fromIterable(kvs.map { case (k, v) => new ProducerRecord(cfg.sink.topic, k, v) })
+
         def sink(q: Queue[(K, V)], p: Producer.Service[Registry with Topic, K, V], layer: ULayer[Registry with Topic]) =
           logTask.flatMap { log =>
             q.takeAll.flatMap {
@@ -75,15 +81,19 @@ object Kafka {
                   log.info(s"pushed ${kvs.size} messages to ${cfg.sink.topic}")
             }
           }
-        def mkRecord(k: StateKey, v: State)      = new ProducerRecord(cfg.state.topic, k, v)
+
+        def mkRecord(k: StateKey, v: State) = new ProducerRecord(cfg.state.topic, k, v)
+
         def waitAssignment(sc: Consumer.Service) = sc.assignment.withFilter(_.nonEmpty).retry(tenTimes)
-        def subscribe(sc: Consumer.Service)      = sc.subscribe(stateTopicSub) *> waitAssignment(sc).flatMap(sc.endOffsets(_)).map(_.values.exists(_ > 0L))
+
+        def subscribe(sc: Consumer.Service) = sc.subscribe(stateTopicSub) *> waitAssignment(sc).flatMap(sc.endOffsets(_)).map(_.values.exists(_ > 0L))
+
         def source(
-            sc: Consumer.Service,
-            q: Queue[(K, V)],
-            sp: Producer.Service[Registry with Topic, StateKey, State],
-            layer: ULayer[Registry with Topic]
-        ): ZStream[R with Blocking with Clock, Throwable, Offset] =
+                    sc: Consumer.Service,
+                    q: Queue[(K, V)],
+                    sp: Producer.Service[Registry with Topic, StateKey, State],
+                    layer: ULayer[Registry with Topic]
+                  ): ZStream[R with Blocking with Clock, Throwable, Offset] =
           ZStream.fromEffect(logTask).tap(printSetup).flatMap { log =>
             ZStream
               .fromEffect(subscribe(sc))
@@ -126,7 +136,7 @@ object Kafka {
             ZStream
               .managed(stateConsumer <*> stateProducer <*> producer <*> queue)
               .flatMap { case (((sc, sp), p), q) =>
-                val sinkRegistry  = mkRegistry(src, cfg.sink.topic)
+                val sinkRegistry = mkRegistry(src, cfg.sink.topic)
                 val stateRegistry = mkRegistry(src, cfg.state.topic)
                 ZStream.fromEffect(sink(q, p, sinkRegistry).forever.fork <* log.info("running sink perpetually")).flatMap { fiber =>
                   source(sc, q, sp, stateRegistry).ensuringFirst {
