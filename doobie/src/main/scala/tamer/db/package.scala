@@ -41,7 +41,7 @@ package object db {
 
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.db")
 
-  private final def iteration[K <: Product, V <: Product, S <: Product with HashableState](
+  private final def iteration[K <: Product, V <: Product, S <: Product : HashableState](
       setup: DoobieConfiguration[K, V, S]
   )(state: S, q: Queue[(K, V)]): ZIO[TamerDBConfig, TamerError, S] =
     (for {
@@ -82,7 +82,7 @@ package object db {
   final def fetch[
       K <: Product: Encoder: Decoder: SchemaFor,
       V <: Product: Encoder: Decoder: SchemaFor,
-      S <: Product with HashableState: Encoder: Decoder: SchemaFor
+      S <: Product: Encoder: Decoder: SchemaFor : HashableState
   ](
       setup: DoobieConfiguration[K, V, S]
   ): ZIO[ZEnv, TamerError, Unit] =

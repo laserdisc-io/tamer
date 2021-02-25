@@ -4,15 +4,18 @@ import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
 import tamer.registry.{Registry, Topic}
 import zio.kafka.serde.Serializer
 
-trait HashableState {
+trait HashableState[S] {
 
   /**  It is required for this hash to be consistent even across executions
     *  for the same semantic state. This is in contrast with the built-in
     *  `hashCode` method.
     */
-  val stateHash: Int
+  def stateHash(s: S): Int
 }
 
+object HashableState {
+  def apply[S](implicit hs: HashableState[S]): HashableState[S] = hs
+}
 
 abstract class Setup[-K, -V, S](
     val serde: Setup.SourceSerde[K, V, S],
