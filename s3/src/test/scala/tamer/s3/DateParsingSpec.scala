@@ -1,6 +1,6 @@
 package tamer.s3
 
-import tamer.s3.Setup.{parseInstantFromKey, suffixWithoutFileExtension}
+import tamer.s3.S3Configuration.{parseInstantFromKey, suffixWithoutFileExtension}
 import zio.test.Assertion._
 import zio.test._
 

@@ -10,7 +10,7 @@ import tamer.TamerError
 import tamer.config.Config
 import tamer.kafka.Kafka
 import tamer.s3.TamerS3.TamerS3Impl
-import tamer.s3.{Keys, KeysR, Setup}
+import tamer.s3.{Keys, KeysR, S3Configuration}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
@@ -23,14 +23,15 @@ import scala.concurrent.duration.{FiniteDuration => FD}
 import scala.util.hashing.MurmurHash3.stringHash
 
 final case class Line(str: String)
+
 final case class LastProcessedNumber(number: Long)
 
 object S3Generalized extends zio.App {
   lazy val mkS3Layer: ZIO[Blocking, InvalidCredentials, Layer[RuntimeException, S3 with Kafka]] =
     S3Credentials.fromAll.map { s3Credentials =>
       val kafkaState: Config.KafkaState = Config.KafkaState("state-topic", "groupid", "clientid")
-      val kafkaSink: Config.KafkaSink   = Config.KafkaSink("sink-topic")
-      val hostList                      = refineV[NonEmpty And Forall[IPv4 Or Uri]](List("localhost:9092"))
+      val kafkaSink: Config.KafkaSink = Config.KafkaSink("sink-topic")
+      val hostList = refineV[NonEmpty And Forall[IPv4 Or Uri]](List("localhost:9092"))
       val kafkaConfigLayer: Layer[String, Has[Config.Kafka]] =
         ZIO.fromEither(hostList.map(hl => Config.Kafka(hl, "http://localhost:8081", FD(10, "seconds"), 50, kafkaSink, kafkaState))).toLayer
       val kafkaLayer: Layer[TamerError, Kafka] = kafkaConfigLayer.mapError(e => TamerError(e)) >>> Kafka.live
@@ -41,45 +42,50 @@ object S3Generalized extends zio.App {
     ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line)
 
   private final def getNextNumber(
-      keysR: KeysR,
-      afterwards: LastProcessedNumber,
-      prefix: String
-  ): ZIO[Any, Nothing, Option[Long]] = keysR.get.map { keys =>
+                                   keysR: KeysR,
+                                   afterwards: LastProcessedNumber,
+                                   prefix: String
+                                 ): ZIO[Any, Nothing, Option[Long]] = keysR.get.map { keys =>
     val sortedFileNumbers = keys
       .map(key => key.stripPrefix(prefix).toLong)
       .filter(number => afterwards.number < number)
 
     if (sortedFileNumbers.isEmpty) None else Some(sortedFileNumbers.min)
   }
+
   private final def getNextState(prefix: String)(
-      keysR: KeysR,
-      afterwards: LastProcessedNumber,
-      keysChangedToken: Queue[Unit]
+    keysR: KeysR,
+    afterwards: LastProcessedNumber,
+    keysChangedToken: Queue[Unit]
   ): UIO[LastProcessedNumber] = {
     val retryAfterWaitingForKeyListChange =
       keysChangedToken.take *> getNextState(prefix)(keysR, afterwards, keysChangedToken)
     getNextNumber(keysR, afterwards, prefix)
       .flatMap {
         case Some(number) if number > afterwards.number => UIO(LastProcessedNumber(number))
-        case _                                          => retryAfterWaitingForKeyListChange
+        case _ => retryAfterWaitingForKeyListChange
       }
   }
 
   private final def selectObjectForInstant(lastProcessedNumber: LastProcessedNumber): Option[String] =
     Some(s"myFolder2/myPrefix${lastProcessedNumber.number}")
 
-  private val setup: Setup[LastProcessedNumber, Line, LastProcessedNumber] = Setup(
+  private val setup: S3Configuration[LastProcessedNumber, Line, LastProcessedNumber] = S3Configuration(
     bucketName = "myBucket",
     prefix = "myFolder2/myPrefix",
-    defaultState = LastProcessedNumber(0),
-    stateKey = stringHash("myBucket") + stringHash("myFolder2/myPrefix") + 0,
+    tamerStateKafkaRecordKey = stringHash("myBucket") + stringHash("myFolder2/myPrefix") + 0,
     transducer = myTransducer,
     parallelism = 1,
-    minimumIntervalForBucketFetch = 1.second,
-    maximumIntervalForBucketFetch = 1.minute,
-    getNextState = getNextState("myFolder2/myPrefix"),
-    deriveKafkaRecordKey = (l: LastProcessedNumber, _: Line) => l,
-    selectObjectForState = (l: LastProcessedNumber, _: Keys) => selectObjectForInstant(l)
+    S3Configuration.Timeouts(
+      minimumIntervalForBucketFetch = 1.second,
+      maximumIntervalForBucketFetch = 1.minute,
+    ),
+    S3Configuration.StateTransitions(
+      initialState = LastProcessedNumber(0),
+      getNextState = getNextState("myFolder2/myPrefix"),
+      deriveKafkaRecordKey = (l: LastProcessedNumber, _: Line) => l,
+      selectObjectForState = (l: LastProcessedNumber, _: Keys) => selectObjectForInstant(l),
+    )
   )
 
   val program: ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit] = for {

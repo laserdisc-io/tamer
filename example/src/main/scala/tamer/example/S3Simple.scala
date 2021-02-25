@@ -29,7 +29,7 @@ object S3Simple extends zio.App {
   } yield ()
 
   private lazy val credsLayer: ZLayer[Blocking, InvalidCredentials, Has[S3Credentials]] = ZLayer.fromEffect(S3Credentials.fromAll)
-  private lazy val s3Layer: ZLayer[Has[S3Credentials], ConnectionError, S3] = ZLayer.fromServiceManaged(a => Live.connect(Region.AF_SOUTH_1, a, Some(new URI("http://localhost:9000"))))
+  private lazy val s3Layer: ZLayer[Has[S3Credentials], ConnectionError, S3] = ZLayer.fromServiceManaged(creds => zio.s3.live(Region.AF_SOUTH_1, creds, Some(new URI("http://localhost:9000"))).build.map(_.get))
   private lazy val fullS3Layer: ZLayer[Blocking, S3Exception, S3] = credsLayer >>> s3Layer
   private lazy val fullLayer: ZLayer[Blocking, RuntimeException, S3 with Kafka] = fullS3Layer ++ Kafka.configuredForLive
 

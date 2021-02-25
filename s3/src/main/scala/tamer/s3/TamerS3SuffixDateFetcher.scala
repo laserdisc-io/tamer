@@ -28,7 +28,7 @@ class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
      context: TamerS3SuffixDateFetcher.Context[K, V],
    ): ZIO[Blocking with Clock with zio.s3.S3 with Kafka, TamerError, Unit] = {
     val setup =
-      Setup.mkTimeBased[K, V](
+      S3Configuration.mkTimeBased[K, V](
         bucketName,
         prefix,
         afterwards,

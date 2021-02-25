@@ -22,7 +22,7 @@ trait TamerS3 {
     V <: Product : Encoder : Decoder : SchemaFor,
     S <: Product : Encoder : Decoder : SchemaFor
   ](
-     setup: Setup[K, V, S]
+     setup: S3Configuration[K, V, S]
    ): ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit]
 }
 
@@ -37,16 +37,16 @@ object TamerS3 {
       V <: Product : Encoder : Decoder : SchemaFor,
       S <: Product : Encoder : Decoder : SchemaFor
     ](
-       setup: Setup[K, V, S]
+       setup: S3Configuration[K, V, S]
      ): ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit] =
       for {
         keysR <- createRefToListOfKeys
-        cappedExponentialBackoff: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(setup.minimumIntervalForBucketFetch) || Schedule.spaced(
-          setup.maximumIntervalForBucketFetch
+        cappedExponentialBackoff: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(setup.timeouts.minimumIntervalForBucketFetch) || Schedule.spaced(
+          setup.timeouts.maximumIntervalForBucketFetch
         )
 
         keysChangedToken <- Queue.dropping[Unit](requestedCapacity = 1)
-        updateListOfKeysM = updateListOfKeys(keysR, setup.bucketName, setup.prefix, setup.minimumIntervalForBucketFetch, keysChangedToken)
+        updateListOfKeysM = updateListOfKeys(keysR, setup.bucketName, setup.prefix, setup.timeouts.minimumIntervalForBucketFetch, keysChangedToken)
         updateKeysFiber <- updateListOfKeysM
           .scheduleFrom(KeysChanged(true))(
             Schedule.once andThen cappedExponentialBackoff.untilInput(_ == KeysChanged(true))
@@ -105,7 +105,7 @@ object TamerS3 {
       V <: Product : Encoder : Decoder : SchemaFor,
       S <: Product : Encoder : Decoder : SchemaFor
     ](
-       setup: Setup[K, V, S],
+       setup: S3Configuration[K, V, S],
        keysR: KeysR,
        keysChangedToken: Queue[Unit]
      )(
@@ -114,16 +114,16 @@ object TamerS3 {
      ): ZIO[zio.s3.S3, TamerError, S] =
       (for {
         log <- logTask
-        nextState <- setup.getNextState(keysR, currentState, keysChangedToken)
+        nextState <- setup.transitions.getNextState(keysR, currentState, keysChangedToken)
         _ <- log.debug(s"Next state computed to be $nextState")
         keys <- keysR.get
-        optKey = setup.selectObjectForState(nextState, keys)
+        optKey = setup.transitions.selectObjectForState(nextState, keys)
         _ <- log.debug(s"Will ask for key $optKey") *> optKey
           .map(key =>
             zio.s3
               .getObject(setup.bucketName, key)
               .transduce(setup.transducer)
-              .foreach(value => q.offer(setup.deriveKafkaRecordKey(nextState, value) -> value))
+              .foreach(value => q.offer(setup.transitions.deriveKafkaRecordKey(nextState, value) -> value))
           )
           .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
       } yield nextState).mapError(e => TamerError("Error while doing iterationTimeBased", e))

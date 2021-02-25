@@ -55,9 +55,9 @@ object Kafka {
         val stateTopicSub = Subscription.topics(cfg.state.topic)
         val stateKeySerde = Serde[StateKey](isKey = true)
         val stateConsumer = Consumer.make(cSettings)
-        val stateProducer = Producer.make(pSettings, stateKeySerde.serializer, setup.stateSerde)
-        val stateKey      = StateKey(setup.stateKey.toHexString, cfg.state.groupId)
-        val producer      = Producer.make(pSettings, setup.keySerializer, setup.valueSerializer)
+        val stateProducer = Producer.make(pSettings, stateKeySerde.serializer, setup.serde.stateSerde)
+        val stateKey      = StateKey(setup.tamerStateKafkaRecordKey.toHexString, cfg.state.groupId)
+        val producer      = Producer.make(pSettings, setup.serde.keySerializer, setup.serde.valueSerializer)
         val queue         = Managed.make(Queue.bounded[(K, V)](cfg.bufferSize))(_.shutdown)
 
         def printSetup(logWriter: LogWriter[Task]) = logWriter.info(s"initializing kafka loop with setup: \n${setup.show}")
@@ -98,7 +98,7 @@ object Kafka {
                   }
               }
               .drain ++
-              sc.plainStream(stateKeySerde.deserializer, setup.stateSerde)
+              sc.plainStream(stateKeySerde.deserializer, setup.serde.stateSerde)
                 .provideSomeLayer[Blocking with Clock](layer)
                 .mapM {
                   case CommittableRecord(record, offset) if record.key == stateKey =>

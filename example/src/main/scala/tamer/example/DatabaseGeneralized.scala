@@ -5,7 +5,7 @@ import doobie.syntax.string._
 import tamer.{HashableState, TamerError, db}
 import tamer.config.Config
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
-import tamer.db.{ConfigDb, DbTransactor, InstantOps, QueryResult, Setup, TamerDBConfig}
+import tamer.db.{ConfigDb, DbTransactor, InstantOps, QueryResult, DoobieConfiguration, TamerDBConfig}
 import tamer.kafka.Kafka
 import zio._
 import zio.blocking.Blocking
@@ -31,7 +31,7 @@ object DatabaseGeneralized extends zio.App {
   lazy val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
     boot <- UIO(Instant.now())
     earliest = boot.minus(60, DAYS)
-    setup = Setup((s: MyState) =>
+    setup = DoobieConfiguration((s: MyState) =>
       sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${s.from} AND modified_at <= ${s.to}""".query[Value]
     )(
       defaultState = MyState(earliest, earliest.plus(5, MINUTES)),

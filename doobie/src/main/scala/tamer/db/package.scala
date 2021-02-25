@@ -42,7 +42,7 @@ package object db {
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.db")
 
   private final def iteration[K <: Product, V <: Product, S <: Product with HashableState](
-      setup: Setup[K, V, S]
+      setup: DoobieConfiguration[K, V, S]
   )(state: S, q: Queue[(K, V)]): ZIO[TamerDBConfig, TamerError, S] =
     (for {
       log   <- logTask
@@ -75,7 +75,7 @@ package object db {
   final def fetchWithTimeSegment[K <: Product: Encoder: Decoder: SchemaFor, V <: Product with Timestamped: Ordering: Encoder: Decoder: SchemaFor](
       queryBuilder: TimeSegment => Query0[V]
   )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): ZIO[ZEnv, TamerError, Unit] = {
-    val setup = Setup.fromTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)
+    val setup = DoobieConfiguration.fromTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)
     fetch(setup)
   }
 
@@ -84,7 +84,7 @@ package object db {
       V <: Product: Encoder: Decoder: SchemaFor,
       S <: Product with HashableState: Encoder: Decoder: SchemaFor
   ](
-      setup: Setup[K, V, S]
+      setup: DoobieConfiguration[K, V, S]
   ): ZIO[ZEnv, TamerError, Unit] =
     tamer.kafka.runLoop(setup)(iteration(setup)).provideCustomLayer(defaultLayer)
 
