@@ -1,7 +1,7 @@
 package tamer
 package s3
 
-import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
+import com.sksamuel.avro4s.{Codec, SchemaFor}
 import eu.timepit.refined.types.numeric.PosInt
 import zio.stream.ZTransducer
 import zio.{Queue, UIO, ZIO}
@@ -10,39 +10,51 @@ import java.time.format.DateTimeFormatter
 import java.time.{Duration, Instant}
 import scala.util.hashing.MurmurHash3.stringHash
 
-final case class Setup[
-    R,
-    K <: Product: Encoder: Decoder: SchemaFor,
-    V <: Product: Encoder: Decoder: SchemaFor,
-    S <: Product: Decoder: Encoder: SchemaFor
+final case class S3Configuration[
+    K <: Product: Codec: SchemaFor,
+    V <: Product: Codec: SchemaFor,
+    S <: Product: Codec: SchemaFor
 ](
     bucketName: String,
     prefix: String,
-    override val defaultState: S,
-    override val stateKey: Int,
-    transducer: ZTransducer[R, TamerError, Byte, V],
+    tamerStateKafkaRecordKey: Int,
+    transducer: ZTransducer[Any, TamerError, Byte, V],
     parallelism: PosInt,
-    minimumIntervalForBucketFetch: Duration,
-    maximumIntervalForBucketFetch: Duration,
-    getNextState: (KeysR, S, Queue[Unit]) => UIO[S],
-    deriveKafkaRecordKey: (S, V) => K,
-    selectObjectForState: (S, Keys) => Option[String]
-) extends _root_.tamer.Setup[K, V, S](
-      Serde[K](isKey = true).serializer,
-      Serde[V]().serializer,
-      Serde[S]().serde,
-      defaultState = defaultState,
-      stateKey = stateKey
-    )
-object Setup {
+    pollingTimings: S3Configuration.S3PollingTimings,
+    transitions: S3Configuration.State[K, V, S]
+) {
+  val generic: SourceConfiguration[K, V, S] = SourceConfiguration[K, V, S](
+    SourceConfiguration.SourceSerde[K, V, S](),
+    defaultState = transitions.initialState,
+    tamerStateKafkaRecordKey = tamerStateKafkaRecordKey,
+    S3Configuration.this.toString
+  )
+}
+
+object S3Configuration {
+
+  case class S3PollingTimings(
+      minimumIntervalForBucketFetch: Duration,
+      maximumIntervalForBucketFetch: Duration
+  )
+
+  case class State[K, V, S](
+      initialState: S,
+      getNextState: (KeysR, S, Queue[Unit]) => UIO[S],
+      deriveKafkaRecordKey: (S, V) => K,
+      selectObjectForState: (S, Keys) => Option[String]
+  )
+
   private[s3] final def suffixWithoutFileExtension(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): String = {
     val dotCountInDate = dateTimeFormatter.format(Instant.EPOCH).count(_ == '.')
     val keyWithoutExtension =
       if (key.count(_ == '.') > dotCountInDate) key.split('.').splitAt(dotCountInDate + 1)._1.mkString(".") else key
     keyWithoutExtension.stripPrefix(prefix)
   }
+
   private[s3] final def parseInstantFromKey(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): Instant =
     Instant.from(dateTimeFormatter.parse(suffixWithoutFileExtension(key, prefix, dateTimeFormatter)))
+
   private final def getNextInstant(
       keysR: KeysR,
       afterwards: LastProcessedInstant,
@@ -56,6 +68,7 @@ object Setup {
 
     sortedFileDates.headOption
   }
+
   private[s3] final def getNextState(prefix: String, dateTimeFormatter: DateTimeFormatter)(
       keysR: KeysR,
       afterwards: LastProcessedInstant,
@@ -75,27 +88,24 @@ object Setup {
   )(lastProcessedInstant: LastProcessedInstant, keys: Keys): Option[String] =
     keys.find(_.contains(zonedDateTimeFormatter.value.format(lastProcessedInstant.instant)))
 
-  final def mkTimeBased[R, K <: Product: Encoder: Decoder: SchemaFor, V <: Product: Encoder: Decoder: SchemaFor](
+  final def mkTimeBased[K <: Product: Codec: SchemaFor, V <: Product: Codec: SchemaFor](
       bucketName: String,
       filePathPrefix: String,
       afterwards: LastProcessedInstant,
-      transducer: ZTransducer[R, TamerError, Byte, V],
-      parallelism: PosInt,
-      zonedDateTimeFormatter: ZonedDateTimeFormatter,
-      minimumIntervalForBucketFetch: Duration,
-      maximumIntervalForBucketFetch: Duration,
-      deriveKafkaRecordKey: (LastProcessedInstant, V) => K
-  ): Setup[R, K, V, LastProcessedInstant] = Setup[R, K, V, LastProcessedInstant](
-    bucketName,
-    filePathPrefix,
-    afterwards,
-    stringHash(bucketName) + stringHash(filePathPrefix) + afterwards.instant.getEpochSecond.intValue,
-    transducer,
-    parallelism,
-    minimumIntervalForBucketFetch,
-    maximumIntervalForBucketFetch,
-    getNextState(filePathPrefix, zonedDateTimeFormatter.value),
-    deriveKafkaRecordKey,
-    selectObjectForInstant(zonedDateTimeFormatter)
-  )
+      context: TamerS3SuffixDateFetcher.Context[K, V]
+  ): S3Configuration[K, V, LastProcessedInstant] =
+    S3Configuration[K, V, LastProcessedInstant](
+      bucketName,
+      filePathPrefix,
+      stringHash(bucketName) + stringHash(filePathPrefix) + afterwards.instant.getEpochSecond.intValue,
+      context.transducer,
+      context.parallelism,
+      context.pollingTimings,
+      State(
+        afterwards,
+        getNextState(filePathPrefix, context.dateTimeFormatter.value),
+        context.deriveKafkaKey,
+        selectObjectForInstant(context.dateTimeFormatter)
+      )
+    )
 }

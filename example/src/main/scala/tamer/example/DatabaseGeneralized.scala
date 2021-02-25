@@ -1,12 +1,11 @@
 package tamer.example
 
-import doobie.implicits.legacy.instant._
 import doobie.syntax.string._
-import tamer.{HashableState, TamerError, db}
 import tamer.config.Config
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
-import tamer.db.{ConfigDb, DbTransactor, InstantOps, QueryResult, Setup, TamerDBConfig}
+import tamer.db.{ConfigDb, DbTransactor, DoobieConfiguration, InstantOps, QueryResult, TamerDBConfig}
 import tamer.kafka.Kafka
+import tamer.{AvroCodec, HashableState, TamerError, db}
 import zio._
 import zio.blocking.Blocking
 
@@ -14,13 +13,15 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit._
 import scala.util.hashing.byteswap64
 
-final case class MyState(from: Instant, to: Instant) extends HashableState {
+final case class MyState(from: Instant, to: Instant)
 
-  /** It is required for this hash to be consistent even across executions
-    * for the same semantic state. This is in contrast with the built-in
-    * `hashCode` method.
-    */
-  override val stateHash: Int = (byteswap64(from.getEpochSecond) + byteswap64(to.getEpochSecond)).intValue
+object MyState {
+  implicit val codec = AvroCodec.codec[MyState]
+
+  implicit object MyStateHashable extends HashableState[MyState] {
+    override def stateHash(s: MyState): Int = (byteswap64(s.from.getEpochSecond) + byteswap64(s.to.getEpochSecond)).intValue
+  }
+
 }
 
 object DatabaseGeneralized extends zio.App {
@@ -31,9 +32,7 @@ object DatabaseGeneralized extends zio.App {
   lazy val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
     boot <- UIO(Instant.now())
     earliest = boot.minus(60, DAYS)
-    setup = Setup((s: MyState) =>
-      sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${s.from} AND modified_at <= ${s.to}""".query[Value]
-    )(
+    setup = DoobieConfiguration(query)(
       defaultState = MyState(earliest, earliest.plus(5, MINUTES)),
       keyExtract = (value: Value) => Key(value.id),
       stateFoldM = (s: MyState) => {
@@ -45,6 +44,11 @@ object DatabaseGeneralized extends zio.App {
     )
     _ <- tamer.db.fetch(setup)
   } yield ()).mapError(e => TamerError("Could not run tamer example", e))
+
+  private def query(s: MyState): doobie.Query0[Value] = {
+    import doobie.implicits.legacy.instant._
+    sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${s.from} AND modified_at <= ${s.to}""".query[Value]
+  }
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.provideCustomLayer(myLayer).exitCode
 }

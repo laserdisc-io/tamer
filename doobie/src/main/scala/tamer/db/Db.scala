@@ -20,6 +20,12 @@ object Timestamped {
 case class ChunkWithMetadata[V](chunk: Chunk[V], pulledAt: Instant = Instant.now())
 case class ValueWithMetadata[V](value: V, pulledAt: Instant = Instant.now())
 
-case class TimeSegment(from: Instant, to: Instant) extends HashableState {
-  override lazy val stateHash: Int = (byteswap64(from.getEpochSecond) + byteswap64(to.getEpochSecond)).intValue
+case class TimeSegment(from: Instant, to: Instant)
+
+object TimeSegment {
+  implicit val codec = AvroCodec.codec[TimeSegment]
+
+  implicit object TimeSegmentHashable extends HashableState[TimeSegment] {
+    override def stateHash(s: TimeSegment): Int = (byteswap64(s.from.getEpochSecond) + byteswap64(s.to.getEpochSecond)).intValue
+  }
 }
