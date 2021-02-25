@@ -6,10 +6,11 @@ import eu.timepit.refined.boolean.{And, Or}
 import eu.timepit.refined.collection.{Forall, NonEmpty}
 import eu.timepit.refined.string.{IPv4, Uri}
 import software.amazon.awssdk.regions.Region
-import tamer.TamerError
+import tamer.{AvroCodec, TamerError}
 import tamer.config.Config
 import tamer.kafka.Kafka
-import tamer.s3.{Keys, KeysR, Setup}
+import tamer.s3.TamerS3.TamerS3Impl
+import tamer.s3.{Keys, KeysR, S3Configuration}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
@@ -22,7 +23,15 @@ import scala.concurrent.duration.{FiniteDuration => FD}
 import scala.util.hashing.MurmurHash3.stringHash
 
 final case class Line(str: String)
+object Line {
+  implicit val codec = AvroCodec.codec[Line]
+}
+
 final case class LastProcessedNumber(number: Long)
+
+object LastProcessedNumber {
+  implicit val codec = AvroCodec.codec[LastProcessedNumber]
+}
 
 object S3Generalized extends zio.App {
   lazy val mkS3Layer: ZIO[Blocking, InvalidCredentials, Layer[RuntimeException, S3 with Kafka]] =
@@ -37,7 +46,7 @@ object S3Generalized extends zio.App {
     }
 
   private val myTransducer: Transducer[Nothing, Byte, Line] =
-    ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line)
+    ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line.apply)
 
   private final def getNextNumber(
       keysR: KeysR,
@@ -50,6 +59,7 @@ object S3Generalized extends zio.App {
 
     if (sortedFileNumbers.isEmpty) None else Some(sortedFileNumbers.min)
   }
+
   private final def getNextState(prefix: String)(
       keysR: KeysR,
       afterwards: LastProcessedNumber,
@@ -67,22 +77,26 @@ object S3Generalized extends zio.App {
   private final def selectObjectForInstant(lastProcessedNumber: LastProcessedNumber): Option[String] =
     Some(s"myFolder2/myPrefix${lastProcessedNumber.number}")
 
-  private val setup: Setup[Any, LastProcessedNumber, Line, LastProcessedNumber] = Setup(
+  private val setup: S3Configuration[LastProcessedNumber, Line, LastProcessedNumber] = S3Configuration(
     bucketName = "myBucket",
     prefix = "myFolder2/myPrefix",
-    defaultState = LastProcessedNumber(0),
-    stateKey = stringHash("myBucket") + stringHash("myFolder2/myPrefix") + 0,
+    tamerStateKafkaRecordKey = stringHash("myBucket") + stringHash("myFolder2/myPrefix") + 0,
     transducer = myTransducer,
     parallelism = 1,
-    minimumIntervalForBucketFetch = 1.second,
-    maximumIntervalForBucketFetch = 1.minute,
-    getNextState = getNextState("myFolder2/myPrefix"),
-    deriveKafkaRecordKey = (l: LastProcessedNumber, _: Line) => l,
-    selectObjectForState = (l: LastProcessedNumber, _: Keys) => selectObjectForInstant(l)
+    S3Configuration.S3PollingTimings(
+      minimumIntervalForBucketFetch = 1.second,
+      maximumIntervalForBucketFetch = 1.minute
+    ),
+    S3Configuration.State(
+      initialState = LastProcessedNumber(0),
+      getNextState = getNextState("myFolder2/myPrefix"),
+      deriveKafkaRecordKey = (l: LastProcessedNumber, _: Line) => l,
+      selectObjectForState = (l: LastProcessedNumber, _: Keys) => selectObjectForInstant(l)
+    )
   )
 
   val program: ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit] = for {
-    _ <- tamer.s3.fetch(setup)
+    _ <- new TamerS3Impl().fetch(setup)
   } yield ()
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = mkS3Layer.flatMap(layer => program.provideCustomLayer(layer)).exitCode

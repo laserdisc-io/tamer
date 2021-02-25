@@ -1,7 +1,7 @@
 package tamer
 
 import cats.effect.Blocker
-import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
+import com.sksamuel.avro4s.Codec
 import doobie.Query0
 import doobie.hikari.HikariTransactor
 import doobie.implicits.{toDoobieStreamOps, _}
@@ -41,9 +41,9 @@ package object db {
 
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.db")
 
-  private final def iteration[K <: Product, V <: Product, S <: Product with HashableState](
-      setup: Setup[K, V, S]
-  )(state: S, q: Queue[Chunk[(K, V)]]): ZIO[TamerDBConfig, TamerError, S] =
+  private final def iteration[K <: Product, V <: Product, S <: Product: HashableState](
+      setup: DoobieConfiguration[K, V, S]
+  )(state: S, q: Queue[(K, V)]): ZIO[TamerDBConfig, TamerError, S] =
     (for {
       log   <- logTask
       cfg   <- ConfigDb.queryConfig
@@ -72,21 +72,21 @@ package object db {
       )
     } yield newState).mapError(e => TamerError(e.getLocalizedMessage, e))
 
-  final def fetchWithTimeSegment[K <: Product: Encoder: Decoder: SchemaFor, V <: Product with Timestamped: Ordering: Encoder: Decoder: SchemaFor](
+  final def fetchWithTimeSegment[K <: Product: Codec, V <: Product with Timestamped: Ordering: Codec](
       queryBuilder: TimeSegment => Query0[V]
   )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): ZIO[ZEnv, TamerError, Unit] = {
-    val setup = Setup.fromTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)
+    val setup = DoobieConfiguration.fromTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)
     fetch(setup)
   }
 
   final def fetch[
-      K <: Product: Encoder: Decoder: SchemaFor,
-      V <: Product: Encoder: Decoder: SchemaFor,
-      S <: Product with HashableState: Encoder: Decoder: SchemaFor
+      K <: Product: Codec,
+      V <: Product: Codec,
+      S <: Product: Codec: HashableState
   ](
-      setup: Setup[K, V, S]
+      setup: DoobieConfiguration[K, V, S]
   ): ZIO[ZEnv, TamerError, Unit] =
-    tamer.kafka.runLoop(setup)(iteration(setup)).provideCustomLayer(defaultLayer)
+    tamer.kafka.runLoop(setup.generic)(iteration(setup)).provideCustomLayer(defaultLayer)
 
   final val hikariLayer: ZLayer[Blocking with DbConfig, TamerError, DbTransactor] = ZLayer.fromManaged {
     for {

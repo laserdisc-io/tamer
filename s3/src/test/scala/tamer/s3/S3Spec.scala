@@ -1,6 +1,6 @@
 package tamer.s3
 
-import tamer.s3.Setup.getNextState
+import tamer.s3.S3Configuration.getNextState
 import zio.{Queue, Ref}
 import zio.test.Assertion._
 import zio.test.{DefaultRunnableSpec, ZSpec, _}
