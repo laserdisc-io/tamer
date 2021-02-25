@@ -22,7 +22,7 @@ final case class StateKey(stateKey: String, groupId: String)
 
 object Kafka {
   trait Service {
-    def runLoop[K, V, State, R](setup: Setup[K, V, State])(
+    def runLoop[K, V, State, R](setup: SourceConfiguration[K, V, State])(
         f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
     ): ZIO[R with Blocking with Clock, TamerError, Unit]
   }
@@ -40,7 +40,7 @@ object Kafka {
     new Service {
       private[this] val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.kafka")
 
-      override final def runLoop[K, V, State, R](setup: Setup[K, V, State])(
+      override final def runLoop[K, V, State, R](setup: SourceConfiguration[K, V, State])(
           f: (State, Queue[(K, V)]) => ZIO[R, TamerError, State]
       ): ZIO[R with Blocking with Clock, TamerError, Unit] = {
         val registryTask            = Task(new CachedSchemaRegistryClient(cfg.schemaRegistryUrl, 4))
@@ -60,7 +60,7 @@ object Kafka {
         val producer      = Producer.make(pSettings, setup.serde.keySerializer, setup.serde.valueSerializer)
         val queue         = Managed.make(Queue.bounded[(K, V)](cfg.bufferSize))(_.shutdown)
 
-        def printSetup(logWriter: LogWriter[Task]) = logWriter.info(s"initializing kafka loop with setup: \n${setup.show}")
+        def printSetup(logWriter: LogWriter[Task]) = logWriter.info(s"initializing kafka loop with setup: \n${setup.repr}")
 
         def mkRegistry(src: SchemaRegistryClient, topic: String) = (ZLayer.succeed(src) >>> Registry.live) ++ (ZLayer.succeed(topic) >>> Topic.live)
 

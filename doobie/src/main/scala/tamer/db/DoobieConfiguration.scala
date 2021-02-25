@@ -26,22 +26,27 @@ final case class DoobieConfiguration[
   S <: Product : Encoder : Decoder : SchemaFor : HashableState,
 ](
    queryBuilder: QueryBuilder[V, S],
-   override val defaultState: S,
+   defaultState: S,
    keyExtract: V => K,
    stateFoldM: S => QueryResult[V] => UIO[S]
- ) extends _root_.tamer.Setup[K, V, S](
-  _root_.tamer.Setup.SourceSerde[K, V, S](),
-  defaultState,
-  queryBuilder.queryId + HashableState[S].stateHash(defaultState)
-) {
-  override def show: String =
+ ) {
+  private val keyId = queryBuilder.queryId + HashableState[S].stateHash(defaultState)
+  private val repr: String =
     s"""
        |query:             ${queryBuilder.query(defaultState).sql}
        |query id:          ${queryBuilder.queryId}
        |default state:     $defaultState
        |default state id:  ${HashableState[S].stateHash(defaultState)}
-       |default state key: $tamerStateKafkaRecordKey
+       |default state key: $keyId
        |""".stripMargin.stripLeading()
+
+  val generic: SourceConfiguration[K, V, S] = SourceConfiguration(
+    SourceConfiguration.SourceSerde[K, V, S](),
+    defaultState,
+    keyId,
+    repr
+  )
+
 }
 
 object DoobieConfiguration {

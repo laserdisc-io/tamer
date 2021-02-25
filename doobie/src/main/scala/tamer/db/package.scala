@@ -86,7 +86,7 @@ package object db {
   ](
       setup: DoobieConfiguration[K, V, S]
   ): ZIO[ZEnv, TamerError, Unit] =
-    tamer.kafka.runLoop(setup)(iteration(setup)).provideCustomLayer(defaultLayer)
+    tamer.kafka.runLoop(setup.generic)(iteration(setup)).provideCustomLayer(defaultLayer)
 
   final val hikariLayer: ZLayer[Blocking with DbConfig, TamerError, DbTransactor] = ZLayer.fromManaged {
     for {

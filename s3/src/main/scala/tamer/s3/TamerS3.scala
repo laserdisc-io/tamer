@@ -53,7 +53,7 @@ object TamerS3 {
           )
           .forever
           .fork
-        _ <- tamer.kafka.runLoop(setup)(iteration(setup, keysR, keysChangedToken)).ensuring(updateKeysFiber.interrupt)
+        _ <- tamer.kafka.runLoop(setup.generic)(iteration(setup, keysR, keysChangedToken)).ensuring(updateKeysFiber.interrupt)
       } yield ()
 
 

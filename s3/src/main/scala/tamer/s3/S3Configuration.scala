@@ -18,16 +18,19 @@ final case class S3Configuration[
 ](
    bucketName: String,
    prefix: String,
-   override val tamerStateKafkaRecordKey: Int,
+   tamerStateKafkaRecordKey: Int,
    transducer: ZTransducer[Any, TamerError, Byte, V],
    parallelism: PosInt,
    timeouts: S3Configuration.Timeouts,
-   transitions: S3Configuration.StateTransitions[K, V, S]
- ) extends _root_.tamer.Setup[K, V, S](
-  Setup.SourceSerde[K, V, S](),
-  defaultState = transitions.initialState,
-  tamerStateKafkaRecordKey = tamerStateKafkaRecordKey
-)
+   transitions: S3Configuration.StateTransitions[K, V, S],
+ ) {
+  val generic: SourceConfiguration[K, V, S] = SourceConfiguration[K, V, S](
+    SourceConfiguration.SourceSerde[K, V, S](),
+    defaultState = transitions.initialState,
+    tamerStateKafkaRecordKey = tamerStateKafkaRecordKey,
+    S3Configuration.this.toString,
+  )
+}
 
 object S3Configuration {
 
