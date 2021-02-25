@@ -83,11 +83,11 @@ object S3Generalized extends zio.App {
     tamerStateKafkaRecordKey = stringHash("myBucket") + stringHash("myFolder2/myPrefix") + 0,
     transducer = myTransducer,
     parallelism = 1,
-    S3Configuration.Timeouts(
+    S3Configuration.S3PollingTimings(
       minimumIntervalForBucketFetch = 1.second,
       maximumIntervalForBucketFetch = 1.minute
     ),
-    S3Configuration.StateTransitions(
+    S3Configuration.State(
       initialState = LastProcessedNumber(0),
       getNextState = getNextState("myFolder2/myPrefix"),
       deriveKafkaRecordKey = (l: LastProcessedNumber, _: Line) => l,

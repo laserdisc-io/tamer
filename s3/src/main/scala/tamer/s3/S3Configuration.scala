@@ -20,8 +20,8 @@ final case class S3Configuration[
     tamerStateKafkaRecordKey: Int,
     transducer: ZTransducer[Any, TamerError, Byte, V],
     parallelism: PosInt,
-    timeouts: S3Configuration.Timeouts,
-    transitions: S3Configuration.StateTransitions[K, V, S]
+    pollingTimings: S3Configuration.S3PollingTimings,
+    transitions: S3Configuration.State[K, V, S]
 ) {
   val generic: SourceConfiguration[K, V, S] = SourceConfiguration[K, V, S](
     SourceConfiguration.SourceSerde[K, V, S](),
@@ -33,12 +33,12 @@ final case class S3Configuration[
 
 object S3Configuration {
 
-  case class Timeouts(
+  case class S3PollingTimings(
       minimumIntervalForBucketFetch: Duration,
       maximumIntervalForBucketFetch: Duration
   )
 
-  case class StateTransitions[K, V, S](
+  case class State[K, V, S](
       initialState: S,
       getNextState: (KeysR, S, Queue[Unit]) => UIO[S],
       deriveKafkaRecordKey: (S, V) => K,
@@ -100,11 +100,8 @@ object S3Configuration {
       stringHash(bucketName) + stringHash(filePathPrefix) + afterwards.instant.getEpochSecond.intValue,
       context.transducer,
       context.parallelism,
-      Timeouts(
-        context.minimumIntervalForBucketFetch,
-        context.maximumIntervalForBucketFetch
-      ),
-      StateTransitions(
+      context.pollingTimings,
+      State(
         afterwards,
         getNextState(filePathPrefix, context.dateTimeFormatter.value),
         context.deriveKafkaKey,

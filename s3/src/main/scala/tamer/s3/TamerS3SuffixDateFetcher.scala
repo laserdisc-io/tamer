@@ -11,8 +11,8 @@ import zio.clock.Clock
 import zio.duration.durationInt
 import zio.stream.{Transducer, ZTransducer}
 
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.{Duration, ZoneId}
 
 class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
 
@@ -46,7 +46,9 @@ object TamerS3SuffixDateFetcher {
       transducer: ZTransducer[Any, TamerError, Byte, V] = defaultTransducer,
       parallelism: PosInt = 1,
       dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
-      minimumIntervalForBucketFetch: Duration = 5.minutes,
-      maximumIntervalForBucketFetch: Duration = 5.minutes
+      pollingTimings: S3Configuration.S3PollingTimings = S3Configuration.S3PollingTimings(
+        minimumIntervalForBucketFetch = 5.minutes,
+        maximumIntervalForBucketFetch = 5.minutes
+      )
   )
 }

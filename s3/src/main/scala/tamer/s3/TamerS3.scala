@@ -41,13 +41,19 @@ object TamerS3 {
       for {
         keysR <- createRefToListOfKeys
         cappedExponentialBackoff: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(
-          setup.timeouts.minimumIntervalForBucketFetch
+          setup.pollingTimings.minimumIntervalForBucketFetch
         ) || Schedule.spaced(
-          setup.timeouts.maximumIntervalForBucketFetch
+          setup.pollingTimings.maximumIntervalForBucketFetch
         )
 
         keysChangedToken <- Queue.dropping[Unit](requestedCapacity = 1)
-        updateListOfKeysM = updateListOfKeys(keysR, setup.bucketName, setup.prefix, setup.timeouts.minimumIntervalForBucketFetch, keysChangedToken)
+        updateListOfKeysM = updateListOfKeys(
+          keysR,
+          setup.bucketName,
+          setup.prefix,
+          setup.pollingTimings.minimumIntervalForBucketFetch,
+          keysChangedToken
+        )
         updateKeysFiber <- updateListOfKeysM
           .scheduleFrom(KeysChanged(true))(
             Schedule.once andThen cappedExponentialBackoff.untilInput(_ == KeysChanged(true))
