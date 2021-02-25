@@ -53,6 +53,7 @@ object Kafka {
           .withOffsetRetrieval(offsetRetrievalStrategy)
         val pSettings     = ProducerSettings(cfg.brokers).withCloseTimeout(cfg.closeTimeout.zio)
         val stateTopicSub = Subscription.topics(cfg.state.topic)
+        import AvroEncodable._
         val stateKeySerde = Serde[StateKey](isKey = true)
         val stateConsumer = Consumer.make(cSettings)
         val stateProducer = Producer.make(pSettings, stateKeySerde.serializer, setup.serde.stateSerde)

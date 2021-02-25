@@ -1,6 +1,7 @@
 package tamer
 package db
 
+import com.sksamuel.avro4s.Codec
 import fs2.Chunk
 
 import java.time.Instant
@@ -22,7 +23,13 @@ case class ValueWithMetadata[V](value: V, pulledAt: Instant = Instant.now())
 
 case class TimeSegment(from: Instant, to: Instant)
 
+object TimeSegmentCodec {
+  val c: Codec[TimeSegment] = AvroEncodable.toCodec
+}
+
 object TimeSegment {
+  implicit val c: Codec[TimeSegment] = TimeSegmentCodec.c
+
   implicit object TimeSegmentHashable extends HashableState[TimeSegment] {
     override def stateHash(s: TimeSegment): Int =  (byteswap64(s.from.getEpochSecond) + byteswap64(s.to.getEpochSecond)).intValue
   }

@@ -1,7 +1,7 @@
 package tamer
 package s3
 
-import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
+import com.sksamuel.avro4s.{Codec, SchemaFor}
 import eu.timepit.refined.types.numeric.PosInt
 import zio.stream.ZTransducer
 import zio.{Queue, UIO, ZIO}
@@ -12,9 +12,9 @@ import scala.util.hashing.MurmurHash3.stringHash
 
 
 final case class S3Configuration[
-  K <: Product : Encoder : Decoder : SchemaFor,
-  V <: Product : Encoder : Decoder : SchemaFor,
-  S <: Product : Decoder : Encoder : SchemaFor
+  K <: Product : Codec : SchemaFor,
+  V <: Product : Codec : SchemaFor,
+  S <: Product : Codec : SchemaFor
 ](
    bucketName: String,
    prefix: String,
@@ -89,26 +89,31 @@ object S3Configuration {
                                           )(lastProcessedInstant: LastProcessedInstant, keys: Keys): Option[String] =
     keys.find(_.contains(zonedDateTimeFormatter.value.format(lastProcessedInstant.instant)))
 
-  final def mkTimeBased[K <: Product : Encoder : Decoder : SchemaFor, V <: Product : Encoder : Decoder : SchemaFor](
+
+
+
+  final def mkTimeBased[K <: Product : Codec : SchemaFor, V <: Product : Codec : SchemaFor](
                                                                                                                      bucketName: String,
                                                                                                                      filePathPrefix: String,
                                                                                                                      afterwards: LastProcessedInstant,
                                                                                                                      context: TamerS3SuffixDateFetcher.Context[K, V]
-                                                                                                                   ): S3Configuration[K, V, LastProcessedInstant] = S3Configuration[K, V, LastProcessedInstant](
-    bucketName,
-    filePathPrefix,
-    stringHash(bucketName) + stringHash(filePathPrefix) + afterwards.instant.getEpochSecond.intValue,
-    context.transducer,
-    context.parallelism,
-    Timeouts(
-      context.minimumIntervalForBucketFetch,
-      context.maximumIntervalForBucketFetch,
-    ),
-    StateTransitions(
-      afterwards,
-      getNextState(filePathPrefix, context.dateTimeFormatter.value),
-      context.deriveKafkaKey,
-      selectObjectForInstant(context.dateTimeFormatter)
-    ),
-  )
+                                                                                                                   ): S3Configuration[K, V, LastProcessedInstant] = {
+    S3Configuration[K, V, LastProcessedInstant](
+      bucketName,
+      filePathPrefix,
+      stringHash(bucketName) + stringHash(filePathPrefix) + afterwards.instant.getEpochSecond.intValue,
+      context.transducer,
+      context.parallelism,
+      Timeouts(
+        context.minimumIntervalForBucketFetch,
+        context.maximumIntervalForBucketFetch,
+      ),
+      StateTransitions(
+        afterwards,
+        getNextState(filePathPrefix, context.dateTimeFormatter.value),
+        context.deriveKafkaKey,
+        selectObjectForInstant(context.dateTimeFormatter)
+      ),
+    )
+  }
 }

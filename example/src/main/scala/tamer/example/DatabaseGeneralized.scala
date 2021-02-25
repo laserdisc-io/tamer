@@ -28,6 +28,7 @@ object DatabaseGeneralized extends zio.App {
   lazy val kafkaLayer: Layer[TamerError, Kafka] = Config.live >>> Kafka.live
   lazy val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig] = ConfigDb.live
   lazy val myLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
+  import tamer.AvroEncodable._
   lazy val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
     boot <- UIO(Instant.now())
     earliest = boot.minus(60, DAYS)

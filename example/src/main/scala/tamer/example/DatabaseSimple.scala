@@ -13,6 +13,7 @@ final case class Key(id: String)
 final case class Value(id: String, name: String, description: Option[String], modifiedAt: Instant) extends Timestamped(modifiedAt)
 
 object DatabaseSimple extends zio.App {
+  import AvroEncodable._
   val program: ZIO[ZEnv, TamerError, Unit] = (for {
     boot <- UIO(Instant.now())
     _ <- tamer.db.fetchWithTimeSegment(ts =>

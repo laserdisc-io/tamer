@@ -1,6 +1,6 @@
 package tamer.s3
 
-import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
+import com.sksamuel.avro4s.{Codec, SchemaFor}
 import eu.timepit.refined.auto._
 import eu.timepit.refined.types.numeric.PosInt
 import tamer.TamerError
@@ -19,8 +19,8 @@ class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
 
 
   def fetchAccordingToSuffixDate[
-    K <: Product : Encoder : Decoder : SchemaFor,
-    V <: Product : Encoder : Decoder : SchemaFor
+    K <: Product : Codec : SchemaFor,
+    V <: Product : Codec : SchemaFor
   ](
      bucketName: String,
      prefix: String,

@@ -70,6 +70,7 @@ object S3Generalized extends zio.App {
   private final def selectObjectForInstant(lastProcessedNumber: LastProcessedNumber): Option[String] =
     Some(s"myFolder2/myPrefix${lastProcessedNumber.number}")
 
+  import tamer.AvroEncodable._
   private val setup: S3Configuration[LastProcessedNumber, Line, LastProcessedNumber] = S3Configuration(
     bucketName = "myBucket",
     prefix = "myFolder2/myPrefix",

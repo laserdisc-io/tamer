@@ -1,6 +1,6 @@
 package tamer
 
-import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
+import com.sksamuel.avro4s.Codec
 import tamer.registry.{Registry, Topic}
 import zio.kafka.serde.Serializer
 
@@ -34,14 +34,16 @@ object SourceConfiguration {
 
   object SourceSerde {
     def apply[
-      K <: Product : Encoder : Decoder : SchemaFor,
-      V <: Product : Encoder : Decoder : SchemaFor,
-      S <: Product : Decoder : Encoder : SchemaFor
-    ](): SourceSerde[K, V, S] = SourceSerde(
-      Serde[K](isKey = true).serializer,
-      Serde[V]().serializer,
-      Serde[S]().serde,
-    )
+      K <: Product : Codec,
+      V <: Product : Codec,
+      S <: Product : Codec,
+    ](): SourceSerde[K, V, S] = {
+      SourceSerde(
+        Serde[K](isKey = true).serializer,
+        Serde[V]().serializer,
+        Serde[S]().serde,
+      )
+    }
   }
 
 }

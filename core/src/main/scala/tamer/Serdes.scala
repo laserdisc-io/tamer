@@ -9,6 +9,29 @@ import tamer.registry.{Registry, Topic}
 import zio.{RIO, Task}
 import zio.kafka.serde.{Deserializer, Serializer}
 
+//trait AvroEncodable[A <: Product] {
+//  def codec: Codec[A]
+//}
+
+object AvroEncodable {
+  implicit def toCodec[V](implicit e: Encoder[V], d: Decoder[V], s: SchemaFor[V]): Codec[V] = new Codec[V] {
+    override def decode(value: Any): V = d.decode(value)
+
+    override def encode(value: V): AnyRef = e.encode(value)
+
+    override def schemaFor: SchemaFor[V] = s
+  }
+
+//  implicit def toCodec[V](implicit e: Encoder[V], d: Decoder[V], s: SchemaFor[V]): Codec[V] = new Codec[V] {
+//    override def decode(value: Any): V = d.decode(value)
+//
+//    override def encode(value: V): AnyRef = e.encode(value)
+//
+//    override def schemaFor: SchemaFor[V] = s
+//  }
+
+}
+
 sealed trait Serde[A] extends Any {
   def isKey: Boolean
   def schema: Schema
@@ -21,8 +44,11 @@ object Serde {
   private[this] final val Magic: Byte = 0x0
   private[this] final val intByteSize = 4
 
-  final def apply[A <: Product: Decoder: Encoder: SchemaFor](isKey: Boolean = false) =
-    new RecordSerde[A](isKey, SchemaFor[A].schema)
+
+
+  final def apply[A <: Product: Codec](isKey: Boolean = false) = {
+    new RecordSerde[A](isKey, implicitly[Codec[A]].codec.schema)
+  }
 
   final class RecordSerde[A: Decoder: Encoder](override final val isKey: Boolean, override final val schema: Schema) extends Serde[A] {
     private[this] def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"

@@ -1,6 +1,6 @@
 package tamer.s3
 
-import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
+import com.sksamuel.avro4s.Codec
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.TamerError
@@ -18,9 +18,9 @@ import scala.math.Ordering.Implicits.infixOrderingOps
 
 trait TamerS3 {
   def fetch[
-    K <: Product : Encoder : Decoder : SchemaFor,
-    V <: Product : Encoder : Decoder : SchemaFor,
-    S <: Product : Encoder : Decoder : SchemaFor
+    K <: Product : Codec,
+    V <: Product : Codec,
+    S <: Product : Codec,
   ](
      setup: S3Configuration[K, V, S]
    ): ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit]
@@ -33,9 +33,9 @@ object TamerS3 {
     private final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.s3")
 
     final def fetch[
-      K <: Product : Encoder : Decoder : SchemaFor,
-      V <: Product : Encoder : Decoder : SchemaFor,
-      S <: Product : Encoder : Decoder : SchemaFor
+      K <: Product : Codec,
+      V <: Product : Codec,
+      S <: Product : Codec,
     ](
        setup: S3Configuration[K, V, S]
      ): ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit] =
@@ -101,9 +101,9 @@ object TamerS3 {
     }
 
     private final def iteration[
-      K <: Product : Encoder : Decoder : SchemaFor,
-      V <: Product : Encoder : Decoder : SchemaFor,
-      S <: Product : Encoder : Decoder : SchemaFor
+      K <: Product : Codec,
+      V <: Product : Codec,
+      S <: Product : Codec,
     ](
        setup: S3Configuration[K, V, S],
        keysR: KeysR,

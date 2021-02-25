@@ -1,7 +1,7 @@
 package tamer
 package db
 
-import com.sksamuel.avro4s.{Decoder, Encoder, SchemaFor}
+import com.sksamuel.avro4s.Codec
 import doobie.Query0
 import zio.UIO
 
@@ -21,9 +21,9 @@ final case class ResultMetadata(queryExecutionTime: Long)
 final case class QueryResult[V](metadata: ResultMetadata, results: List[V])
 
 final case class DoobieConfiguration[
-  K <: Product : Encoder : Decoder : SchemaFor,
-  V <: Product : Encoder : Decoder : SchemaFor,
-  S <: Product : Encoder : Decoder : SchemaFor : HashableState,
+  K <: Product : Codec,
+  V <: Product : Codec,
+  S <: Product : Codec : HashableState,
 ](
    queryBuilder: QueryBuilder[V, S],
    defaultState: S,
@@ -51,9 +51,9 @@ final case class DoobieConfiguration[
 
 object DoobieConfiguration {
   final def apply[
-    K <: Product : Encoder : Decoder : SchemaFor,
-    V <: Product : Encoder : Decoder : SchemaFor,
-    S <: Product : Encoder : Decoder : SchemaFor : HashableState
+    K <: Product : Codec,
+    V <: Product : Codec,
+    S <: Product : Codec : HashableState
   ](
      queryBuilder: S => Query0[V]
    )(defaultState: S, keyExtract: V => K, stateFoldM: S => QueryResult[V] => UIO[S]): DoobieConfiguration[K, V, S] = {
@@ -65,9 +65,9 @@ object DoobieConfiguration {
     new DoobieConfiguration[K, V, S](queryBuilder = qBuilder, defaultState = defaultState, keyExtract = keyExtract, stateFoldM = stateFoldM)
   }
 
-  final def fromTimeSegment[K <: Product : Encoder : Decoder : SchemaFor, V <: Product with Timestamped : Ordering : Encoder : Decoder : SchemaFor](
-                                                                                                                                                     queryBuilder: TimeSegment => Query0[V]
-                                                                                                                                                   )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): DoobieConfiguration[K, V, TimeSegment] = {
+  final def fromTimeSegment[K <: Product : Codec, V <: Product with Timestamped : Ordering : Codec](
+                                                                                                     queryBuilder: TimeSegment => Query0[V]
+                                                                                                   )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): DoobieConfiguration[K, V, TimeSegment] = {
 
     val timeSegment = TimeSegment(earliest, earliest.plus(tumblingStep))
 
