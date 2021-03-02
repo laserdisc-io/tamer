@@ -10,6 +10,7 @@ lazy val V = new {
   val ciris         = "1.2.1"
   val confluent     = "6.0.2"
   val doobie        = "0.10.0"
+  val embeddedKafka = "2.7.0"
   val kafka         = "2.7.0"
   val logback       = "1.2.3"
   val `log-effect`  = "0.14.1"
@@ -75,9 +76,10 @@ lazy val D = new {
   )
 
   val tests = Seq(
-    "org.scalacheck" %% "scalacheck" % V.scalacheck % Test,
-    "org.scalactic"  %% "scalactic"  % V.scalatest  % Test,
-    "org.scalatest"  %% "scalatest"  % V.scalatest  % Test
+    "org.scalacheck"          %% "scalacheck"     % V.scalacheck    % Test,
+    "org.scalactic"           %% "scalactic"      % V.scalatest     % Test,
+    "org.scalatest"           %% "scalatest"      % V.scalatest     % Test,
+    "io.github.embeddedkafka" %% "embedded-kafka" % V.embeddedKafka % Test
   )
 
   val zio = Seq(
@@ -156,7 +158,8 @@ lazy val tamer = project
     libraryDependencies ++= D.avro,
     addCompilerPlugin("com.github.ghik" %% "silencer-plugin" % V.silencer cross CrossVersion.full),
     Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
-    Test / console / scalacOptions := (Compile / console / scalacOptions).value
+    Test / console / scalacOptions := (Compile / console / scalacOptions).value,
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
   )
 
 lazy val doobie = project

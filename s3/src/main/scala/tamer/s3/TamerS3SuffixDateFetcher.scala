@@ -4,7 +4,7 @@ import com.sksamuel.avro4s.{Codec, SchemaFor}
 import eu.timepit.refined.auto._
 import eu.timepit.refined.types.numeric.PosInt
 import tamer.TamerError
-import tamer.kafka.Kafka
+import tamer.config.KafkaConfig
 import zio.ZIO
 import zio.blocking.Blocking
 import zio.clock.Clock
@@ -24,7 +24,7 @@ class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
       prefix: String,
       afterwards: LastProcessedInstant,
       context: TamerS3SuffixDateFetcher.Context[K, V]
-  ): ZIO[Blocking with Clock with zio.s3.S3 with Kafka, TamerError, Unit] = {
+  ): ZIO[Blocking with Clock with zio.s3.S3 with KafkaConfig, TamerError, Unit] = {
     val setup =
       S3Configuration.mkTimeBased[K, V](
         bucketName,

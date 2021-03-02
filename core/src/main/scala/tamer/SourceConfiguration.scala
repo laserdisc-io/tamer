@@ -21,7 +21,7 @@ case class SourceConfiguration[-K, -V, S](
     serde: SourceConfiguration.SourceSerde[K, V, S],
     defaultState: S,
     tamerStateKafkaRecordKey: Int,
-    repr: String
+    repr: String = "no repr string implemented, if you want a neat description of the source configuration please implement it"
 )
 
 object SourceConfiguration {
