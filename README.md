@@ -2,7 +2,7 @@
 [![CI](https://github.com/laserdisc-io/tamer/workflows/CI/badge.svg?branch=master)](https://github.com/laserdisc-io/tamer/actions?query=workflow%3ACI+branch%3Amaster)
 [![Release](https://github.com/laserdisc-io/tamer/workflows/Release/badge.svg)](https://github.com/laserdisc-io/tamer/actions?query=workflow%3ARelease)
 [![Known Vulnerabilities](https://snyk.io/test/github/laserdisc-io/tamer/badge.svg?targetFile=build.sbt)](https://snyk.io/test/github/laserdisc-io/tamer?targetFile=build.sbt)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/io.laserdisc/tamer_2.13/badge.svg?kill_cache=1&color=orange)](https://search.maven.org/artifact/io.laserdisc/tamer_2.13/)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/io.laserdisc/tamer-core_2.13/badge.svg?kill_cache=1&color=orange)](https://search.maven.org/artifact/io.laserdisc/tamer_2.13/)
 [![Scala Steward badge](https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=)](https://scala-steward.org)
 
 Tamer is a domesticated Kafka source connector.
