@@ -1,8 +1,8 @@
-package tamer
-package s3
+package tamer.rest
 
 import com.sksamuel.avro4s.{Codec, SchemaFor}
 import eu.timepit.refined.types.numeric.PosInt
+import tamer.{SourceConfiguration, TamerError}
 import tamer.job.ZonedDateTimeFormatter
 import zio.stream.ZTransducer
 import zio.{Queue, UIO, ZIO}
@@ -11,28 +11,28 @@ import java.time.format.DateTimeFormatter
 import java.time.{Duration, Instant}
 import scala.util.hashing.MurmurHash3.stringHash
 
-final case class S3Configuration[
+final case class RestConfiguration[
     K <: Product: Codec: SchemaFor,
     V <: Product: Codec: SchemaFor,
     S <: Product: Codec: SchemaFor
 ](
-    bucketName: String,
-    prefix: String,
-    tamerStateKafkaRecordKey: Int,
-    transducer: ZTransducer[Any, TamerError, Byte, V],
-    parallelism: PosInt,
-    pollingTimings: S3Configuration.S3PollingTimings,
-    transitions: S3Configuration.State[K, V, S]
+   bucketName: String,
+   prefix: String,
+   tamerStateKafkaRecordKey: Int,
+   transducer: ZTransducer[Any, TamerError, Byte, V],
+   parallelism: PosInt,
+   pollingTimings: RestConfiguration.S3PollingTimings,
+   transitions: RestConfiguration.State[K, V, S]
 ) {
   val generic: SourceConfiguration[K, V, S] = SourceConfiguration[K, V, S](
     SourceConfiguration.SourceSerde[K, V, S](),
     defaultState = transitions.initialState,
     tamerStateKafkaRecordKey = tamerStateKafkaRecordKey,
-    S3Configuration.this.toString
+    RestConfiguration.this.toString
   )
 }
 
-object S3Configuration {
+object RestConfiguration {
 
   case class S3PollingTimings(
       minimumIntervalForBucketFetch: Duration,
@@ -46,14 +46,14 @@ object S3Configuration {
       selectObjectForState: (S, Keys) => Option[String]
   )
 
-  private[s3] final def suffixWithoutFileExtension(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): String = {
+  private[rest] final def suffixWithoutFileExtension(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): String = {
     val dotCountInDate = dateTimeFormatter.format(Instant.EPOCH).count(_ == '.')
     val keyWithoutExtension =
       if (key.count(_ == '.') > dotCountInDate) key.split('.').splitAt(dotCountInDate + 1)._1.mkString(".") else key
     keyWithoutExtension.stripPrefix(prefix)
   }
 
-  private[s3] final def parseInstantFromKey(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): Instant =
+  private[rest] final def parseInstantFromKey(key: String, prefix: String, dateTimeFormatter: DateTimeFormatter): Instant =
     Instant.from(dateTimeFormatter.parse(suffixWithoutFileExtension(key, prefix, dateTimeFormatter)))
 
   private final def getNextInstant(
@@ -70,7 +70,7 @@ object S3Configuration {
     sortedFileDates.headOption
   }
 
-  private[s3] final def getNextState(prefix: String, dateTimeFormatter: DateTimeFormatter)(
+  private[rest] final def getNextState(prefix: String, dateTimeFormatter: DateTimeFormatter)(
       keysR: KeysR,
       afterwards: LastProcessedInstant,
       keysChangedToken: Queue[Unit]
@@ -94,8 +94,8 @@ object S3Configuration {
       filePathPrefix: String,
       afterwards: LastProcessedInstant,
       context: TamerS3SuffixDateFetcher.Context[K, V]
-  ): S3Configuration[K, V, LastProcessedInstant] =
-    S3Configuration[K, V, LastProcessedInstant](
+  ): RestConfiguration[K, V, LastProcessedInstant] =
+    RestConfiguration[K, V, LastProcessedInstant](
       bucketName,
       filePathPrefix,
       stringHash(bucketName) + stringHash(filePathPrefix) + afterwards.instant.getEpochSecond.intValue,

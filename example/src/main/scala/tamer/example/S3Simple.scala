@@ -3,9 +3,10 @@ package tamer.example
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.S3Exception
 import tamer.TamerError
+import tamer.job.ZonedDateTimeFormatter
 import tamer.kafka.Kafka
 import tamer.s3.TamerS3.TamerS3Impl
-import tamer.s3.{LastProcessedInstant, TamerS3, TamerS3SuffixDateFetcher, ZonedDateTimeFormatter}
+import tamer.s3.{LastProcessedInstant, TamerS3, TamerS3SuffixDateFetcher}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.s3._

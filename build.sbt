@@ -22,6 +22,7 @@ lazy val V = new {
   val `zio-s3`      = "0.3.0"
   val `zio-interop` = "2.3.1.0"
   val `zio-kafka`   = "0.14.0"
+  val sttp          = "3.1.6"
 }
 
 lazy val D = new {
@@ -80,6 +81,9 @@ lazy val D = new {
     "org.scalatest"  %% "scalatest"  % V.scalatest  % Test
   )
 
+  val sttp = Seq(
+    "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % V.sttp
+  )
   val zio = Seq(
     "dev.zio" %% "zio-interop-cats" % V.`zio-interop`,
     "dev.zio" %% "zio-kafka"        % V.`zio-kafka`,
@@ -178,10 +182,21 @@ lazy val s3 = project
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
   )
 
+
+lazy val rest = project
+  .in(file("rest"))
+  .dependsOn(tamer)
+  .settings(commonSettings)
+  .settings(
+    name := "tamer-rest",
+    libraryDependencies ++= D.sttp,
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
+  )
+
 lazy val example = project
   .in(file("example"))
   .enablePlugins(JavaAppPackaging)
-  .dependsOn(tamer, doobie, s3)
+  .dependsOn(tamer, doobie, s3, rest)
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= D.postgres,

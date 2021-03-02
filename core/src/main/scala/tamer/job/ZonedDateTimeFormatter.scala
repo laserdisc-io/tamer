@@ -1,4 +1,4 @@
-package tamer.s3
+package tamer.job
 
 import java.time.ZoneId
 import java.time.format.{DateTimeFormatter, DateTimeFormatterBuilder}
