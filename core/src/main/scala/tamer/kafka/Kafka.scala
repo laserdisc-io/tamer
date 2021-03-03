@@ -10,6 +10,7 @@ import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.{KafkaException, TopicPartition}
 import tamer.config._
 import tamer.registry._
+import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
@@ -17,7 +18,6 @@ import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.kafka.consumer._
 import zio.kafka.producer.{Producer, ProducerSettings}
 import zio.stream.ZStream
-import zio.{Layer, _}
 
 final case class StateKey(stateKey: String, groupId: String)
 

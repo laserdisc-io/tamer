@@ -20,8 +20,10 @@ object KafkaSpec extends DefaultRunnableSpec {
   val kafkaLayer: ZLayer[Console with KafkaConfig with Clock with Blocking, TamerError, Kafka] =
     Kafka.live(SourceConfiguration(SourceConfiguration.SourceSerde[Key, Value, State](), State(0), 0), stf)
 
-  val embeddedKafkaLayer: ZLayer[Any, Throwable, Nothing] =
-    (KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig) >>> kafkaLayer
+  val embeddedKafkaLayer: ZLayer[ZEnv, Throwable, Kafka] = {
+    val kafkaConfigLayer: ZLayer[Any, Throwable, KafkaConfig] = KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig
+    (kafkaConfigLayer ++ TestEnvironment.live) >>> kafkaLayer
+  }
 
   def stf(s: State, q: Queue[Chunk[(Key, Value)]]): ZIO[Console, TamerError, State] = {
     val cursor = s.i + 1
