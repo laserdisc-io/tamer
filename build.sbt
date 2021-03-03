@@ -8,10 +8,7 @@ lazy val V = new {
   val cats          = "2.4.2"
   val `cats-effect` = "2.3.3"
   val ciris         = "1.2.1"
-  val confluent     = "6.0.2"
-    val embeddedKafka          = "2.7.0"
-  val embeddedSchemaRegistry = "6.1.0"
-
+  val confluent     = "6.1.0"
   val doobie        = "0.10.0"
   val kafka         = "2.7.0"
   val logback       = "1.2.3"
@@ -78,11 +75,11 @@ lazy val D = new {
   )
 
   val tests = Seq(
-    "org.scalacheck"          %% "scalacheck"                     % V.scalacheck             % Test,
-    "org.scalactic"           %% "scalactic"                      % V.scalatest              % Test,
-    "org.scalatest"           %% "scalatest"                      % V.scalatest              % Test,
-    "io.github.embeddedkafka" %% "embedded-kafka"                 % V.embeddedKafka          % Test,
-    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.embeddedSchemaRegistry % Test
+    "org.scalacheck"          %% "scalacheck"                     % V.scalacheck % Test,
+    "org.scalactic"           %% "scalactic"                      % V.scalatest  % Test,
+    "org.scalatest"           %% "scalatest"                      % V.scalatest  % Test,
+    "io.github.embeddedkafka" %% "embedded-kafka"                 % V.kafka      % Test,
+    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.confluent  % Test
   )
 
   val zio = Seq(
