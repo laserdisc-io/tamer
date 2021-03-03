@@ -7,13 +7,8 @@ import io.confluent.kafka.schemaregistry.client.{CachedSchemaRegistryClient, Sch
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.ProducerRecord
-<<<<<<< HEAD
 import org.apache.kafka.common.{KafkaException, TopicPartition}
 import tamer.config._
-=======
-import org.apache.kafka.common.KafkaException
-import tamer.config.{KafkaConfig, _}
->>>>>>> master
 import tamer.registry._
 import zio.blocking.Blocking
 import zio.clock.Clock
