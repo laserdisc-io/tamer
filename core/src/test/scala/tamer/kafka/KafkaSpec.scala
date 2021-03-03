@@ -9,7 +9,7 @@ import zio.clock.Clock
 import zio.console.{Console, putStrLn}
 import zio.duration.durationInt
 import zio.test.Assertion.equalTo
-import zio.test.TestAspect.timeout
+import zio.test.TestAspect.flaky
 import zio.test.environment.{TestConsole, TestEnvironment}
 import zio.test.{DefaultRunnableSpec, TestFailure, ZSpec, assert}
 import zio.{Chunk, Has, Queue, Ref, UIO, ZEnv, ZIO, ZLayer}
@@ -55,6 +55,6 @@ object KafkaSpec extends DefaultRunnableSpec {
         (KafkaTest.embeddedKafkaTest ++ tamerKafkaLayer ++ outputLayer)
           .mapError(TestFailure.fail)
       )
-      .updateService[Clock.Service](_ => Clock.Service.live) @@ timeout(10.seconds)
+      .updateService[Clock.Service](_ => Clock.Service.live) @@ flaky(5)
   }
 }
