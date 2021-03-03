@@ -7,10 +7,14 @@ import io.confluent.kafka.schemaregistry.client.{CachedSchemaRegistryClient, Sch
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.ProducerRecord
+<<<<<<< HEAD
 import org.apache.kafka.common.{KafkaException, TopicPartition}
 import tamer.config._
+=======
+import org.apache.kafka.common.KafkaException
+import tamer.config.{KafkaConfig, _}
+>>>>>>> master
 import tamer.registry._
-import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
@@ -18,8 +22,14 @@ import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.kafka.consumer._
 import zio.kafka.producer.{Producer, ProducerSettings}
 import zio.stream.ZStream
+import zio.{Layer, _}
 
 final case class StateKey(stateKey: String, groupId: String)
+
+object StateKey {
+  implicit def codec = AvroCodec.codec[StateKey]
+
+}
 
 object Kafka {
   private val tenTimes = Schedule.recurs(10) && Schedule.exponential(25.milliseconds)
