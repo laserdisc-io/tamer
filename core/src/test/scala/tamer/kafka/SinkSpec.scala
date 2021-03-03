@@ -4,6 +4,7 @@ import eu.timepit.refined.auto._
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.{Metric, MetricName, TopicPartition}
+import tamer.kafka.KafkaTestUtils._
 import zio.blocking.Blocking
 import zio.duration.durationInt
 import zio.kafka.producer.Producer.Service
@@ -13,9 +14,6 @@ import zio.test.environment.{TestClock, TestEnvironment}
 import zio.test.{DefaultRunnableSpec, ZSpec, assert}
 import zio.{Chunk, RIO, Ref, Schedule, Task, UIO, ZIO}
 
-case class Key(key: Int)
-case class Value(value: Int)
-case class State(i: Int)
 object SinkSpec extends DefaultRunnableSpec {
   override def spec: ZSpec[TestEnvironment, Any] =
     suite("SinkSpec")(

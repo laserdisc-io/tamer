@@ -4,25 +4,26 @@ lazy val scala_212 = "2.12.13"
 lazy val scala_213 = "2.13.4"
 
 lazy val V = new {
-  val avro4s        = "4.0.4"
-  val cats          = "2.4.2"
-  val `cats-effect` = "2.3.3"
-  val ciris         = "1.2.1"
-  val confluent     = "6.0.2"
-  val doobie        = "0.10.0"
-  val embeddedKafka = "2.7.0"
-  val kafka         = "2.7.0"
-  val logback       = "1.2.3"
-  val `log-effect`  = "0.14.1"
-  val postgres      = "42.2.19"
-  val refined       = "0.9.21"
-  val scalacheck    = "1.15.3"
-  val scalatest     = "3.2.5"
-  val silencer      = "1.7.3"
-  val zio           = "1.0.4-2"
-  val `zio-s3`      = "0.3.0"
-  val `zio-interop` = "2.3.1.0"
-  val `zio-kafka`   = "0.14.0"
+  val avro4s                 = "4.0.4"
+  val cats                   = "2.4.2"
+  val `cats-effect`          = "2.3.3"
+  val ciris                  = "1.2.1"
+  val confluent              = "6.1.0"
+  val doobie                 = "0.10.0"
+  val embeddedKafka          = "2.7.0"
+  val embeddedSchemaRegistry = "6.1.0"
+  val kafka                  = "2.7.0"
+  val logback                = "1.2.3"
+  val `log-effect`           = "0.14.1"
+  val postgres               = "42.2.19"
+  val refined                = "0.9.21"
+  val scalacheck             = "1.15.3"
+  val scalatest              = "3.2.5"
+  val silencer               = "1.7.3"
+  val zio                    = "1.0.4-2"
+  val `zio-s3`               = "0.3.0"
+  val `zio-interop`          = "2.3.1.0"
+  val `zio-kafka`            = "0.14.0"
 }
 
 lazy val D = new {
@@ -76,10 +77,11 @@ lazy val D = new {
   )
 
   val tests = Seq(
-    "org.scalacheck"          %% "scalacheck"     % V.scalacheck    % Test,
-    "org.scalactic"           %% "scalactic"      % V.scalatest     % Test,
-    "org.scalatest"           %% "scalatest"      % V.scalatest     % Test,
-    "io.github.embeddedkafka" %% "embedded-kafka" % V.embeddedKafka % Test
+    "org.scalacheck"          %% "scalacheck"                     % V.scalacheck             % Test,
+    "org.scalactic"           %% "scalactic"                      % V.scalatest              % Test,
+    "org.scalatest"           %% "scalatest"                      % V.scalatest              % Test,
+    "io.github.embeddedkafka" %% "embedded-kafka"                 % V.embeddedKafka          % Test,
+    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.embeddedSchemaRegistry % Test
   )
 
   val zio = Seq(
@@ -144,7 +146,7 @@ lazy val commonSettings = Seq(
   licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
   developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
   scalacOptions ++= versionDependent(scalaVersion.value),
-  resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/")
+  resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/", "jitpack" at "https://jitpack.io")
 )
 
 lazy val tamer = project
