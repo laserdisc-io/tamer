@@ -39,7 +39,7 @@ package object db {
 
   private final def iteration[K <: Product, V <: Product, S <: Product: HashableState](
       setup: DoobieConfiguration[K, V, S]
-  )(state: S, q: Queue[(K, V)]): ZIO[TamerDBConfig, TamerError, S] =
+  )(state: S, q: Queue[Chunk[(K, V)]]): ZIO[TamerDBConfig, TamerError, S] =
     (for {
       log   <- logTask
       cfg   <- ConfigDb.queryConfig
