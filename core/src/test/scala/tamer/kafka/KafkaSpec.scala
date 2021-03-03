@@ -31,7 +31,7 @@ object KafkaSpec extends DefaultRunnableSpec {
     ZIO.service[OutputR].flatMap { variable =>
       val cursor = s.i + 1
       if (cursor <= 10)
-        variable.update(_.concat(Vector(cursor))) *>
+        variable.update(_ ++ Vector(cursor)) *>
           q.offer(Chunk((Key(cursor), Value(cursor)))).as(s.copy(i = cursor))
       else
         ZIO.never *> UIO(State(9999))

@@ -48,7 +48,7 @@ class Test[R, K, V](val producedValues: Ref[Vector[ProducerRecord[K, V]]]) exten
   override def produceAsync(record: ProducerRecord[K, V]): RIO[R with Blocking, Task[RecordMetadata]]    = ???
   override def produceAsync(topic: String, key: K, value: V): RIO[R with Blocking, Task[RecordMetadata]] = ???
   override def produceChunkAsync(records: Chunk[ProducerRecord[K, V]]): RIO[R with Blocking, Task[Chunk[RecordMetadata]]] =
-    producedValues.update(_.concat(records)) *> UIO(UIO(Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0))))
+    producedValues.update(_ ++ records) *> UIO(UIO(Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0))))
   override def produceChunk(records: Chunk[ProducerRecord[K, V]]): RIO[R with Blocking, Chunk[RecordMetadata]] = ???
   override def flush: RIO[Blocking, Unit]                                                                      = ???
   override def metrics: RIO[Blocking, Map[MetricName, Metric]]                                                 = ???
@@ -70,7 +70,7 @@ class FailingTest[R, K, V](override val producedValues: Ref[Vector[ProducerRecor
   override def produceChunkAsync(records: Chunk[ProducerRecord[K, V]]): RIO[R with Blocking, Task[Chunk[RecordMetadata]]] =
     counter.updateAndGet(_ + 1).flatMap {
       case 10 =>
-        producedValues.update(vals => vals.concat(records)) *> UIO(UIO(Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0))))
+        producedValues.update(_ ++ records) *> UIO(UIO(Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0))))
       case n => ZIO.fail(new RuntimeException(s"expected error for testing purposes with counter $n"))
     }
 }
