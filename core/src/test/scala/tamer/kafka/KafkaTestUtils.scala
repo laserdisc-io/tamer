@@ -1,6 +1,9 @@
 package tamer.kafka
 
 import tamer.AvroCodec
+import zio.Task
+
+import java.util.UUID
 
 object KafkaTestUtils {
   case class Key(key: Int)
@@ -15,4 +18,7 @@ object KafkaTestUtils {
   object State {
     implicit val codec = AvroCodec.codec[State]
   }
+
+  def randomThing(prefix: String): Task[String] =
+    Task(UUID.randomUUID()).map(uuid => s"$prefix-$uuid")
 }

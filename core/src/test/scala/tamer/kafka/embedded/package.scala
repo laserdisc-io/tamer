@@ -1,13 +1,14 @@
 package tamer.kafka
 
-import net.manub.embeddedkafka.schemaregistry.{EmbeddedKWithSR, EmbeddedKafka, EmbeddedKafkaConfig}
-import tamer.config.{Config, HostList, KafkaConfig, UrlString}
 import eu.timepit.refined.auto._
 import eu.timepit.refined.boolean.{And, Or}
 import eu.timepit.refined.collection.{Forall, NonEmpty}
 import eu.timepit.refined.refineV
 import eu.timepit.refined.string.{IPv4, Uri, Url}
+import net.manub.embeddedkafka.schemaregistry.{EmbeddedKWithSR, EmbeddedKafka, EmbeddedKafkaConfig}
 import tamer.config.Config.{KafkaSink, KafkaState}
+import tamer.config.{Config, HostList, KafkaConfig, UrlString}
+import tamer.kafka.KafkaTestUtils.randomThing
 import zio._
 
 import java.util.concurrent.TimeUnit
@@ -36,19 +37,25 @@ package object embedded {
       override def stop(): UIO[Unit]            = UIO.unit
     }
 
-    val embeddedKafkaConfig: ZLayer[KafkaTest, Throwable, KafkaConfig] = ZIO
-      .service[KafkaTest.Service]
-      .map(heks =>
-        Config.Kafka(
-          brokers = heks.bootstrapServers,
-          schemaRegistryUrl = heks.schemaRegistryUrl,
-          closeTimeout = FiniteDuration(1, TimeUnit.SECONDS),
-          bufferSize = 5,
-          sink = KafkaSink("sink.topic"),
-          state = KafkaState("sink.topic.tape", "embedded.groupid", "embedded.clientid")
+    val embeddedKafkaConfig: ZLayer[KafkaTest, Throwable, KafkaConfig] = randomThing("test").flatMap { rndStr =>
+      ZIO
+        .service[KafkaTest.Service]
+        .map(heks =>
+          Config.Kafka(
+            brokers = heks.bootstrapServers,
+            schemaRegistryUrl = heks.schemaRegistryUrl,
+            closeTimeout = FiniteDuration(1, TimeUnit.SECONDS),
+            bufferSize = 5,
+            sink = KafkaSink(refineV[NonEmpty].unsafeFrom(s"sink.topic.$rndStr")),
+            state = KafkaState(
+              refineV[NonEmpty].unsafeFrom(s"sink.topic.tape.$rndStr"),
+              refineV[NonEmpty].unsafeFrom(s"embedded.groupid.$rndStr"),
+              refineV[NonEmpty].unsafeFrom(s"embedded.clientid.$rndStr")
+            )
+          )
         )
-      )
-      .toLayer
+
+    }.toLayer
 
     val embeddedKafkaTest: ZLayer[Any, Throwable, KafkaTest] = ZLayer
       .fromManaged {
