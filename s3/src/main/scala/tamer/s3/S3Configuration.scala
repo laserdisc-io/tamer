@@ -26,8 +26,7 @@ final case class S3Configuration[
   val generic: SourceConfiguration[K, V, S] = SourceConfiguration[K, V, S](
     SourceConfiguration.SourceSerde[K, V, S](),
     defaultState = transitions.initialState,
-    tamerStateKafkaRecordKey = tamerStateKafkaRecordKey,
-    S3Configuration.this.toString
+    tamerStateKafkaRecordKey = tamerStateKafkaRecordKey
   )
 }
 

@@ -4,13 +4,14 @@ import com.sksamuel.avro4s.Codec
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.TamerError
+import tamer.config.KafkaConfig
 import tamer.kafka.Kafka
 import zio.ZIO.when
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
 import zio.s3.{ListObjectOptions, S3}
-import zio.{Queue, Ref, Schedule, Task, UIO, ZIO}
+import zio.{Chunk, Queue, Ref, Schedule, Task, UIO, ZIO}
 
 import java.time.Duration
 import scala.math.Ordering.Implicits.infixOrderingOps
@@ -22,7 +23,7 @@ trait TamerS3 {
       S <: Product: Codec
   ](
       setup: S3Configuration[K, V, S]
-  ): ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit]
+  ): ZIO[zio.s3.S3 with Blocking with Clock with KafkaConfig, TamerError, Unit]
 }
 
 object TamerS3 {
@@ -37,31 +38,31 @@ object TamerS3 {
         S <: Product: Codec
     ](
         setup: S3Configuration[K, V, S]
-    ): ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit] =
-      for {
-        keysR <- createRefToListOfKeys
-        cappedExponentialBackoff: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(
-          setup.pollingTimings.minimumIntervalForBucketFetch
-        ) || Schedule.spaced(
-          setup.pollingTimings.maximumIntervalForBucketFetch
-        )
+    ): ZIO[S3 with Blocking with Clock with KafkaConfig, TamerError, Unit] = for {
+      keysR <- createRefToListOfKeys
+      cappedExponentialBackoff: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(
+        setup.pollingTimings.minimumIntervalForBucketFetch
+      ) || Schedule.spaced(
+        setup.pollingTimings.maximumIntervalForBucketFetch
+      )
 
-        keysChangedToken <- Queue.dropping[Unit](requestedCapacity = 1)
-        updateListOfKeysM = updateListOfKeys(
-          keysR,
-          setup.bucketName,
-          setup.prefix,
-          setup.pollingTimings.minimumIntervalForBucketFetch,
-          keysChangedToken
+      keysChangedToken <- Queue.dropping[Unit](requestedCapacity = 1)
+      updateListOfKeysM = updateListOfKeys(
+        keysR,
+        setup.bucketName,
+        setup.prefix,
+        setup.pollingTimings.minimumIntervalForBucketFetch,
+        keysChangedToken
+      )
+      _ <- updateListOfKeysM
+        .scheduleFrom(KeysChanged(true))(
+          Schedule.once andThen cappedExponentialBackoff.untilInput(_ == KeysChanged(true))
         )
-        updateKeysFiber <- updateListOfKeysM
-          .scheduleFrom(KeysChanged(true))(
-            Schedule.once andThen cappedExponentialBackoff.untilInput(_ == KeysChanged(true))
-          )
-          .forever
-          .fork
-        _ <- tamer.kafka.runLoop(setup.generic)(iteration(setup, keysR, keysChangedToken)).ensuring(updateKeysFiber.interrupt)
-      } yield ()
+        .forever
+        .fork
+      kafkaLayer = Kafka.live(setup.generic, iteration(setup, keysR, keysChangedToken))
+      _ <- tamer.kafka.runLoop.provideSomeLayer[S3 with Blocking with Clock with KafkaConfig](kafkaLayer)
+    } yield ()
 
     private def updateListOfKeys(
         keysR: KeysR,
@@ -115,7 +116,7 @@ object TamerS3 {
         keysChangedToken: Queue[Unit]
     )(
         currentState: S,
-        q: Queue[(K, V)]
+        q: Queue[Chunk[(K, V)]]
     ): ZIO[zio.s3.S3, TamerError, S] =
       (for {
         log       <- logTask
@@ -128,7 +129,8 @@ object TamerS3 {
             zio.s3
               .getObject(setup.bucketName, key)
               .transduce(setup.transducer)
-              .foreach(value => q.offer(setup.transitions.deriveKafkaRecordKey(nextState, value) -> value))
+              .map(value => (setup.transitions.deriveKafkaRecordKey(nextState, value), value))
+              .foreachChunk(q.offer)
           )
           .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
       } yield nextState).mapError(e => TamerError("Error while doing iterationTimeBased", e))

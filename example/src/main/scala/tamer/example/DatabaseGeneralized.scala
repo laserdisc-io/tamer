@@ -1,10 +1,9 @@
 package tamer.example
 
 import doobie.syntax.string._
-import tamer.config.Config
+import tamer.config.{Config, KafkaConfig}
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
 import tamer.db.{ConfigDb, DbTransactor, DoobieConfiguration, InstantOps, QueryResult, TamerDBConfig}
-import tamer.kafka.Kafka
 import tamer.{AvroCodec, HashableState, TamerError, db}
 import zio._
 import zio.blocking.Blocking
@@ -25,11 +24,12 @@ object MyState {
 }
 
 object DatabaseGeneralized extends zio.App {
-  lazy val transactorLayer: Layer[TamerError, DbTransactor]                     = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
-  lazy val kafkaLayer: Layer[TamerError, Kafka]                                 = Config.live >>> Kafka.live
-  lazy val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]       = ConfigDb.live
-  lazy val myLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ kafkaLayer ++ queryConfigLayer
-  lazy val program: ZIO[Kafka with TamerDBConfig with ZEnv, TamerError, Unit] = (for {
+  lazy val transactorLayer: Layer[TamerError, DbTransactor]               = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
+  lazy val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig] = ConfigDb.live
+  lazy val kafkaConfig: Layer[TamerError, KafkaConfig]                    = Config.live
+  lazy val myLayer: Layer[TamerError, DbTransactor with DbConfig with QueryConfig with KafkaConfig] =
+    transactorLayer ++ queryConfigLayer ++ kafkaConfig
+  lazy val program: ZIO[ZEnv with DbConfig with TamerDBConfig with KafkaConfig, TamerError, Unit] = (for {
     boot <- UIO(Instant.now())
     earliest = boot.minus(60, DAYS)
     setup = DoobieConfiguration(query)(

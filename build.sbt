@@ -8,7 +8,7 @@ lazy val V = new {
   val cats          = "2.4.2"
   val `cats-effect` = "2.3.3"
   val ciris         = "1.2.1"
-  val confluent     = "6.0.2"
+  val confluent     = "6.1.0"
   val doobie        = "0.10.0"
   val kafka         = "2.7.0"
   val logback       = "1.2.3"
@@ -75,9 +75,11 @@ lazy val D = new {
   )
 
   val tests = Seq(
-    "org.scalacheck" %% "scalacheck" % V.scalacheck % Test,
-    "org.scalactic"  %% "scalactic"  % V.scalatest  % Test,
-    "org.scalatest"  %% "scalatest"  % V.scalatest  % Test
+    "org.scalacheck"          %% "scalacheck"                     % V.scalacheck % Test,
+    "org.scalactic"           %% "scalactic"                      % V.scalatest  % Test,
+    "org.scalatest"           %% "scalatest"                      % V.scalatest  % Test,
+    "io.github.embeddedkafka" %% "embedded-kafka"                 % V.kafka      % Test,
+    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.confluent  % Test
   )
 
   val zio = Seq(
@@ -142,7 +144,7 @@ lazy val commonSettings = Seq(
   licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
   developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
   scalacOptions ++= versionDependent(scalaVersion.value),
-  resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/")
+  resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/", "jitpack" at "https://jitpack.io")
 )
 
 lazy val tamer = project
@@ -156,7 +158,8 @@ lazy val tamer = project
     libraryDependencies ++= D.avro,
     addCompilerPlugin("com.github.ghik" %% "silencer-plugin" % V.silencer cross CrossVersion.full),
     Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
-    Test / console / scalacOptions := (Compile / console / scalacOptions).value
+    Test / console / scalacOptions := (Compile / console / scalacOptions).value,
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
   )
 
 lazy val doobie = project

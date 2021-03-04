@@ -6,11 +6,11 @@ import eu.timepit.refined.boolean.{And, Or}
 import eu.timepit.refined.collection.{Forall, NonEmpty}
 import eu.timepit.refined.string.{IPv4, Uri}
 import software.amazon.awssdk.regions.Region
-import tamer.{AvroCodec, TamerError}
-import tamer.config.Config
-import tamer.kafka.Kafka
+import tamer.config.Config.Kafka
+import tamer.config.{Config, KafkaConfig}
 import tamer.s3.TamerS3.TamerS3Impl
 import tamer.s3.{Keys, KeysR, S3Configuration}
+import tamer.{AvroCodec, TamerError}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
@@ -19,7 +19,7 @@ import zio.stream.{Transducer, ZTransducer}
 import zio.{ExitCode, Has, Layer, Queue, UIO, URIO, ZIO}
 
 import java.net.URI
-import scala.concurrent.duration.{FiniteDuration => FD}
+import scala.concurrent.duration.{FiniteDuration => ScalaFD}
 import scala.util.hashing.MurmurHash3.stringHash
 
 final case class Line(str: String)
@@ -34,15 +34,14 @@ object LastProcessedNumber {
 }
 
 object S3Generalized extends zio.App {
-  lazy val mkS3Layer: ZIO[Blocking, InvalidCredentials, Layer[RuntimeException, S3 with Kafka]] =
+  lazy val mkS3KafkaLayer: ZIO[Blocking, InvalidCredentials, Layer[RuntimeException, S3 with KafkaConfig]] =
     S3Credentials.fromAll.map { s3Credentials =>
       val kafkaState: Config.KafkaState = Config.KafkaState("state-topic", "groupid", "clientid")
       val kafkaSink: Config.KafkaSink   = Config.KafkaSink("sink-topic")
       val hostList                      = refineV[NonEmpty And Forall[IPv4 Or Uri]](List("localhost:9092"))
-      val kafkaConfigLayer: Layer[String, Has[Config.Kafka]] =
-        ZIO.fromEither(hostList.map(hl => Config.Kafka(hl, "http://localhost:8081", FD(10, "seconds"), 50, kafkaSink, kafkaState))).toLayer
-      val kafkaLayer: Layer[TamerError, Kafka] = kafkaConfigLayer.mapError(e => TamerError(e)) >>> Kafka.live
-      zio.s3.live(Region.AF_SOUTH_1, s3Credentials, Some(new URI("http://localhost:9000"))) ++ kafkaLayer
+      val kafkaConfigLayer: Layer[String, Has[Kafka]] =
+        ZIO.fromEither(hostList.map(hl => Config.Kafka(hl, "http://localhost:8081", ScalaFD(10, "seconds"), 50, kafkaSink, kafkaState))).toLayer
+      zio.s3.live(Region.AF_SOUTH_1, s3Credentials, Some(new URI("http://localhost:9000"))) ++ kafkaConfigLayer.mapError(e => TamerError(e))
     }
 
   private val myTransducer: Transducer[Nothing, Byte, Line] =
@@ -95,9 +94,10 @@ object S3Generalized extends zio.App {
     )
   )
 
-  val program: ZIO[zio.s3.S3 with Kafka with Blocking with Clock, TamerError, Unit] = for {
+  val program: ZIO[zio.s3.S3 with Blocking with Clock with KafkaConfig, TamerError, Unit] = for {
     _ <- new TamerS3Impl().fetch(setup)
   } yield ()
 
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = mkS3Layer.flatMap(layer => program.provideCustomLayer(layer)).exitCode
+  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] =
+    mkS3KafkaLayer.flatMap(layer => program.provideCustomLayer(layer)).exitCode
 }

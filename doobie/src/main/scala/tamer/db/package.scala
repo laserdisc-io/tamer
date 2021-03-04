@@ -10,11 +10,12 @@ import eu.timepit.refined.auto._
 import fs2.Stream
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import tamer.config.Config
+import tamer.config.{Config, KafkaConfig}
 import tamer.db.Compat.toIterable
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
 import tamer.kafka.Kafka
 import zio.blocking.Blocking
+import zio.clock.Clock
 import zio.interop.catz._
 import zio.{Queue, Task, UIO, ZIO, _}
 
@@ -25,11 +26,6 @@ import scala.concurrent.ExecutionContext
 package object db {
   final type DbTransactor  = Has[Transactor[Task]]
   final type TamerDBConfig = DbTransactor with QueryConfig
-
-  private final lazy val kafkaLayer: Layer[TamerError, Kafka]                                      = Config.live >>> Kafka.live
-  private final lazy val transactorLayer: Layer[TamerError, DbTransactor]                          = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
-  private final lazy val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig]            = ConfigDb.live
-  private final lazy val defaultLayer: Layer[TamerError, DbTransactor with Kafka with QueryConfig] = transactorLayer ++ queryConfigLayer ++ kafkaLayer
 
   implicit final class InstantOps(private val instant: Instant) extends AnyVal {
     def orNow: UIO[Instant] =
@@ -43,7 +39,7 @@ package object db {
 
   private final def iteration[K <: Product, V <: Product, S <: Product: HashableState](
       setup: DoobieConfiguration[K, V, S]
-  )(state: S, q: Queue[(K, V)]): ZIO[TamerDBConfig, TamerError, S] =
+  )(state: S, q: Queue[Chunk[(K, V)]]): ZIO[TamerDBConfig, TamerError, S] =
     (for {
       log   <- logTask
       cfg   <- ConfigDb.queryConfig
@@ -57,7 +53,7 @@ package object db {
           .chunks
           .transact(tnx)
           .map(ChunkWithMetadata(_))
-          .evalTap(c => q.offerAll(toIterable(c.chunk).map(v => setup.keyExtract(v) -> v)))
+          .evalTap(c => q.offer(Chunk.fromIterable(toIterable(c.chunk).map(v => setup.keyExtract(v) -> v))))
           .flatMap(c => Stream.chunk(c.chunk).map(ValueWithMetadata(_, c.pulledAt)))
           .compile
           .toList
@@ -75,8 +71,10 @@ package object db {
   final def fetchWithTimeSegment[K <: Product: Codec, V <: Product with Timestamped: Ordering: Codec](
       queryBuilder: TimeSegment => Query0[V]
   )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): ZIO[ZEnv, TamerError, Unit] = {
-    val setup = DoobieConfiguration.fromTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)
-    fetch(setup)
+    val transactorLayer: Layer[TamerError, DbTransactor]               = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
+    val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig] = ConfigDb.live
+    val setup: DoobieConfiguration[K, V, TimeSegment]                  = DoobieConfiguration.fromTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)
+    fetch(setup).provideSomeLayer[ZEnv](transactorLayer ++ queryConfigLayer ++ Config.live)
   }
 
   final def fetch[
@@ -85,8 +83,11 @@ package object db {
       S <: Product: Codec: HashableState
   ](
       setup: DoobieConfiguration[K, V, S]
-  ): ZIO[ZEnv, TamerError, Unit] =
-    tamer.kafka.runLoop(setup.generic)(iteration(setup)).provideCustomLayer(defaultLayer)
+  ): ZIO[ZEnv with DbConfig with TamerDBConfig with KafkaConfig, TamerError, Unit] = {
+    val kafkaLayer: ZLayer[TamerDBConfig with KafkaConfig with Clock with Blocking, TamerError, Kafka] =
+      Kafka.live(setup.generic, iteration(setup))
+    tamer.kafka.runLoop.provideSomeLayer[ZEnv with DbConfig with TamerDBConfig with KafkaConfig](kafkaLayer)
+  }
 
   final val hikariLayer: ZLayer[Blocking with DbConfig, TamerError, DbTransactor] = ZLayer.fromManaged {
     for {
