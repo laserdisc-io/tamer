@@ -76,7 +76,7 @@ object S3Generalized extends zio.App {
   private final def selectObjectForInstant(lastProcessedNumber: LastProcessedNumber): Option[String] =
     Some(s"myFolder2/myPrefix${lastProcessedNumber.number}")
 
-  private val setup: S3Configuration[LastProcessedNumber, Line, LastProcessedNumber] = S3Configuration(
+  private val setup: S3Configuration[Any, LastProcessedNumber, Line, LastProcessedNumber] = S3Configuration(
     bucketName = "myBucket",
     prefix = "myFolder2/myPrefix",
     tamerStateKafkaRecordKey = stringHash("myBucket") + stringHash("myFolder2/myPrefix") + 0,

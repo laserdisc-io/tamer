@@ -18,12 +18,13 @@ import scala.math.Ordering.Implicits.infixOrderingOps
 
 trait TamerS3 {
   def fetch[
+      R,
       K <: Product: Codec,
       V <: Product: Codec,
       S <: Product: Codec
   ](
-      setup: S3Configuration[K, V, S]
-  ): ZIO[zio.s3.S3 with Blocking with Clock with KafkaConfig, TamerError, Unit]
+      setup: S3Configuration[R, K, V, S]
+  ): ZIO[R with zio.s3.S3 with Blocking with Clock with KafkaConfig, TamerError, Unit]
 }
 
 object TamerS3 {
@@ -33,12 +34,13 @@ object TamerS3 {
     private final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.s3")
 
     final def fetch[
+        R,
         K <: Product: Codec,
         V <: Product: Codec,
         S <: Product: Codec
     ](
-        setup: S3Configuration[K, V, S]
-    ): ZIO[S3 with Blocking with Clock with KafkaConfig, TamerError, Unit] = for {
+        setup: S3Configuration[R, K, V, S]
+    ): ZIO[R with S3 with Blocking with Clock with KafkaConfig, TamerError, Unit] = for {
       keysR <- createRefToListOfKeys
       cappedExponentialBackoff: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(
         setup.pollingTimings.minimumIntervalForBucketFetch
@@ -61,7 +63,7 @@ object TamerS3 {
         .forever
         .fork
       kafkaLayer = Kafka.live(setup.generic, iteration(setup, keysR, keysChangedToken))
-      _ <- tamer.kafka.runLoop.provideSomeLayer[S3 with Blocking with Clock with KafkaConfig](kafkaLayer)
+      _ <- tamer.kafka.runLoop.provideSomeLayer[R with S3 with Blocking with Clock with KafkaConfig](kafkaLayer)
     } yield ()
 
     private def updateListOfKeys(
@@ -107,17 +109,18 @@ object TamerS3 {
     }
 
     private final def iteration[
+        R,
         K <: Product: Codec,
         V <: Product: Codec,
         S <: Product: Codec
     ](
-        setup: S3Configuration[K, V, S],
+        setup: S3Configuration[R, K, V, S],
         keysR: KeysR,
         keysChangedToken: Queue[Unit]
     )(
         currentState: S,
         q: Queue[Chunk[(K, V)]]
-    ): ZIO[zio.s3.S3, TamerError, S] =
+    ): ZIO[R with zio.s3.S3, TamerError, S] =
       (for {
         log       <- logTask
         nextState <- setup.transitions.getNextState(keysR, currentState, keysChangedToken)

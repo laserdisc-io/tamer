@@ -11,6 +11,7 @@ import java.time.{Duration, Instant}
 import scala.util.hashing.MurmurHash3.stringHash
 
 final case class S3Configuration[
+    R,
     K <: Product: Codec: SchemaFor,
     V <: Product: Codec: SchemaFor,
     S <: Product: Codec: SchemaFor
@@ -18,7 +19,7 @@ final case class S3Configuration[
     bucketName: String,
     prefix: String,
     tamerStateKafkaRecordKey: Int,
-    transducer: ZTransducer[Any, TamerError, Byte, V],
+    transducer: ZTransducer[R, TamerError, Byte, V],
     parallelism: PosInt,
     pollingTimings: S3Configuration.S3PollingTimings,
     transitions: S3Configuration.State[K, V, S]
@@ -87,13 +88,13 @@ object S3Configuration {
   )(lastProcessedInstant: LastProcessedInstant, keys: Keys): Option[String] =
     keys.find(_.contains(zonedDateTimeFormatter.value.format(lastProcessedInstant.instant)))
 
-  final def mkTimeBased[K <: Product: Codec: SchemaFor, V <: Product: Codec: SchemaFor](
+  final def mkTimeBased[R, K <: Product: Codec: SchemaFor, V <: Product: Codec: SchemaFor](
       bucketName: String,
       filePathPrefix: String,
       afterwards: LastProcessedInstant,
-      context: TamerS3SuffixDateFetcher.Context[K, V]
-  ): S3Configuration[K, V, LastProcessedInstant] =
-    S3Configuration[K, V, LastProcessedInstant](
+      context: TamerS3SuffixDateFetcher.Context[R, K, V]
+  ): S3Configuration[R, K, V, LastProcessedInstant] =
+    S3Configuration[R, K, V, LastProcessedInstant](
       bucketName,
       filePathPrefix,
       stringHash(bucketName) + stringHash(filePathPrefix) + afterwards.instant.getEpochSecond.intValue,
