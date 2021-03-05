@@ -3,7 +3,7 @@ package tamer.example
 import doobie.syntax.string._
 import tamer.config.{Config, KafkaConfig}
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
-import tamer.db.{ConfigDb, DbTransactor, DoobieConfiguration, InstantOps, QueryResult, TamerDBConfig}
+import tamer.db.{ConfigDb, DbTransactor, DoobieConfiguration, QueryResult, InstantOps, TamerDBConfig}
 import tamer.{AvroCodec, HashableState, TamerError, db}
 import zio._
 import zio.blocking.Blocking
@@ -42,7 +42,7 @@ object DatabaseGeneralized extends zio.App {
           mostRecent.plus(5, MINUTES).orNow.map(MyState(mostRecent, _))
       }
     )
-    _ <- tamer.db.fetch(setup)
+    _ <- tamer.db.TamerDoobieJob(setup).fetch()
   } yield ()).mapError(e => TamerError("Could not run tamer example", e))
 
   private def query(s: MyState): doobie.Query0[Value] = {

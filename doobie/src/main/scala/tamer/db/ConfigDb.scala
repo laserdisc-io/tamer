@@ -1,9 +1,9 @@
 package tamer
 package db
 
-import ciris.{ConfigException, env}
-import ciris.refined.refTypeConfigDecoder
 import cats.implicits._
+import ciris.refined.refTypeConfigDecoder
+import ciris.{ConfigException, env}
 import eu.timepit.refined.api.Refined
 import eu.timepit.refined.string.Uri
 import eu.timepit.refined.types.numeric.PosInt
@@ -40,3 +40,5 @@ object ConfigDb {
     }
   }
 }
+
+
