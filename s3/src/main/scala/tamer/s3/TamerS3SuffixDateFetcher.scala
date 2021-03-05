@@ -14,10 +14,9 @@ import zio.stream.{Transducer, ZTransducer}
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
+class TamerS3SuffixDateFetcher[R <: Blocking with Clock with zio.s3.S3 with KafkaConfig]() {
 
   def fetchAccordingToSuffixDate[
-      R,
       K <: Product: Codec: SchemaFor,
       V <: Product: Codec: SchemaFor
   ](
@@ -25,7 +24,8 @@ class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
       prefix: String,
       afterwards: LastProcessedInstant,
       context: TamerS3SuffixDateFetcher.Context[R, K, V]
-  ): ZIO[R with Blocking with Clock with zio.s3.S3 with KafkaConfig, TamerError, Unit] = {
+  ): ZIO[R, TamerError, Unit] = {
+
     val setup =
       S3Configuration.mkTimeBased[R, K, V](
         bucketName,
@@ -33,7 +33,7 @@ class TamerS3SuffixDateFetcher(tamerS3: TamerS3) {
         afterwards,
         context
       )
-    tamerS3.fetch(setup)
+    TamerS3Job(setup).fetch()
   }
 
 }
