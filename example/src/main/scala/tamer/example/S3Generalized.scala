@@ -75,23 +75,24 @@ object S3Generalized extends zio.App {
   private final def selectObjectForInstant(lastProcessedNumber: LastProcessedNumber): Option[String] =
     Some(s"myFolder2/myPrefix${lastProcessedNumber.number}")
 
-  private val setup: S3Configuration[zio.s3.S3 with Blocking with Clock with KafkaConfig, LastProcessedNumber, Line, LastProcessedNumber] = S3Configuration(
-    bucketName = "myBucket",
-    prefix = "myFolder2/myPrefix",
-    tamerStateKafkaRecordKey = stringHash("myBucket") + stringHash("myFolder2/myPrefix") + 0,
-    transducer = myTransducer,
-    parallelism = 1,
-    S3Configuration.S3PollingTimings(
-      minimumIntervalForBucketFetch = 1.second,
-      maximumIntervalForBucketFetch = 1.minute
-    ),
-    S3Configuration.State(
-      initialState = LastProcessedNumber(0),
-      getNextState = getNextState("myFolder2/myPrefix"),
-      deriveKafkaRecordKey = (l: LastProcessedNumber, _: Line) => l,
-      selectObjectForState = (l: LastProcessedNumber, _: Keys) => selectObjectForInstant(l)
+  private val setup: S3Configuration[zio.s3.S3 with Blocking with Clock with KafkaConfig, LastProcessedNumber, Line, LastProcessedNumber] =
+    S3Configuration(
+      bucketName = "myBucket",
+      prefix = "myFolder2/myPrefix",
+      tamerStateKafkaRecordKey = stringHash("myBucket") + stringHash("myFolder2/myPrefix") + 0,
+      transducer = myTransducer,
+      parallelism = 1,
+      S3Configuration.S3PollingTimings(
+        minimumIntervalForBucketFetch = 1.second,
+        maximumIntervalForBucketFetch = 1.minute
+      ),
+      S3Configuration.State(
+        initialState = LastProcessedNumber(0),
+        getNextState = getNextState("myFolder2/myPrefix"),
+        deriveKafkaRecordKey = (l: LastProcessedNumber, _: Line) => l,
+        selectObjectForState = (l: LastProcessedNumber, _: Keys) => selectObjectForInstant(l)
+      )
     )
-  )
 
   val program: ZIO[zio.s3.S3 with Blocking with Clock with KafkaConfig, TamerError, Unit] = for {
     _ <- TamerS3Job(setup).fetch()

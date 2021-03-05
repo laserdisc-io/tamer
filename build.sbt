@@ -186,7 +186,6 @@ lazy val s3 = project
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
   )
 
-
 lazy val rest = project
   .in(file("rest"))
   .dependsOn(tamer)
@@ -196,7 +195,6 @@ lazy val rest = project
     libraryDependencies ++= D.sttp,
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
   )
-
 
 lazy val example = project
   .in(file("example"))

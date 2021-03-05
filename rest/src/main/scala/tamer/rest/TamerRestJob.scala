@@ -11,42 +11,44 @@ import zio.{Chunk, Queue, Ref, Schedule, Task, ZEnv, ZIO}
 
 object TamerRestJob {
   def apply[
-    R <: ZEnv with SttpClient with KafkaConfig,
-    K <: Product : Codec,
-    V <: Product : Codec,
-    S <: Product : Codec
+      R <: ZEnv with SttpClient with KafkaConfig,
+      K <: Product: Codec,
+      V <: Product: Codec,
+      S <: Product: Codec
   ](
-     setup: RestConfiguration[R, K, V, S]
-   ) = new TamerRestJob[R, K, V, S](setup)
+      setup: RestConfiguration[R, K, V, S]
+  ) = new TamerRestJob[R, K, V, S](setup)
 }
 
 class TamerRestJob[
-  R <: ZEnv with SttpClient with KafkaConfig,
-  K <: Product : Codec,
-  V <: Product : Codec,
-  S <: Product : Codec
+    R <: ZEnv with SttpClient with KafkaConfig,
+    K <: Product: Codec,
+    V <: Product: Codec,
+    S <: Product: Codec
 ](
-   setup: RestConfiguration[R, K, V, S]
- ) extends AbstractTamerJob[R, K, V, S, Unit](setup.generic) {
+    setup: RestConfiguration[R, K, V, S]
+) extends AbstractTamerJob[R, K, V, S, Unit](setup.generic) {
 
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.rest")
 
   override protected def createInitialSourceState: Unit = ()
 
-  override protected def createSchedule: Schedule[Any, Any, (java.time.Duration, Long)] = {
+  override protected def createSchedule: Schedule[Any, Any, (java.time.Duration, Long)] =
     Schedule.recurs(0).map(_ => (java.time.Duration.ZERO, 0))
-  }
 
-  override protected def updatedSourceState(currentState: Ref[Unit], token: Queue[Unit]): ZIO[R, Throwable, SourceStateChanged] = ZIO.succeed(SourceStateChanged(false))
+  override protected def updatedSourceState(currentState: Ref[Unit], token: Queue[Unit]): ZIO[R, Throwable, SourceStateChanged] =
+    ZIO.succeed(SourceStateChanged(false))
 
-
-  override protected def iteration(keysR: Ref[Unit], keysChangedToken: Queue[Unit])(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
+  override protected def iteration(
+      keysR: Ref[Unit],
+      keysChangedToken: Queue[Unit]
+  )(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
     val logic: ZIO[R with SttpClient, Throwable, S] = for {
       log <- logTask
       request = setup.queryBuilder.query(currentState)
-      _ <- log.debug(s"Going to execute request $request with params derived from $currentState")
+      _         <- log.debug(s"Going to execute request $request with params derived from $currentState")
       nextState <- setup.transitions.getNextState.apply(currentState)
-      response <- send(request)
+      response  <- send(request)
       _ <- {
         response.body match {
           case Left(value) =>
@@ -58,9 +60,7 @@ class TamerRestJob[
               .foreachChunk(q.offer)
         }
       }
-    } yield {
-      nextState
-    }
+    } yield nextState
 
     logic.mapError(e => TamerError(e.getLocalizedMessage, e))
   }

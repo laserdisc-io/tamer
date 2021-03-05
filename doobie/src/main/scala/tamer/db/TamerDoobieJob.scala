@@ -20,17 +20,17 @@ import java.time.{Duration, Instant}
 
 object TamerDoobieJob {
   def apply[
-    R <: ZEnv with DbConfig with TamerDBConfig with KafkaConfig,
-    K <: Product : Codec,
-    V <: Product : Codec,
-    S <: Product : Codec
+      R <: ZEnv with DbConfig with TamerDBConfig with KafkaConfig,
+      K <: Product: Codec,
+      V <: Product: Codec,
+      S <: Product: Codec
   ](
-     setup: DoobieConfiguration[K, V, S]
-   ) = new TamerDoobieJob[R, K, V, S](setup)
+      setup: DoobieConfiguration[K, V, S]
+  ) = new TamerDoobieJob[R, K, V, S](setup)
 
   final def fetchWithTimeSegment[K <: Product: Codec, V <: Product with Timestamped: Ordering: Codec](
-                                                                                                       queryBuilder: TimeSegment => Query0[V]
-                                                                                                     )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): ZIO[ZEnv, TamerError, Unit] = {
+      queryBuilder: TimeSegment => Query0[V]
+  )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): ZIO[ZEnv, TamerError, Unit] = {
     val transactorLayer: Layer[TamerError, DbTransactor]               = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
     val queryConfigLayer: Layer[TamerError, DbConfig with QueryConfig] = ConfigDb.live
     val setup: DoobieConfiguration[K, V, TimeSegment]                  = DoobieConfiguration.fromTimeSegment[K, V](queryBuilder)(earliest, tumblingStep, keyExtract)
@@ -39,32 +39,32 @@ object TamerDoobieJob {
 
 }
 class TamerDoobieJob[
-  R <: ZEnv with DbConfig with TamerDBConfig with KafkaConfig,
-  K <: Product : Codec,
-  V <: Product : Codec,
-  S <: Product : Codec
+    R <: ZEnv with DbConfig with TamerDBConfig with KafkaConfig,
+    K <: Product: Codec,
+    V <: Product: Codec,
+    S <: Product: Codec
 ](
-   setup: DoobieConfiguration[K, V, S]
- ) extends AbstractTamerJob[R, K, V, S, Unit](setup.generic) {
+    setup: DoobieConfiguration[K, V, S]
+) extends AbstractTamerJob[R, K, V, S, Unit](setup.generic) {
   import eu.timepit.refined.auto._
 
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.db")
 
   override protected def createInitialSourceState: Unit = ()
 
-  override protected def createSchedule: Schedule[Any, Any, (Duration, Long)] = {
+  override protected def createSchedule: Schedule[Any, Any, (Duration, Long)] =
     Schedule.recurs(0).map(_ => (Duration.ZERO, 0))
-  }
 
-  override protected def updatedSourceState(currentState: Ref[Unit], token: Queue[Unit]): ZIO[R, Throwable, SourceStateChanged] = ZIO.succeed(SourceStateChanged(false))
+  override protected def updatedSourceState(currentState: Ref[Unit], token: Queue[Unit]): ZIO[R, Throwable, SourceStateChanged] =
+    ZIO.succeed(SourceStateChanged(false))
 
-  override protected def iteration(keysR: Ref[Unit], keysChangedToken: Queue[Unit])(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
+  override protected def iteration(keysR: Ref[Unit], keysChangedToken: Queue[Unit])(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] =
     (for {
-      log <- logTask
-      cfg <- ConfigDb.queryConfig
-      tnx <- ZIO.service[Transactor[Task]]
+      log   <- logTask
+      cfg   <- ConfigDb.queryConfig
+      tnx   <- ZIO.service[Transactor[Task]]
       query <- UIO(setup.queryBuilder.query(currentState))
-      _ <- log.debug(s"running ${query.sql} with params derived from $currentState")
+      _     <- log.debug(s"running ${query.sql} with params derived from $currentState")
       start <- UIO(Instant.now())
       values <-
         query
@@ -86,5 +86,4 @@ class TamerDoobieJob[
         )
       )
     } yield newState).mapError(e => TamerError(e.getLocalizedMessage, e))
-  }
 }

@@ -10,19 +10,18 @@ import zio.{Chunk, Queue, Ref, Schedule, UIO, ZIO}
 
 import java.time.Duration
 
-
 trait TamerJob[R] {
   def fetch(): ZIO[R, TamerError, Unit]
 }
 
-
 abstract class AbstractTamerJob[
-  R <: Blocking with Clock with KafkaConfig,
-  K <: Product : Codec,
-  V <: Product : Codec,
-  S <: Product : Codec,
-  SS
-](genericParameters: SourceConfiguration[K, V, S]) extends TamerJob[R] {
+    R <: Blocking with Clock with KafkaConfig,
+    K <: Product: Codec,
+    V <: Product: Codec,
+    S <: Product: Codec,
+    SS
+](genericParameters: SourceConfiguration[K, V, S])
+    extends TamerJob[R] {
   private val sourceStateRef: UIO[Ref[SS]] = Ref.make(createInitialSourceState)
 
   protected def createInitialSourceState: SS
@@ -47,10 +46,10 @@ abstract class AbstractTamerJob[
   } yield ()
 
   protected def iteration(
-                           keysR: Ref[SS],
-                           keysChangedToken: Queue[Unit]
-                         )(
-                           currentState: S,
-                           q: Queue[Chunk[(K, V)]]
-                         ): ZIO[R, TamerError, S]
+      keysR: Ref[SS],
+      keysChangedToken: Queue[Unit]
+  )(
+      currentState: S,
+      q: Queue[Chunk[(K, V)]]
+  ): ZIO[R, TamerError, S]
 }

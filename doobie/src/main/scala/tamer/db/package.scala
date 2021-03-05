@@ -25,8 +25,6 @@ package object db {
       }
   }
 
-
-
   final val hikariLayer: ZLayer[Blocking with DbConfig, TamerError, DbTransactor] = ZLayer.fromManaged {
     for {
       cfg               <- ConfigDb.dbConfig.toManaged_

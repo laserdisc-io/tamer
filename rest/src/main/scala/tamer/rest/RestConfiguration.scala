@@ -24,7 +24,7 @@ final case class RestConfiguration[
 ](
     queryBuilder: RestQueryBuilder[S],
     transducer: ZTransducer[R, TamerError, Byte, V],
-    transitions: RestConfiguration.State[K, V, S],
+    transitions: RestConfiguration.State[K, V, S]
 ) {
   private val keyId: Int = queryBuilder.queryId + HashableState[S].stateHash(transitions.initialState)
   private val repr: String =
@@ -47,25 +47,23 @@ final case class RestConfiguration[
 
 object RestConfiguration {
   case class State[K, V, S](
-                             initialState: S,
-                             getNextState: S => UIO[S],
-                             deriveKafkaRecordKey: (S, V) => K,
-                           )
+      initialState: S,
+      getNextState: S => UIO[S],
+      deriveKafkaRecordKey: (S, V) => K
+  )
 
+  def test: RequestT[Identity, Either[String, stream.Stream[Throwable, Byte]], ZioStreams] = {
+    import sttp.capabilities.zio.ZioStreams
+    import sttp.client3.{Identity, RequestT, _}
+    import zio.stream._
 
-   def test: RequestT[Identity, Either[String, stream.Stream[Throwable, Byte]], ZioStreams] = {
-     import sttp.capabilities.zio.ZioStreams
-     import sttp.client3.{Identity, RequestT, _}
-     import zio.stream._
+    val request: RequestT[Identity, Either[String, Stream[Throwable, Byte]], ZioStreams] =
+      basicRequest
+        .post(uri"...")
+        .response(asStreamUnsafe(ZioStreams))
+        .readTimeout(scala.concurrent.duration.Duration.Inf)
 
-     val request: RequestT[Identity, Either[String, Stream[Throwable, Byte]], ZioStreams] =
-       basicRequest
-         .post(uri"...")
-         .response(asStreamUnsafe(ZioStreams))
-         .readTimeout(scala.concurrent.duration.Duration.Inf)
-
-     request
-   }
-
+    request
+  }
 
 }

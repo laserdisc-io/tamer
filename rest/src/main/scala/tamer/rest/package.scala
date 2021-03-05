@@ -1,4 +1,3 @@
 package tamer
 
-package object rest {
-}
+package object rest {}
