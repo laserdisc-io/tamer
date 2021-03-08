@@ -3,7 +3,7 @@ package tamer.rest
 import com.sksamuel.avro4s.Codec
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import sttp.client3.asynchttpclient.zio.{SttpClient, send}
+import sttp.client3.httpclient.zio.{SttpClient, send}
 import tamer.TamerError
 import tamer.config.KafkaConfig
 import tamer.job.{AbstractTamerJob, SourceStateChanged}

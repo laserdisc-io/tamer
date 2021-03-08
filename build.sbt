@@ -92,7 +92,7 @@ lazy val D = new {
   )
 
   val sttp = Seq(
-    "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % V.sttp
+    "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp
   )
 }
 
