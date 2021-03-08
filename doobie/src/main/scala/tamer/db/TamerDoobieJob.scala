@@ -50,8 +50,7 @@ class TamerDoobieJob[
 
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.db")
 
-
-  override protected def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
+  override protected def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] =
     (for {
       log   <- logTask
       cfg   <- ConfigDb.queryConfig
@@ -79,5 +78,4 @@ class TamerDoobieJob[
         )
       )
     } yield newState).mapError(e => TamerError(e.getLocalizedMessage, e))
-  }
 }

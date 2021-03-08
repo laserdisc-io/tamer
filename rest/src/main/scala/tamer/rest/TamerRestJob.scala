@@ -31,7 +31,6 @@ class TamerRestJob[
 
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.rest")
 
-
   override protected def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
     val logic: ZIO[R with SttpClient, Throwable, S] = for {
       log <- logTask
