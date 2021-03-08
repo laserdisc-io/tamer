@@ -6,7 +6,6 @@ lazy val scala_213 = "2.13.4"
 lazy val V = new {
   val avro4s        = "4.0.4"
   val cats          = "2.4.2"
-  val `cats-effect` = "2.4.0"
   val ciris         = "1.2.1"
   val confluent     = "6.1.0"
   val doobie        = "0.12.1"
@@ -21,10 +20,15 @@ lazy val V = new {
   val silencer      = "1.7.3"
   val sttp          = "3.1.9"
   val zio           = "1.0.5"
-  val `zio-interop` = "2.3.1.0"
   val `zio-kafka`   = "0.14.0"
   val `zio-oci-os`  = "0.1.3"
   val `zio-s3`      = "0.3.0"
+
+  val http4s = "1.0.0-M10" // last compatible with CE 2.3
+
+  private val `cats-effect-version` = "2.3"
+  val `cats-effect`                 = s"${`cats-effect-version`}.3"
+  val `zio-interop`                 = s"${`cats-effect-version`}.1.0"
 }
 
 lazy val D = new {
@@ -100,6 +104,12 @@ lazy val D = new {
 
   val sttp = Seq(
     "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp
+  )
+
+  val http4s = Seq(
+    "org.http4s" %% "http4s-dsl"          % V.http4s,
+    "org.http4s" %% "http4s-blaze-server" % V.http4s,
+    "org.http4s" %% "http4s-blaze-client" % V.http4s
   )
 }
 
@@ -210,6 +220,7 @@ lazy val rest = project
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= D.sttp,
+    libraryDependencies ++= D.http4s.map(_ % Test),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
   )
 
