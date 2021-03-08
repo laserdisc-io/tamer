@@ -4,8 +4,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.S3Exception
 import tamer.TamerError
 import tamer.config.{Config, KafkaConfig}
-import tamer.s3.TamerS3.TamerS3Impl
-import tamer.s3.{LastProcessedInstant, TamerS3, TamerS3SuffixDateFetcher, ZonedDateTimeFormatter}
+import tamer.s3.{LastProcessedInstant, TamerS3SuffixDateFetcher, ZonedDateTimeFormatter}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.s3._
@@ -15,10 +14,9 @@ import java.net.URI
 import java.time.{Instant, ZoneId}
 
 object S3Simple extends zio.App {
-  private val tamer: TamerS3 = new TamerS3Impl()
 
   private val program: ZIO[Blocking with Clock with S3 with KafkaConfig, TamerError, Unit] = for {
-    _ <- new TamerS3SuffixDateFetcher(tamer).fetchAccordingToSuffixDate(
+    _ <- new TamerS3SuffixDateFetcher[Blocking with Clock with S3 with KafkaConfig]().fetchAccordingToSuffixDate(
       bucketName = "myBucket",
       prefix = "myFolder/myPrefix",
       afterwards = LastProcessedInstant(Instant.parse("2020-12-03T10:15:30.00Z")),

@@ -42,7 +42,7 @@ object DatabaseGeneralized extends zio.App {
           mostRecent.plus(5, MINUTES).orNow.map(MyState(mostRecent, _))
       }
     )
-    _ <- tamer.db.fetch(setup)
+    _ <- tamer.db.TamerDoobieJob(setup).fetch()
   } yield ()).mapError(e => TamerError("Could not run tamer example", e))
 
   private def query(s: MyState): doobie.Query0[Value] = {
