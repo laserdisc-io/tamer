@@ -5,7 +5,7 @@ import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.TamerError
 import tamer.config.KafkaConfig
-import tamer.job.{AbstractTamerJob, SourceStateChanged}
+import tamer.job.{AbstractStatefulSourceTamerJob, SourceStateChanged}
 import zio.ZIO.when
 import zio.blocking.Blocking
 import zio.clock.Clock
@@ -23,7 +23,7 @@ class TamerS3Job[
     S <: Product: Codec
 ](
     setup: S3Configuration[R, K, V, S]
-) extends AbstractTamerJob[R, K, V, S, Keys](setup.generic) {
+) extends AbstractStatefulSourceTamerJob[R, K, V, S, Keys](setup.generic) {
   private final val logTask: Task[LogWriter[Task]]      = log4sFromName.provide("tamer.s3")
   override protected def createInitialSourceState: Keys = List.empty
 
