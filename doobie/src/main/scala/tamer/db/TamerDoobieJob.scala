@@ -7,14 +7,14 @@ import doobie.util.transactor.Transactor
 import fs2.Stream
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import tamer.{TamerError, db}
 import tamer.config.{Config, KafkaConfig}
 import tamer.db.Compat.toIterable
 import tamer.db.ConfigDb.{DbConfig, QueryConfig}
-import tamer.job.{AbstractTamerJob, SourceStateChanged}
+import tamer.job.AbstractTamerJob
+import tamer.{TamerError, db}
 import zio.blocking.Blocking
 import zio.interop.catz.taskConcurrentInstance
-import zio.{Chunk, Layer, Queue, Ref, Schedule, Task, UIO, ZEnv, ZIO}
+import zio.{Chunk, Layer, Queue, Task, UIO, ZEnv, ZIO}
 
 import java.time.{Duration, Instant}
 
@@ -45,20 +45,12 @@ class TamerDoobieJob[
     S <: Product: Codec
 ](
     setup: DoobieConfiguration[K, V, S]
-) extends AbstractTamerJob[R, K, V, S, Unit](setup.generic) {
+) extends AbstractTamerJob[R, K, V, S](setup.generic) {
   import eu.timepit.refined.auto._
 
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.db")
 
-  override protected def createInitialSourceState: Unit = ()
-
-  override protected def createSchedule: Schedule[Any, Any, (Duration, Long)] =
-    Schedule.recurs(0).map(_ => (Duration.ZERO, 0))
-
-  override protected def updatedSourceState(currentState: Ref[Unit], token: Queue[Unit]): ZIO[R, Throwable, SourceStateChanged] =
-    ZIO.succeed(SourceStateChanged(false))
-
-  override protected def iteration(keysR: Ref[Unit], keysChangedToken: Queue[Unit])(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] =
+  override protected def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] =
     (for {
       log   <- logTask
       cfg   <- ConfigDb.queryConfig

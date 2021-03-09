@@ -6,8 +6,8 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import sttp.client3.httpclient.zio.{SttpClient, send}
 import tamer.TamerError
 import tamer.config.KafkaConfig
-import tamer.job.{AbstractTamerJob, SourceStateChanged}
-import zio.{Chunk, Queue, Ref, Schedule, Task, ZEnv, ZIO}
+import tamer.job.AbstractTamerJob
+import zio.{Chunk, Queue, Task, ZEnv, ZIO}
 
 object TamerRestJob {
   def apply[
@@ -27,22 +27,11 @@ class TamerRestJob[
     S <: Product: Codec
 ](
     setup: RestConfiguration[R, K, V, S]
-) extends AbstractTamerJob[R, K, V, S, Unit](setup.generic) {
+) extends AbstractTamerJob[R, K, V, S](setup.generic) {
 
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.rest")
 
-  override protected def createInitialSourceState: Unit = ()
-
-  override protected def createSchedule: Schedule[Any, Any, (java.time.Duration, Long)] =
-    Schedule.recurs(0).map(_ => (java.time.Duration.ZERO, 0))
-
-  override protected def updatedSourceState(currentState: Ref[Unit], token: Queue[Unit]): ZIO[R, Throwable, SourceStateChanged] =
-    ZIO.succeed(SourceStateChanged(false))
-
-  override protected def iteration(
-      keysR: Ref[Unit],
-      keysChangedToken: Queue[Unit]
-  )(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
+  override protected def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
     val logic: ZIO[R with SttpClient, Throwable, S] = for {
       log <- logTask
       request = setup.queryBuilder.query(currentState)
