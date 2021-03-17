@@ -13,15 +13,17 @@ lazy val V = new {
   val kafka         = "2.7.0"
   val logback       = "1.2.3"
   val `log-effect`  = "0.14.1"
+  val ociSdk        = "1.33.2"
   val postgres      = "42.2.19"
   val refined       = "0.9.21"
   val scalacheck    = "1.15.3"
   val scalatest     = "3.2.6"
   val silencer      = "1.7.3"
   val zio           = "1.0.5"
-  val `zio-s3`      = "0.3.0"
   val `zio-interop` = "2.3.1.0"
   val `zio-kafka`   = "0.14.0"
+  val `zio-oci-os`  = "0.1.1"
+  val `zio-s3`      = "0.3.0"
   val sttp          = "3.1.7"
 }
 
@@ -53,6 +55,11 @@ lazy val D = new {
     "ch.qos.logback" % "logback-classic" % V.logback,
     "io.laserdisc"  %% "log-effect-fs2"  % V.`log-effect`,
     "io.laserdisc"  %% "log-effect-zio"  % V.`log-effect`
+  )
+
+  val ociObjectStorage = Seq(
+    "com.oracle.oci.sdk" % "oci-java-sdk-objectstorage" % V.ociSdk,
+    "io.laserdisc"      %% "zio-oci-objectstorage"      % V.`zio-oci-os`
   )
 
   val postgres = Seq(
@@ -176,6 +183,16 @@ lazy val doobie = project
     libraryDependencies ++= D.doobie
   )
 
+lazy val ociObjectStorage = project
+  .in(file("oci-objectstorage"))
+  .dependsOn(tamer)
+  .settings(commonSettings)
+  .settings(
+    name := "tamer-oci-objectstorage",
+    libraryDependencies ++= D.ociObjectStorage,
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
+  )
+
 lazy val s3 = project
   .in(file("s3"))
   .dependsOn(tamer)
@@ -199,7 +216,7 @@ lazy val rest = project
 lazy val example = project
   .in(file("example"))
   .enablePlugins(JavaAppPackaging)
-  .dependsOn(tamer, doobie, s3, rest)
+  .dependsOn(tamer, doobie, ociObjectStorage, rest, s3)
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= D.postgres,
@@ -208,7 +225,7 @@ lazy val example = project
 
 lazy val root = project
   .in(file("."))
-  .aggregate(tamer, example, doobie, s3, rest)
+  .aggregate(tamer, example, doobie, ociObjectStorage, rest, s3)
   .settings(commonSettings)
   .settings(
     publish / skip := true,
