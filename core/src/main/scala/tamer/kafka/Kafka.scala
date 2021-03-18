@@ -51,7 +51,7 @@ object Kafka {
           .produceChunkAsync(recordChunk)
           .tapError {
             _ =>
-              log.warn(s"Still cannot produce next chunk, ${recordChunk.toString()}")
+              log.info(s"Still cannot produce next chunk, $recordChunk")
           }
           .retry(tenTimes)
           .flatten <* log.info(s"pushed ${recordChunk.size} messages to $sinkTopic")
@@ -82,10 +82,10 @@ object Kafka {
       case object EmptyState       extends ExistingState
       val stateKey                                                  = StateKey(setup.tamerStateKafkaRecordKey.toHexString, config.state.groupId)
       def waitNonemptyAssignment(consumerService: Consumer.Service) = consumerService.assignment
-        .withFilter(partitions => {partitions.nonEmpty})
+        .withFilter(_.nonEmpty)
         .tapError {
           _ =>
-            log.info(s"Still no assignment on ${consumerService}, there are no partitions to prosess")
+            log.info(s"Still no assignment on $consumerService, there are no partitions to prosess")
         }
         .retry(tenTimes)
       val stateTopicSub                                             = Subscription.topics(config.state.topic)
