@@ -51,7 +51,7 @@ object Kafka {
           .produceChunkAsync(recordChunk)
           .tapError {
             _ =>
-              ZIO.succeed(log.warn(s"Still cannot produce next chunk, ${recordChunk.toString()}"))
+              log.warn(s"Still cannot produce next chunk, ${recordChunk.toString()}")
           }
           .retry(tenTimes)
           .flatten <* log.info(s"pushed ${recordChunk.size} messages to $sinkTopic")
