@@ -27,7 +27,7 @@ object StateKey {
 }
 
 object Kafka {
-  private val tenTimes = Schedule.recurs(10) && Schedule.exponential(25.milliseconds)
+  private val tenTimes = Schedule.recurs(10) && Schedule.exponential(100.milliseconds)
 
   trait Service {
     def runLoop: ZIO[Blocking with Clock, TamerError, Unit]
@@ -49,6 +49,10 @@ object Kafka {
       .mapChunksM(recordChunk =>
         valueProducerService
           .produceChunkAsync(recordChunk)
+          .tapError {
+            _ =>
+              ZIO.succeed(log.warn(s"Still cannot produce next chunk, ${recordChunk.toString()}"))
+          }
           .retry(tenTimes)
           .flatten <* log.info(s"pushed ${recordChunk.size} messages to $sinkTopic")
       )
@@ -77,7 +81,13 @@ object Kafka {
       case object PreexistingState extends ExistingState
       case object EmptyState       extends ExistingState
       val stateKey                                                  = StateKey(setup.tamerStateKafkaRecordKey.toHexString, config.state.groupId)
-      def waitNonemptyAssignment(consumerService: Consumer.Service) = consumerService.assignment.withFilter(_.nonEmpty).retry(tenTimes)
+      def waitNonemptyAssignment(consumerService: Consumer.Service) = consumerService.assignment
+        .withFilter(partitions => {partitions.nonEmpty})
+        .tapError {
+          _ =>
+            log.info(s"Still no assignment on ${consumerService}, there are no partitions to prosess")
+        }
+        .retry(tenTimes)
       val stateTopicSub                                             = Subscription.topics(config.state.topic)
       def mkRecord(k: StateKey, v: S)                               = new ProducerRecord(config.state.topic, k, v)
       def containsExistingState(partitionSet: Set[TopicPartition]) =

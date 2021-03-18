@@ -1,55 +1,78 @@
 package tamer.rest
 
-import zio.interop.catz._
-import zio.interop.catz.implicits._
+import io.circe.Codec
+import sttp.capabilities.zio.ZioStreams
+import tamer.config.KafkaConfig
+import tamer.kafka.Kafka
+import tamer.kafka.embedded.KafkaTest
+import tamer.{SourceConfiguration, TamerError}
+import zio.stream.ZTransducer
 import zio.test.Assertion._
-import zio.test.environment.TestEnvironment
 import zio.test.{assertM, _}
-import zio.{Task, ZIO, _}
+import zio.{Chunk, Queue, Task, ZEnv, ZIO, ZLayer, stream}
 
-import java.util.UUID
+import java.util.concurrent.TimeUnit
+import scala.concurrent.duration.Duration
 
-object Fixtures {
-  import org.http4s._
-  import org.http4s.dsl.Http4sDsl
-  import org.http4s.implicits._
-  import org.http4s.server.Router
-  import org.http4s.server.blaze._
-
-  val port = 8081
-
-  private val dsl: Http4sDsl[Task] = new Http4sDsl[Task] {}
-
-  private val testService: HttpRoutes[Task] = {
-    import dsl._
-
-    HttpRoutes.of[Task] { case GET -> Root / "random" =>
-      for {
-        now <- Task.succeed(System.nanoTime())
-        uid <- Task.succeed(UUID.randomUUID())
-        out <- Ok(s"""{"time": $now, "uuid": "$uid"}""")
-      } yield out
-    }
-  }
-  private val httpApp = Router("/" -> testService).orNotFound
-
-  private val serverBuilder: ZIO[Any, Nothing, BlazeServerBuilder[Task]] = ZIO.runtime.map { implicit r: Runtime[Any] =>
-    BlazeServerBuilder[Task](scala.concurrent.ExecutionContext.Implicits.global).bindHttp(port, "localhost").withHttpApp(httpApp)
-  }
-
-  def withServer(body: ZIO[Any, Throwable, TestResult]): ZIO[TestEnvironment, Throwable, TestResult] =
-    for {
-      sb  <- serverBuilder
-      out <- sb.resource.use(_ => body)
-    } yield out
-}
-
-object DateParsingSpec extends DefaultRunnableSpec {
+object RestSpec extends DefaultRunnableSpec {
   import Fixtures._
   import sttp.client3._
   import sttp.client3.httpclient.zio._
 
-  private def testHttp4sStartup =
+
+  class JobFixtures(port: Int) {
+
+
+    val fullLayer: ZLayer[ZEnv, Throwable, SttpClient] =
+       HttpClientZioBackend.layer()
+
+    private val qb: RestQueryBuilder[State] = new RestQueryBuilder[State] {
+      override val queryId: Int = 0
+
+      override def query(state: State): RequestT[Identity, Either[String, stream.Stream[Throwable, Byte]], ZioStreams] =
+        basicRequest
+          .get(uri"http://localhost:$port/random")
+          .response(asStreamUnsafe(ZioStreams))
+          .readTimeout(Duration.create(20, TimeUnit.SECONDS))
+    }
+
+    val transducer: ZTransducer[ZEnv with SttpClient, TamerError, Byte, Value] = {
+      ZTransducer.utf8Decode >>> ZTransducer.fromFunctionM { v: String =>
+        (for {
+          p   <- ZIO.fromEither(io.circe.parser.parse(v))
+          out <- ZIO.fromEither(implicitly[Codec[Value]].decodeJson(p))
+
+        } yield out).catchAll(e => ZIO.fail(new TamerError(s"Decoder failed!", e)))
+      }
+    }
+
+    val transitions: RestConfiguration.State[Key, Value, State] =
+      RestConfiguration.State[Key, Value, State](State(0), s => ZIO.succeed(s), (_, v) => Key(v.time))
+
+    val conf: RestConfiguration[ZEnv with SttpClient with KafkaConfig, Key, Value, State] =
+      new RestConfiguration[ZEnv with SttpClient with KafkaConfig, Key, Value, State](
+        qb,
+        transducer,
+        transitions
+      )
+
+    val job = new TamerRestJob[ZEnv with SttpClient with KafkaConfig, Key, Value, State](conf)
+
+    val tamerLayer: ZLayer[ZEnv, Throwable, ZEnv with SttpClient] =
+        ((ZLayer.requires[ZEnv] ++ fullLayer) )
+  }
+
+  object StaticFixtures {
+    val stateTransitionFunction: (State, Queue[Chunk[(Key, Value)]]) => ZIO[Any, TamerError, State] = {
+      case (s, _) =>
+        ZIO.succeed(s.copy(s.i + 1))
+    }
+    val kafkaConfigLayer: ZLayer[ZEnv, Throwable, KafkaConfig] = KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig
+    val kafkaLayer: ZLayer[ZEnv, Throwable, KafkaConfig with Kafka] = {
+      kafkaConfigLayer ++ (((ZLayer.requires[ZEnv] ++ kafkaConfigLayer) >>> Kafka.live(SourceConfiguration(SourceConfiguration.SourceSerde[Key, Value, State](), State(0), 0), stateTransitionFunction)))
+    }
+  }
+  private def testHttp4sStartup(port: Int) =
     for {
       cb <- HttpClientZioBackend()
       req = basicRequest.get(uri"http://localhost:$port/random")
@@ -59,7 +82,21 @@ object DateParsingSpec extends DefaultRunnableSpec {
       out      <- assertM(Task.succeed(respBody))(containsString("uuid"))
     } yield out
 
-  override def spec: ZSpec[TestEnvironment, Any] = suite("RestSpec")(
-    testM("Should run a test with provisioned http4s")(withServer(testHttp4sStartup))
-  )
+  private def testRestFlow(port: Int) = {
+    val f = new JobFixtures(port)
+
+    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Kafka, Throwable, TestResult] = for {
+      _   <- tamer.kafka.runLoop.fork
+      _   <- Task.succeed(println("Before fetch"))
+      _   <- f.job.fetch()
+      out <- assertM(Task.succeed(true))(equalTo(true))
+    } yield out
+
+      io.provideSomeLayer[ZEnv with KafkaConfig with Kafka](f.tamerLayer)
+  }
+
+  override def spec: Spec[_root_.zio.test.environment.TestEnvironment, TestFailure[Throwable], TestSuccess] = suite("RestSpec")(
+    testM("Should run a test with provisioned http4s")(withServer(testHttp4sStartup)),
+    testM("Should support e2e rest flow")(withServer(testRestFlow))
+  ).provideSomeLayerShared[ZEnv](StaticFixtures.kafkaLayer.mapError(e => TestFailure.die(e))).provideCustomLayer(ZEnv.live)
 }
