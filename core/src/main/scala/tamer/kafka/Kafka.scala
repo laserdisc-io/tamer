@@ -85,7 +85,7 @@ object Kafka {
         .withFilter(_.nonEmpty)
         .tapError {
           _ =>
-            log.info(s"Still no assignment on $consumerService, there are no partitions to prosess")
+            log.info(s"Still no assignment on $consumerService, there are no partitions to process")
         }
         .retry(tenTimes)
       val stateTopicSub                                             = Subscription.topics(config.state.topic)
