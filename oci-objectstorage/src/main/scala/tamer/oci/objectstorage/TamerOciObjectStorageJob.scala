@@ -33,7 +33,7 @@ class TamerOciObjectStorageJob[
   override protected def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
     val logic: ZIO[R with ObjectStorage, Throwable, S] = for {
       log <- logTask
-      _   <- log.info(s"currentState: $currentState")
+      _   <- log.debug(s"current state: $currentState")
       startAfter = setup.objectNameBuilder.startAfter(currentState)
       nextObject <- listObjects(setup.namespace, setup.bucketName, ListObjectsOptions(setup.prefix, None, startAfter, 1))
       newState   <- setup.transitions.getNextState(currentState, nextObject.objectSummaries.headOption.map(_.getName))
@@ -44,7 +44,7 @@ class TamerOciObjectStorageJob[
             .map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
             .foreachChunk(q.offer)
         case None =>
-          log.info("no state change")
+          log.debug("no state change")
       }
     } yield newState
 
