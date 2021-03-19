@@ -38,18 +38,16 @@ object OciObjectStorageSimple extends zio.App {
       case (s, None, None)    => ZIO.sleep(1.minute) *> UIO(ObjectsCursor(s, None))
     }
 
-  val programs: ZIO[ZEnv with ObjectStorage with KafkaConfig, TamerError, Unit] = for {
-    _ <- TamerOciObjectStorageJob(
-      OciObjectStorageConfiguration[ZEnv with ObjectStorage with KafkaConfig, ObjectsCursor, MyLine, ObjectsCursor](
-        "namespace",
-        "bucketName",
-        None,
-        objectNameBuilder,
-        OciObjectStorageConfiguration.State(initialState, getNextState, (o: ObjectsCursor, _: MyLine) => o),
-        transducer
-      )
-    ).fetch()
-  } yield ()
+  val programs: ZIO[ZEnv with ObjectStorage with KafkaConfig, TamerError, Unit] = TamerOciObjectStorageJob(
+    OciObjectStorageConfiguration[ZEnv with ObjectStorage with KafkaConfig, ObjectsCursor, MyLine, ObjectsCursor](
+      "namespace",
+      "bucketName",
+      None,
+      objectNameBuilder,
+      OciObjectStorageConfiguration.State(initialState, getNextState, (o: ObjectsCursor, _: MyLine) => o),
+      transducer
+    )
+  ).fetch()
 
   val authLayer: ZLayer[Blocking, InvalidAuthDetails, Has[ObjectStorageAuth]] = ZLayer.fromEffect(ObjectStorageAuth.fromConfigFileDefaultProfile)
   val osLayer: ZLayer[Has[ObjectStorageAuth], ConnectionError, ObjectStorage] =
