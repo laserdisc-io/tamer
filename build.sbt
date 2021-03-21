@@ -222,7 +222,7 @@ lazy val s3 = project
 
 lazy val rest = project
   .in(file("rest"))
-  .dependsOn(tamer)
+  .dependsOn(tamer % "compile->compile;test->compile,test")
   .settings(commonSettings)
   .settings(
     name := "tamer-rest",
