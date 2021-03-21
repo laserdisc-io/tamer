@@ -39,11 +39,11 @@ object Fixtures {
   private val testService: HttpRoutes[Task] = {
     import dsl._
 
-    HttpRoutes.of[Task] { case r@GET -> Root / "random"  =>
+    HttpRoutes.of[Task] { case r @ GET -> Root / "random" =>
       for {
         now <- Task.succeed(System.nanoTime())
         uid <- Task.succeed(UUID.randomUUID())
-        _ <- Task.succeed(println(s"Got request $r"))
+        _   <- Task.succeed(println(s"Got request $r"))
         out <- Ok(s"""{"time": $now, "uuid": "$uid"}""")
       } yield out
     }
@@ -61,7 +61,7 @@ object Fixtures {
 
   def withServer[R](body: Int => ZIO[R, Throwable, TestResult]): ZIO[R, Throwable, TestResult] =
     for {
-      sp <- serverResource
-      out <- sp.use{case (_, p) => body(p)}
+      sp  <- serverResource
+      out <- sp.use { case (_, p) => body(p) }
     } yield out
 }

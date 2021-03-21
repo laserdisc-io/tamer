@@ -49,9 +49,8 @@ object Kafka {
       .mapChunksM(recordChunk =>
         valueProducerService
           .produceChunkAsync(recordChunk)
-          .tapError {
-            _ =>
-              log.info(s"Still cannot produce next chunk, $recordChunk")
+          .tapError { _ =>
+            log.info(s"Still cannot produce next chunk, $recordChunk")
           }
           .retry(tenTimes)
           .flatten <* log.info(s"pushed ${recordChunk.size} messages to $sinkTopic")
@@ -80,16 +79,15 @@ object Kafka {
       sealed trait ExistingState
       case object PreexistingState extends ExistingState
       case object EmptyState       extends ExistingState
-      val stateKey                                                  = StateKey(setup.tamerStateKafkaRecordKey.toHexString, config.state.groupId)
+      val stateKey = StateKey(setup.tamerStateKafkaRecordKey.toHexString, config.state.groupId)
       def waitNonemptyAssignment(consumerService: Consumer.Service) = consumerService.assignment
         .withFilter(_.nonEmpty)
-        .tapError {
-          _ =>
-            log.info(s"Still no assignment on $consumerService, there are no partitions to process")
+        .tapError { _ =>
+          log.info(s"Still no assignment on $consumerService, there are no partitions to process")
         }
         .retry(tenTimes)
-      val stateTopicSub                                             = Subscription.topics(config.state.topic)
-      def mkRecord(k: StateKey, v: S)                               = new ProducerRecord(config.state.topic, k, v)
+      val stateTopicSub               = Subscription.topics(config.state.topic)
+      def mkRecord(k: StateKey, v: S) = new ProducerRecord(config.state.topic, k, v)
       def containsExistingState(partitionSet: Set[TopicPartition]) =
         stateConsumerService.endOffsets(partitionSet).map(_.values.exists(_ > 0L)).map(if (_) PreexistingState else EmptyState)
       val subscribeToExistingState =

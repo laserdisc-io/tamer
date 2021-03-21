@@ -19,12 +19,10 @@ object RestSpec extends DefaultRunnableSpec {
   import sttp.client3._
   import sttp.client3.httpclient.zio._
 
-
   class JobFixtures(port: Int) {
 
-
     val fullLayer: ZLayer[ZEnv, Throwable, SttpClient] =
-       HttpClientZioBackend.layer()
+      HttpClientZioBackend.layer()
 
     private val qb: RestQueryBuilder[State] = new RestQueryBuilder[State] {
       override val queryId: Int = 0
@@ -59,17 +57,19 @@ object RestSpec extends DefaultRunnableSpec {
     val job = new TamerRestJob[ZEnv with SttpClient with KafkaConfig, Key, Value, State](conf)
 
     val tamerLayer: ZLayer[ZEnv, Throwable, ZEnv with SttpClient] =
-        ((ZLayer.requires[ZEnv] ++ fullLayer) )
+      (ZLayer.requires[ZEnv] ++ fullLayer)
   }
 
   object StaticFixtures {
-    val stateTransitionFunction: (State, Queue[Chunk[(Key, Value)]]) => ZIO[Any, TamerError, State] = {
-      case (s, _) =>
-        ZIO.succeed(s.copy(s.i + 1))
+    val stateTransitionFunction: (State, Queue[Chunk[(Key, Value)]]) => ZIO[Any, TamerError, State] = { case (s, _) =>
+      ZIO.succeed(s.copy(s.i + 1))
     }
     val kafkaConfigLayer: ZLayer[ZEnv, Throwable, KafkaConfig] = KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig
     val kafkaLayer: ZLayer[ZEnv, Throwable, KafkaConfig with Kafka] = {
-      kafkaConfigLayer ++ (((ZLayer.requires[ZEnv] ++ kafkaConfigLayer) >>> Kafka.live(SourceConfiguration(SourceConfiguration.SourceSerde[Key, Value, State](), State(0), 0), stateTransitionFunction)))
+      kafkaConfigLayer ++ ((ZLayer.requires[ZEnv] ++ kafkaConfigLayer) >>> Kafka.live(
+        SourceConfiguration(SourceConfiguration.SourceSerde[Key, Value, State](), State(0), 0),
+        stateTransitionFunction
+      ))
     }
   }
   private def testHttp4sStartup(port: Int) =
@@ -92,7 +92,7 @@ object RestSpec extends DefaultRunnableSpec {
       out <- assertM(Task.succeed(true))(equalTo(true))
     } yield out
 
-      io.provideSomeLayer[ZEnv with KafkaConfig with Kafka](f.tamerLayer)
+    io.provideSomeLayer[ZEnv with KafkaConfig with Kafka](f.tamerLayer)
   }
 
   override def spec: Spec[_root_.zio.test.environment.TestEnvironment, TestFailure[Throwable], TestSuccess] = suite("RestSpec")(

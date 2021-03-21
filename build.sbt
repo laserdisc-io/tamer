@@ -175,7 +175,7 @@ lazy val commonSettings = Seq(
   developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
   scalacOptions ++= versionDependent(scalaVersion.value),
   resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/", "jitpack" at "https://jitpack.io"),
-  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
+  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
 )
 
 lazy val tamer = project
@@ -189,7 +189,7 @@ lazy val tamer = project
     libraryDependencies ++= D.avro,
     addCompilerPlugin("com.github.ghik" %% "silencer-plugin" % V.silencer cross CrossVersion.full),
     Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
-    Test / console / scalacOptions := (Compile / console / scalacOptions).value,
+    Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )
 
 lazy val doobie = project
@@ -217,7 +217,7 @@ lazy val s3 = project
   .settings(commonSettings)
   .settings(
     name := "tamer-s3",
-    libraryDependencies ++= D.s3,
+    libraryDependencies ++= D.s3
   )
 
 lazy val rest = project
@@ -229,7 +229,7 @@ lazy val rest = project
     libraryDependencies ++= D.sttp,
     libraryDependencies ++= D.http4s.map(_ % Test),
     libraryDependencies ++= D.circe.map(_ % Test),
-    libraryDependencies ++= D.tests,
+    libraryDependencies ++= D.tests
   )
 
 lazy val example = project
