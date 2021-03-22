@@ -57,7 +57,7 @@ object RestSpec extends DefaultRunnableSpec {
     val job = new TamerRestJob[ZEnv with SttpClient with KafkaConfig, Key, Value, State](conf)
 
     val tamerLayer: ZLayer[ZEnv, Throwable, ZEnv with SttpClient] =
-      (ZLayer.requires[ZEnv] ++ fullLayer)
+      ZLayer.requires[ZEnv] ++ fullLayer
   }
 
   object StaticFixtures {
