@@ -34,23 +34,25 @@ object Fixtures {
     }
   }
 
+  case class ServerLog(lastRequestTimestamp: Option[Long])
+
   private val dsl: Http4sDsl[Task] = new Http4sDsl[Task] {}
 
-  private val testService: HttpRoutes[Task] = {
-    import dsl._
+  def serverResource(gotRequest: Ref[ServerLog]) = {
+    val testService: HttpRoutes[Task] = {
+      import dsl._
 
-    HttpRoutes.of[Task] { case r @ GET -> Root / "random" =>
-      for {
-        now <- Task.succeed(System.nanoTime())
-        uid <- Task.succeed(UUID.randomUUID())
-        _   <- Task.succeed(println(s"Got request $r"))
-        out <- Ok(s"""{"time": $now, "uuid": "$uid"}""")
-      } yield out
+      HttpRoutes.of[Task] { case r @ GET -> Root / "random" =>
+        for {
+          now <- Task.succeed(System.nanoTime())
+          uid <- Task.succeed(UUID.randomUUID())
+          _   <- Task.succeed(println(s"Got request $r"))
+          _   <- gotRequest.update(l => l.copy(lastRequestTimestamp = Some(now)))
+          out <- Ok(s"""{"time": $now, "uuid": "$uid"}""")
+        } yield out
+      }
     }
-  }
-  private val httpApp = Router("/" -> testService).orNotFound
-
-  def serverResource =
+    val httpApp = Router("/" -> testService).orNotFound
     for {
       port <- ZIO.succeed(Random.nextInt(20000) + 10000)
       serverBuilder = ZIO.runtime.map { implicit r: Runtime[Any] =>
@@ -58,10 +60,12 @@ object Fixtures {
       }
       sb <- serverBuilder
     } yield sb.resource.map(s => (s, port)).toManagedZIO
+  }
 
-  def withServer[R](body: Int => ZIO[R, Throwable, TestResult]): ZIO[R, Throwable, TestResult] =
+  def withServer[R](body: (Int, Ref[ServerLog]) => ZIO[R, Throwable, TestResult]): ZIO[R, Throwable, TestResult] =
     for {
-      sp  <- serverResource
-      out <- sp.use { case (_, p) => body(p) }
+      ref <- Ref.make(ServerLog(None))
+      sp  <- serverResource(ref)
+      out <- sp.use { case (_, p) => body(p, ref) }
     } yield out
 }

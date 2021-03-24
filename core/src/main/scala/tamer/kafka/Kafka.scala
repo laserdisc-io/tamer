@@ -90,8 +90,17 @@ object Kafka {
       def mkRecord(k: StateKey, v: S) = new ProducerRecord(config.state.topic, k, v)
       def containsExistingState(partitionSet: Set[TopicPartition]) =
         stateConsumerService.endOffsets(partitionSet).map(_.values.exists(_ > 0L)).map(if (_) PreexistingState else EmptyState)
-      val subscribeToExistingState =
-        stateConsumerService.subscribe(stateTopicSub) *> waitNonemptyAssignment(stateConsumerService) >>= containsExistingState
+
+      val subscribeToExistingState = for {
+        _          <- log.info(s"Will subscribe to $stateTopicSub using $stateConsumerService")
+        _          <- stateConsumerService.subscribe(stateTopicSub)
+        _          <- log.info(s"Awaiting assignment on $stateConsumerService")
+        assignment <- waitNonemptyAssignment(stateConsumerService)
+        _          <- log.info(s"Got assignment: $assignment")
+        state      <- containsExistingState(assignment)
+        _          <- log.info(s"Got state: $state")
+      } yield state
+
       val stateKeySerde = Serde[StateKey](isKey = true)(AvroCodec.codec[StateKey])
       val initializeAssignedPartitions: ZIO[Blocking with Clock, Throwable, Unit] = subscribeToExistingState.flatMap {
         case PreexistingState => log.info(s"consumer group ${config.state.groupId} resuming consumption from ${config.state.topic}")
