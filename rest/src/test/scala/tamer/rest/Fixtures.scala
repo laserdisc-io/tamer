@@ -26,11 +26,11 @@ object Fixtures {
     implicit val codec      = AvroCodec.codec[Value]
     implicit val circeCodec = deriveCodec[Value]
   }
-  case class State(i: Int)
+  case class State(count: Int)
   object State {
     implicit val codec = AvroCodec.codec[State]
     implicit val hash = new HashableState[State] {
-      override def stateHash(s: State): Int = s.i
+      override def stateHash(s: State): Int = s.count
     }
   }
 

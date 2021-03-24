@@ -46,7 +46,7 @@ class TamerRestJob[
             value
               .transduce(setup.transducer)
               .map(value => (setup.transitions.deriveKafkaRecordKey(nextState, value), value))
-              .foreachChunk(q.offer)
+              .foreachChunk(c => q.offer(c))
         }
       }
     } yield nextState
