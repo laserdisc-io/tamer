@@ -99,7 +99,7 @@ object RestSpec extends DefaultRunnableSpec {
       _ <- (ZIO.effect(println("Awaiting a request to our test server")) *> ZIO.sleep(500.millis))
         .repeatUntilM(_ => gotRequest.get.map(_.lastRequestTimestamp.isDefined))
       output <- ZIO.service[Ref[KafkaLog]]
-      _ <- (ZIO.effect(println("Awaiting kafka state change")) *> ZIO.sleep(500.millis))
+      _ <- (ZIO.effect(println("Awaiting state change")) *> ZIO.sleep(500.millis))
         .repeatUntilM(_ => output.get.map(_.count > 0))
     } yield assertCompletes
 
