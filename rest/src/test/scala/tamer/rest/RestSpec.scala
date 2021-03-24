@@ -6,13 +6,14 @@ import sttp.capabilities.zio.ZioStreams
 import tamer.config.KafkaConfig
 import tamer.kafka.Kafka
 import tamer.kafka.embedded.KafkaTest
+import tamer.rest.RestSpec.StaticFixtures.KafkaLog
 import tamer.{SourceConfiguration, TamerError}
 import zio.duration.durationInt
 import zio.stream.ZTransducer
 import zio.test.Assertion._
 import zio.test.TestAspect.timeout
 import zio.test.{assertM, _}
-import zio.{Chunk, Queue, Ref, Task, ZEnv, ZIO, ZLayer, stream}
+import zio.{Chunk, Has, Queue, Ref, Task, ZEnv, ZIO, ZLayer, stream}
 
 import java.util.concurrent.TimeUnit
 import scala.annotation.unused
@@ -64,13 +65,28 @@ object RestSpec extends DefaultRunnableSpec {
       ZLayer.requires[ZEnv] ++ fullLayer
   }
 
+
   object StaticFixtures {
-    val stateTransitionFunction: (State, Queue[Chunk[(Key, Value)]]) => ZIO[Any, TamerError, State] = { case (s, _) =>
-      ZIO.succeed(s.copy(s.i + 1))
+    case class KafkaLog(count: Int, last: Option[Chunk[(Key, Value)]])
+
+    val output = Ref.make(KafkaLog(0, None))
+
+    val stateTransitionFunction: (State, Queue[Chunk[(Key, Value)]]) => ZIO[Has[Ref[KafkaLog]], TamerError, State] = { case (s, kv) =>
+      for {
+        log     <- ZIO.service[Ref[KafkaLog]]
+        content <- kv.takeAll
+        _       <- ZIO.succeed(log.update(l => l.copy(l.count + 1, last = content.lastOption)))
+        _       <- kv.offerAll(content)
+      } yield {
+        System.exit(0)
+        s.copy(s.i + 1)
+      }
+
     }
+
     val kafkaConfigLayer: ZLayer[ZEnv, Throwable, KafkaConfig] = KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig
-    val kafkaLayer: ZLayer[ZEnv, Throwable, KafkaConfig with Kafka] = {
-      kafkaConfigLayer ++ ((ZLayer.requires[ZEnv] ++ kafkaConfigLayer) >>> Kafka.live(
+    val kafkaLayer: ZLayer[ZEnv, Throwable, KafkaConfig with Kafka with Has[Ref[KafkaLog]]] = {
+      kafkaConfigLayer ++ output.toLayer ++ ((ZLayer.requires[ZEnv] ++ kafkaConfigLayer ++ output.toLayer) >>> Kafka.live(
         SourceConfiguration(SourceConfiguration.SourceSerde[Key, Value, State](), State(0), 0),
         stateTransitionFunction
       ))
@@ -90,22 +106,23 @@ object RestSpec extends DefaultRunnableSpec {
   private def testRestFlow(port: Int, gotRequest: Ref[ServerLog]) = {
     val f = new JobFixtures(port)
 
-    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Kafka, Throwable, TestResult] = for {
+    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Kafka with Has[Ref[KafkaLog]], Throwable, TestResult] = for {
       _ <- f.job.fetch().fork
       _ <- (ZIO.effect(println("Awaiting a request to our test server")) *> ZIO.sleep(500.millis))
         .repeatUntilM(_ => gotRequest.get.map(_.lastRequestTimestamp.isDefined))
+      output <- ZIO.service[Ref[KafkaLog]]
+      _ <- (ZIO.effect(println("Awaiting kafka state change")) *> ZIO.sleep(500.millis))
+        .repeatUntilM(_ => output.get.map(_.last.isDefined))
     } yield assertCompletes
 
-    io.provideSomeLayer[ZEnv with KafkaConfig with Kafka](f.tamerLayer)
+    io.provideSomeLayer[ZEnv with KafkaConfig with Kafka with Has[Ref[KafkaLog]]](f.tamerLayer)
   }
 
-  override def spec: Spec[TestEnvironment, TestFailure[Throwable], TestSuccess] = {
-    val s: Spec[TestEnvironment with ZEnv with KafkaConfig with Kafka, TestFailure[Throwable], TestSuccess] = suite("RestSpec")(
+  override def spec: Spec[TestEnvironment, TestFailure[Throwable], TestSuccess] =
+    suite("RestSpec")(
       testM("Should run a test with provisioned http4s")(withServer(testHttp4sStartup)),
       testM("Should support e2e rest flow")(withServer(testRestFlow)) @@ timeout(30.seconds)
     )
-    s
       .provideSomeLayerShared[ZEnv with TestEnvironment](StaticFixtures.kafkaLayer.mapError(e => TestFailure.die(e)))
       .provideCustomLayer(ZEnv.live)
-  }
 }
