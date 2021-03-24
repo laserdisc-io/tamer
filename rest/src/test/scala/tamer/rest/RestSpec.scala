@@ -81,9 +81,8 @@ object RestSpec extends DefaultRunnableSpec {
     val kafkaConfigLayer: ZLayer[ZEnv, Throwable, KafkaConfig] = KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig
   }
 
-  private def testHttp4sStartup(port: Int, @unused gotRequest: Ref[ServerLog]) =
+  private def testHttp4sStartup(port: Int, @unused serverLog: Ref[ServerLog]) =
     for {
-      _  <- Task.succeed(gotRequest)
       cb <- HttpClientZioBackend()
       req = basicRequest.get(uri"http://localhost:$port/random")
       resp     <- cb.send(req)
@@ -91,13 +90,13 @@ object RestSpec extends DefaultRunnableSpec {
       out      <- assertM(Task.succeed(respBody))(containsString("uuid"))
     } yield out
 
-  private def testRestFlow(port: Int, gotRequest: Ref[ServerLog]) = {
+  private def testRestFlow(port: Int, serverLog: Ref[ServerLog]) = {
     val f = new JobFixtures(port)
 
     val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Throwable, TestResult] = for {
       _ <- f.job.fetch().fork
       _ <- (ZIO.effect(println("Awaiting a request to our test server")) *> ZIO.sleep(500.millis))
-        .repeatUntilM(_ => gotRequest.get.map(_.lastRequestTimestamp.isDefined))
+        .repeatUntilM(_ => serverLog.get.map(_.lastRequestTimestamp.isDefined))
       output <- ZIO.service[Ref[KafkaLog]]
       _ <- (ZIO.effect(println("Awaiting state change")) *> ZIO.sleep(500.millis))
         .repeatUntilM(_ => output.get.map(_.count > 0))
