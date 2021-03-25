@@ -51,19 +51,4 @@ object RestConfiguration {
       getNextState: S => UIO[S],
       deriveKafkaRecordKey: (S, V) => K
   )
-
-  def test: RequestT[Identity, Either[String, stream.Stream[Throwable, Byte]], ZioStreams] = {
-    import sttp.capabilities.zio.ZioStreams
-    import sttp.client3.{Identity, RequestT, _}
-    import zio.stream._
-
-    val request: RequestT[Identity, Either[String, Stream[Throwable, Byte]], ZioStreams] =
-      basicRequest
-        .post(uri"...")
-        .response(asStreamUnsafe(ZioStreams))
-        .readTimeout(scala.concurrent.duration.Duration.Inf)
-
-    request
-  }
-
 }
