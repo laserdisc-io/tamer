@@ -27,7 +27,7 @@ object StateKey {
 }
 
 object Kafka {
-  private val tenTimes = Schedule.recurs(10) && Schedule.exponential(25.milliseconds)
+  private val tenTimes = Schedule.recurs(10) && Schedule.exponential(100.milliseconds)
 
   trait Service {
     def runLoop: ZIO[Blocking with Clock, TamerError, Unit]
@@ -49,6 +49,9 @@ object Kafka {
       .mapChunksM(recordChunk =>
         valueProducerService
           .produceChunkAsync(recordChunk)
+          .tapError { _ =>
+            log.info(s"Still cannot produce next chunk, $recordChunk")
+          }
           .retry(tenTimes)
           .flatten <* log.info(s"pushed ${recordChunk.size} messages to $sinkTopic")
       )
@@ -76,14 +79,28 @@ object Kafka {
       sealed trait ExistingState
       case object PreexistingState extends ExistingState
       case object EmptyState       extends ExistingState
-      val stateKey                                                  = StateKey(setup.tamerStateKafkaRecordKey.toHexString, config.state.groupId)
-      def waitNonemptyAssignment(consumerService: Consumer.Service) = consumerService.assignment.withFilter(_.nonEmpty).retry(tenTimes)
-      val stateTopicSub                                             = Subscription.topics(config.state.topic)
-      def mkRecord(k: StateKey, v: S)                               = new ProducerRecord(config.state.topic, k, v)
+      val stateKey = StateKey(setup.tamerStateKafkaRecordKey.toHexString, config.state.groupId)
+      def waitNonemptyAssignment(consumerService: Consumer.Service) = consumerService.assignment
+        .withFilter(_.nonEmpty)
+        .tapError { _ =>
+          log.info(s"Still no assignment on $consumerService, there are no partitions to process")
+        }
+        .retry(tenTimes)
+      val stateTopicSub               = Subscription.topics(config.state.topic)
+      def mkRecord(k: StateKey, v: S) = new ProducerRecord(config.state.topic, k, v)
       def containsExistingState(partitionSet: Set[TopicPartition]) =
         stateConsumerService.endOffsets(partitionSet).map(_.values.exists(_ > 0L)).map(if (_) PreexistingState else EmptyState)
-      val subscribeToExistingState =
-        stateConsumerService.subscribe(stateTopicSub) *> waitNonemptyAssignment(stateConsumerService) >>= containsExistingState
+
+      val subscribeToExistingState = for {
+        _          <- log.info(s"Will subscribe to $stateTopicSub using $stateConsumerService")
+        _          <- stateConsumerService.subscribe(stateTopicSub)
+        _          <- log.info(s"Awaiting assignment on $stateConsumerService")
+        assignment <- waitNonemptyAssignment(stateConsumerService)
+        _          <- log.info(s"Got assignment: $assignment")
+        state      <- containsExistingState(assignment)
+        _          <- log.info(s"Got state: $state")
+      } yield state
+
       val stateKeySerde = Serde[StateKey](isKey = true)(AvroCodec.codec[StateKey])
       val initializeAssignedPartitions: ZIO[Blocking with Clock, Throwable, Unit] = subscribeToExistingState.flatMap {
         case PreexistingState => log.info(s"consumer group ${config.state.groupId} resuming consumption from ${config.state.topic}")
