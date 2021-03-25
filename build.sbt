@@ -6,10 +6,10 @@ lazy val scala_213 = "2.13.4"
 lazy val V = new {
   val avro4s        = "4.0.4"
   val cats          = "2.4.2"
-  val `cats-effect` = "2.4.0"
   val ciris         = "1.2.1"
   val confluent     = "6.1.0"
   val doobie        = "0.12.1"
+  val `json-schema` = "1.12.2"
   val kafka         = "2.7.0"
   val logback       = "1.2.3"
   val `log-effect`  = "0.14.1"
@@ -21,10 +21,17 @@ lazy val V = new {
   val silencer      = "1.7.3"
   val sttp          = "3.1.9"
   val zio           = "1.0.5"
-  val `zio-interop` = "2.3.1.0"
   val `zio-kafka`   = "0.14.0"
   val `zio-oci-os`  = "0.1.3"
   val `zio-s3`      = "0.3.0"
+
+  val http4s = "1.0.0-M10" // last compatible with CE 2.3
+
+  private val `cats-effect-version` = "2.3"
+  val `cats-effect`                 = s"${`cats-effect-version`}.3"
+  val `zio-interop`                 = s"${`cats-effect-version`}.1.0"
+
+  val circeVersion = "0.12.3"
 }
 
 lazy val D = new {
@@ -83,11 +90,12 @@ lazy val D = new {
   )
 
   val tests = Seq(
-    "org.scalacheck"          %% "scalacheck"                     % V.scalacheck % Test,
-    "org.scalactic"           %% "scalactic"                      % V.scalatest  % Test,
-    "org.scalatest"           %% "scalatest"                      % V.scalatest  % Test,
-    "io.github.embeddedkafka" %% "embedded-kafka"                 % V.kafka      % Test,
-    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.confluent  % Test
+    "org.scalacheck"                   %% "scalacheck"                     % V.scalacheck    % Test,
+    "org.scalactic"                    %% "scalactic"                      % V.scalatest     % Test,
+    "org.scalatest"                    %% "scalatest"                      % V.scalatest     % Test,
+    "io.github.embeddedkafka"          %% "embedded-kafka"                 % V.kafka         % Test,
+    "io.github.embeddedkafka"          %% "embedded-kafka-schema-registry" % V.confluent     % Test excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema"),
+    "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test
   )
 
   val zio = Seq(
@@ -101,6 +109,18 @@ lazy val D = new {
   val sttp = Seq(
     "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp
   )
+
+  val http4s = Seq(
+    "org.http4s" %% "http4s-dsl"          % V.http4s,
+    "org.http4s" %% "http4s-blaze-server" % V.http4s,
+    "org.http4s" %% "http4s-blaze-client" % V.http4s
+  )
+
+  val circe = Seq(
+    "io.circe" %% "circe-core",
+    "io.circe" %% "circe-generic",
+    "io.circe" %% "circe-parser"
+  ).map(_ % V.circeVersion)
 }
 
 lazy val flags = Seq(
@@ -156,7 +176,9 @@ lazy val commonSettings = Seq(
   licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
   developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
   scalacOptions ++= versionDependent(scalaVersion.value),
-  resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/", "jitpack" at "https://jitpack.io")
+  resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/", "jitpack" at "https://jitpack.io"),
+  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
+  Test / fork := true
 )
 
 lazy val tamer = project
@@ -170,8 +192,7 @@ lazy val tamer = project
     libraryDependencies ++= D.avro,
     addCompilerPlugin("com.github.ghik" %% "silencer-plugin" % V.silencer cross CrossVersion.full),
     Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
-    Test / console / scalacOptions := (Compile / console / scalacOptions).value,
-    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
+    Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )
 
 lazy val doobie = project
@@ -199,18 +220,19 @@ lazy val s3 = project
   .settings(commonSettings)
   .settings(
     name := "tamer-s3",
-    libraryDependencies ++= D.s3,
-    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
+    libraryDependencies ++= D.s3
   )
 
 lazy val rest = project
   .in(file("rest"))
-  .dependsOn(tamer)
+  .dependsOn(tamer % "compile->compile;test->compile,test")
   .settings(commonSettings)
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= D.sttp,
-    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
+    libraryDependencies ++= D.http4s.map(_ % Test),
+    libraryDependencies ++= D.circe.map(_ % Test),
+    libraryDependencies ++= D.tests
   )
 
 lazy val example = project
