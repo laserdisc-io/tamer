@@ -95,7 +95,7 @@ lazy val D = new {
     "org.scalatest"           %% "scalatest"                      % V.scalatest       % Test,
     "io.github.embeddedkafka" %% "embedded-kafka"                 % V.kafka           % Test,
     "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.`emb-schemareg` % Test excludeAll("io.confluent" % "kafka-schema-registry"),
-    "io.confluent"             % "kafka-schema-registry"          % V.confluent.      % Test
+    "io.confluent"             % "kafka-schema-registry"          % V.confluent       % Test
   )
 
   val zio = Seq(
