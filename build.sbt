@@ -31,7 +31,7 @@ lazy val V = new {
   val `cats-effect`                 = s"${`cats-effect-version`}.3"
   val `zio-interop`                 = s"${`cats-effect-version`}.1.0"
 
-  val circeVersion = "0.12.3"
+  val circeVersion = "0.13.0"
 }
 
 lazy val D = new {
