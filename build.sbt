@@ -4,26 +4,26 @@ lazy val scala_212 = "2.12.13"
 lazy val scala_213 = "2.13.4"
 
 lazy val V = new {
-  val avro4s          = "4.0.4"
-  val cats            = "2.4.2"
-  val ciris           = "1.2.1"
-  val confluent       = "6.1.1"
-  val doobie          = "0.12.1"
-  val `emb-schemareg` = "6.1.0"
-  val kafka           = "2.7.0"
-  val logback         = "1.2.3"
-  val `log-effect`    = "0.14.1"
-  val ociSdk          = "1.33.2"
-  val postgres        = "42.2.19"
-  val refined         = "0.9.21"
-  val scalacheck      = "1.15.3"
-  val scalatest       = "3.2.6"
-  val silencer        = "1.7.3"
-  val sttp            = "3.1.9"
-  val zio             = "1.0.5"
-  val `zio-kafka`     = "0.14.0"
-  val `zio-oci-os`    = "0.1.3"
-  val `zio-s3`        = "0.3.0"
+  val avro4s        = "4.0.4"
+  val cats          = "2.4.2"
+  val ciris         = "1.2.1"
+  val confluent     = "6.1.0"
+  val doobie        = "0.12.1"
+  val `json-schema` = "1.12.2"
+  val kafka         = "2.7.0"
+  val logback       = "1.2.3"
+  val `log-effect`  = "0.14.1"
+  val ociSdk        = "1.33.2"
+  val postgres      = "42.2.19"
+  val refined       = "0.9.21"
+  val scalacheck    = "1.15.3"
+  val scalatest     = "3.2.6"
+  val silencer      = "1.7.3"
+  val sttp          = "3.1.9"
+  val zio           = "1.0.5"
+  val `zio-kafka`   = "0.14.0"
+  val `zio-oci-os`  = "0.1.3"
+  val `zio-s3`      = "0.3.0"
 
   val http4s = "1.0.0-M10" // last compatible with CE 2.3
 
@@ -90,12 +90,12 @@ lazy val D = new {
   )
 
   val tests = Seq(
-    "org.scalacheck"          %% "scalacheck"                     % V.scalacheck      % Test,
-    "org.scalactic"           %% "scalactic"                      % V.scalatest       % Test,
-    "org.scalatest"           %% "scalatest"                      % V.scalatest       % Test,
-    "io.github.embeddedkafka" %% "embedded-kafka"                 % V.kafka           % Test,
-    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.`emb-schemareg` % Test excludeAll ("io.confluent" % "kafka-schema-registry"),
-    "io.confluent"             % "kafka-schema-registry"          % V.confluent       % Test
+    "org.scalacheck"                   %% "scalacheck"                     % V.scalacheck    % Test,
+    "org.scalactic"                    %% "scalactic"                      % V.scalatest     % Test,
+    "org.scalatest"                    %% "scalatest"                      % V.scalatest     % Test,
+    "io.github.embeddedkafka"          %% "embedded-kafka"                 % V.kafka         % Test,
+    "io.github.embeddedkafka"          %% "embedded-kafka-schema-registry" % V.confluent     % Test excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema"),
+    "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test
   )
 
   val zio = Seq(
@@ -177,7 +177,8 @@ lazy val commonSettings = Seq(
   developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
   scalacOptions ++= versionDependent(scalaVersion.value),
   resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/", "jitpack" at "https://jitpack.io"),
-  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
+  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
+  Test / fork := true
 )
 
 lazy val tamer = project
