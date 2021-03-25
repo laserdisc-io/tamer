@@ -94,7 +94,7 @@ lazy val D = new {
     "org.scalactic"           %% "scalactic"                      % V.scalatest       % Test,
     "org.scalatest"           %% "scalatest"                      % V.scalatest       % Test,
     "io.github.embeddedkafka" %% "embedded-kafka"                 % V.kafka           % Test,
-    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.`emb-schemareg` % Test excludeAll("io.confluent" % "kafka-schema-registry"),
+    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.`emb-schemareg` % Test excludeAll ("io.confluent" % "kafka-schema-registry"),
     "io.confluent"             % "kafka-schema-registry"          % V.confluent       % Test
   )
 
