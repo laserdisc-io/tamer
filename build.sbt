@@ -185,7 +185,10 @@ lazy val tamer = project
   .settings(commonSettings)
   .settings(
     name := "tamer-core",
-    libraryDependencies ++= (D.avro ++ D.cats ++ D.config ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio),
+    libraryDependencies ++= (D.cats ++ D.config ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
+      .map(_.withSources)
+      .map(_.withJavadoc),
+    libraryDependencies ++= D.avro,
     addCompilerPlugin("com.github.ghik" %% "silencer-plugin" % V.silencer cross CrossVersion.full),
     Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
     Test / console / scalacOptions := (Compile / console / scalacOptions).value
