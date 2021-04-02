@@ -17,7 +17,7 @@ trait RestQueryBuilder[-S] {
 }
 
 final case class RestConfiguration[
-    R,
+    -R,
     K <: Product: Codec,
     V <: Product: Codec,
     S <: Product: Codec: HashableState

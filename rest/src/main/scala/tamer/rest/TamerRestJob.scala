@@ -21,7 +21,7 @@ object TamerRestJob {
 }
 
 class TamerRestJob[
-    R <: ZEnv with SttpClient with KafkaConfig,
+    -R <: ZEnv with SttpClient with KafkaConfig,
     K <: Product: Codec,
     V <: Product: Codec,
     S <: Product: Codec

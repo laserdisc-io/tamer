@@ -9,7 +9,7 @@ import zio.clock.Clock
 import zio.{Chunk, Queue, ZIO}
 
 abstract class AbstractTamerJob[
-    R <: Blocking with Clock with KafkaConfig,
+    -R <: Blocking with Clock with KafkaConfig,
     K <: Product: Codec,
     V <: Product: Codec,
     S <: Product: Codec
