@@ -23,7 +23,7 @@ lazy val V = new {
   val zio           = "1.0.5"
   val `zio-kafka`   = "0.14.0"
   val `zio-oci-os`  = "0.1.3"
-  val `zio-s3`      = "0.3.0"
+  val `zio-s3`      = "0.3.1"
 
   val http4s = "1.0.0-M10" // last compatible with CE 2.3
 
