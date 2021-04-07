@@ -13,9 +13,9 @@ lazy val V = new {
   val kafka         = "2.7.0"
   val logback       = "1.2.3"
   val `log-effect`  = "0.14.1"
-  val ociSdk        = "1.34.0"
+  val ociSdk        = "1.35.1"
   val postgres      = "42.2.19"
-  val refined       = "0.9.22"
+  val refined       = "0.9.23"
   val scalacheck    = "1.15.3"
   val scalatest     = "3.2.7"
   val silencer      = "1.7.3"
@@ -23,7 +23,7 @@ lazy val V = new {
   val zio           = "1.0.5"
   val `zio-kafka`   = "0.14.0"
   val `zio-oci-os`  = "0.1.3"
-  val `zio-s3`      = "0.3.0"
+  val `zio-s3`      = "0.3.1"
 
   val http4s = "1.0.0-M20" // last compatible with CE 2.3
 
