@@ -25,7 +25,7 @@ lazy val V = new {
   val `zio-oci-os`  = "0.1.3"
   val `zio-s3`      = "0.3.1"
 
-  val http4s = "1.0.0-M10" // last compatible with CE 2.3
+  val http4s = "1.0.0-M21" // last compatible with CE 2.3
 
   private val `cats-effect-version` = "2.3"
   val `cats-effect`                 = s"${`cats-effect-version`}.3"
