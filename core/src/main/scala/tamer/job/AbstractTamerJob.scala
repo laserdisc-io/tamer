@@ -10,9 +10,9 @@ import zio.{Chunk, Queue, ZIO}
 
 abstract class AbstractTamerJob[
     -R <: Blocking with Clock with KafkaConfig,
-    K <: Product: Codec,
-    V <: Product: Codec,
-    S <: Product: Codec
+    K: Codec,
+    V: Codec,
+    S: Codec
 ](genericParameters: SourceConfiguration[K, V, S])
     extends TamerJob[R] {
 

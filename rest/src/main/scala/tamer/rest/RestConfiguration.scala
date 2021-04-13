@@ -20,9 +20,9 @@ trait RestQueryBuilder[-S] {
 final case class DecodedPage[V, S](data: List[V], stateSideband: Option[S])
 final case class RestConfiguration[
     -R,
-    K <: Product: Codec,
-    V <: Product: Codec,
-    S <: Product: Codec: HashableState
+    K: Codec,
+    V: Codec,
+    S: Codec: HashableState
 ](
     queryBuilder: RestQueryBuilder[S],
     pageDecoder: String => RIO[R, DecodedPage[V, S]],

@@ -17,8 +17,8 @@ import java.time.format.DateTimeFormatter
 class TamerS3SuffixDateFetcher[R <: Blocking with Clock with zio.s3.S3 with KafkaConfig]() {
 
   def fetchAccordingToSuffixDate[
-      K <: Product: Codec: SchemaFor,
-      V <: Product: Codec: SchemaFor
+      K: Codec: SchemaFor,
+      V: Codec: SchemaFor
   ](
       bucketName: String,
       prefix: String,

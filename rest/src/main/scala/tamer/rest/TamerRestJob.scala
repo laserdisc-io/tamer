@@ -35,9 +35,9 @@ object TamerRestJob {
 
   def apply[
       R <: ZEnv with SttpClient with KafkaConfig,
-      K <: Product: Codec,
-      V <: Product: Codec,
-      S <: Product: Codec
+      K: Codec,
+      V: Codec,
+      S: Codec
   ](
       setup: RestConfiguration[R, K, V, S]
   ) = new TamerRestJob[R, K, V, S](setup)
@@ -69,9 +69,9 @@ object TamerRestJob {
 
 class TamerRestJob[
     -R <: ZEnv with SttpClient with KafkaConfig,
-    K <: Product: Codec,
-    V <: Product: Codec,
-    S <: Product: Codec
+    K: Codec,
+    V: Codec,
+    S: Codec
 ](
     setup: RestConfiguration[R, K, V, S]
 ) extends AbstractTamerJob[R, K, V, S](setup.generic) {
