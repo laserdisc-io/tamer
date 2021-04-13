@@ -20,24 +20,19 @@ lazy val V = new {
   val scalatest     = "3.2.7"
   val silencer      = "1.7.3"
   val sttp          = "3.2.3"
+  val uzhttp        = "0.2.7"
   val zio           = "1.0.5"
+  val `zio-interop` = "2.4.0.0"
   val `zio-kafka`   = "0.14.0"
   val `zio-oci-os`  = "0.1.3"
   val `zio-s3`      = "0.3.1"
-
-  val http4s = "1.0.0-M10" // last compatible with CE 2.3
-
-  private val `cats-effect-version` = "2.3"
-  val `cats-effect`                 = s"${`cats-effect-version`}.3"
-  val `zio-interop`                 = s"${`cats-effect-version`}.1.0"
 
   val circeVersion = "0.13.0"
 }
 
 lazy val D = new {
   val cats = Seq(
-    "org.typelevel" %% "cats-core"   % V.cats,
-    "org.typelevel" %% "cats-effect" % V.`cats-effect`
+    "org.typelevel" %% "cats-core" % V.cats
   )
 
   val config = Seq(
@@ -98,6 +93,10 @@ lazy val D = new {
     "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test
   )
 
+  val uzhttp = Seq(
+    "org.polynote" %% "uzhttp" % V.uzhttp
+  )
+
   val zio = Seq(
     "dev.zio" %% "zio-interop-cats" % V.`zio-interop`,
     "dev.zio" %% "zio-kafka"        % V.`zio-kafka`,
@@ -108,12 +107,6 @@ lazy val D = new {
 
   val sttp = Seq(
     "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp
-  )
-
-  val http4s = Seq(
-    "org.http4s" %% "http4s-dsl"          % V.http4s,
-    "org.http4s" %% "http4s-blaze-server" % V.http4s,
-    "org.http4s" %% "http4s-blaze-client" % V.http4s
   )
 
   val circe = Seq(
@@ -230,7 +223,7 @@ lazy val rest = project
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= D.sttp,
-    libraryDependencies ++= D.http4s.map(_ % Test),
+    libraryDependencies ++= D.uzhttp.map(_ % Test),
     libraryDependencies ++= D.circe.map(_ % Test),
     libraryDependencies ++= D.tests
   )
@@ -242,6 +235,7 @@ lazy val example = project
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= D.postgres,
+    libraryDependencies ++= D.uzhttp,
     publish / skip := true
   )
 

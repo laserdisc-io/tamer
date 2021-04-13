@@ -37,6 +37,16 @@ object RestSpec extends DefaultRunnableSpec {
           .readTimeout(Duration.create(20, TimeUnit.SECONDS))
     }
 
+    private val qbAuth: RestQueryBuilder[State] = new RestQueryBuilder[State] {
+      override val queryId: Int = 0
+
+      override def query(state: State): RequestT[Identity, Either[String, stream.Stream[Throwable, Byte]], ZioStreams] =
+        basicRequest
+          .get(uri"http://localhost:$port/auth-token")
+          .response(asStreamUnsafe(ZioStreams))
+          .readTimeout(Duration.create(20, TimeUnit.SECONDS))
+    }
+
     val conf: RestConfiguration[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State] =
       new RestConfiguration(
         qb,
@@ -44,9 +54,28 @@ object RestSpec extends DefaultRunnableSpec {
         StaticFixtures.transitions
       )
 
+    val confAuth: RestConfiguration[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State] =
+      new RestConfiguration(
+        qbAuth,
+        StaticFixtures.transducer,
+        StaticFixtures.transitions
+      )
+
     val outLayer: ZLayer[Any, Nothing, Has[Ref[KafkaLog]]] = Ref.make(KafkaLog(0)).toLayer
 
     val job = new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State](conf) {
+      override protected def next(
+          currentState: State,
+          q: Queue[Chunk[(Key, Value)]]
+      ): ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], TamerError, State] =
+        for {
+          next <- super.next(currentState, q)
+          log  <- ZIO.service[Ref[KafkaLog]]
+          _    <- log.update(l => l.copy(l.count + 1))
+        } yield next
+    }
+
+    val jobAuth = new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State](confAuth) {
       override protected def next(
           currentState: State,
           q: Queue[Chunk[(Key, Value)]]
@@ -105,10 +134,26 @@ object RestSpec extends DefaultRunnableSpec {
     io.provideSomeLayer[ZEnv with KafkaConfig](f.tamerLayer ++ f.outLayer)
   }
 
+  private def testRestFlowAuth(port: Int, serverLog: Ref[ServerLog]) = {
+    val f = new JobFixtures(port)
+
+    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Throwable, TestResult] = for {
+      _ <- f.jobAuth.fetch().fork
+      _ <- (ZIO.effect(println("Awaiting a request to our test server")) *> ZIO.sleep(500.millis))
+        .repeatUntilM(_ => serverLog.get.map(_.lastRequestTimestamp.isDefined))
+      output <- ZIO.service[Ref[KafkaLog]]
+      _ <- (ZIO.effect(println("Awaiting state change")) *> ZIO.sleep(500.millis))
+        .repeatUntilM(_ => output.get.map(_.count > 0))
+    } yield assertCompletes
+
+    io.provideSomeLayer[ZEnv with KafkaConfig](f.tamerLayer ++ f.outLayer)
+  }
+
   override def spec: Spec[TestEnvironment, TestFailure[Throwable], TestSuccess] =
     suite("RestSpec")(
       testM("Should run a test with provisioned http4s")(withServer(testHttp4sStartup)),
-      testM("Should support e2e rest flow")(withServer(testRestFlow)) @@ timeout(30.seconds)
+      testM("Should support e2e rest flow")(withServer(testRestFlow)) @@ timeout(30.seconds),
+      testM("Should support auth flow")(withServer(testRestFlowAuth)) @@ timeout(30.seconds)
     )
       .provideSomeLayerShared[ZEnv with TestEnvironment](StaticFixtures.kafkaConfigLayer.mapError(e => TestFailure.die(e)))
       .provideCustomLayer(ZEnv.live)

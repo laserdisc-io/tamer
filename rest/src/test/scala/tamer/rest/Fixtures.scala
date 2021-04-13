@@ -2,20 +2,22 @@ package tamer.rest
 
 import io.circe.generic.semiauto.deriveCodec
 import tamer.{AvroCodec, HashableState}
-import zio.interop.catz._
-import zio.interop.catz.implicits._
+import uzhttp.HTTPError.{Forbidden, NotFound}
+import uzhttp.Request.Method.POST
+import uzhttp.{Request, Response}
+import uzhttp.server.Server
+import zio.blocking.Blocking
+import zio.clock.Clock
+import zio.stream.ZTransducer
 import zio.test._
 import zio.{Task, ZIO, _}
 
+import java.net.InetSocketAddress
 import java.util.UUID
-import scala.util.Random
 
 object Fixtures {
-  import org.http4s._
-  import org.http4s.dsl.Http4sDsl
-  import org.http4s.implicits._
-  import org.http4s.server.Router
-  import org.http4s.server.blaze._
+
+  var allowLogin: Boolean = true
 
   case class Key(time: Long)
   object Key {
@@ -36,36 +38,39 @@ object Fixtures {
 
   case class ServerLog(lastRequestTimestamp: Option[Long])
 
-  private val dsl: Http4sDsl[Task] = new Http4sDsl[Task] {}
+  def serverResource(gotRequest: Ref[ServerLog], port: Int) = {
+    val jsonHeaders = List("content-type" -> "application/json")
 
-  def serverResource(gotRequest: Ref[ServerLog]) = {
-    val testService: HttpRoutes[Task] = {
-      import dsl._
+    def randomJson(r: Request) = for {
+      now <- Task.succeed(System.nanoTime())
+      uid <- Task.succeed(UUID.randomUUID())
+      _   <- Task.succeed(println(s"Got request ${r.method.name} ${r.uri.toString}"))
+      _   <- gotRequest.update(l => l.copy(lastRequestTimestamp = Some(now)))
+      out <- UIO(Response.plain(s"""{"time": $now, "uuid": "$uid"}""", headers = jsonHeaders))
+    } yield out
 
-      HttpRoutes.of[Task] { case r @ GET -> Root / "random" =>
+    Server.builder(new InetSocketAddress("0.0.0.0", port)).handleSome {
+      case r if r.uri.getPath == "/random" => randomJson(r)
+      case r if r.uri.getPath == "/auth-request-form" && r.method == POST =>
         for {
-          now <- Task.succeed(System.nanoTime())
-          uid <- Task.succeed(UUID.randomUUID())
-          _   <- Task.succeed(println(s"Got request $r"))
-          _   <- gotRequest.update(l => l.copy(lastRequestTimestamp = Some(now)))
-          out <- Ok(s"""{"time": $now, "uuid": "$uid"}""")
+          body <- r.body.map(_.transduce(ZTransducer.utf8Decode).runCollect.map(_.mkString)).getOrElse(UIO(""))
+          out <-
+            if (r.headers.get("header1").contains("value1") && body == "valid body")
+              UIO(Response.plain("""{"token_type":"bearer","access_token":"valid-token","expires_in":3600}"""))
+            else
+              IO.fail(Forbidden("No access"))
         } yield out
-      }
+      case r if r.uri.getPath == "auth-token" =>
+        for {
+          out <- if (allowLogin && r.headers.get("Authorization").contains("Bearer valid-token")) randomJson(r) else IO.fail(Forbidden("No access"))
+        } yield out
+      case _ => IO.fail(NotFound("No such resource"))
     }
-    val httpApp = Router("/" -> testService).orNotFound
-    for {
-      port <- ZIO.succeed(Random.nextInt(20000) + 10000)
-      serverBuilder = ZIO.runtime.map { implicit r: Runtime[Any] =>
-        BlazeServerBuilder[Task](scala.concurrent.ExecutionContext.Implicits.global).bindHttp(port, "localhost").withHttpApp(httpApp)
-      }
-      sb <- serverBuilder
-    } yield sb.resource.map(s => (s, port)).toManagedZIO
   }
 
-  def withServer[R](body: (Int, Ref[ServerLog]) => ZIO[R, Throwable, TestResult]): ZIO[R, Throwable, TestResult] =
+  def withServer[R](body: (Int, Ref[ServerLog]) => ZIO[R, Throwable, TestResult]): ZIO[R with Blocking with Clock, Throwable, TestResult] =
     for {
       ref <- Ref.make(ServerLog(None))
-      sp  <- serverResource(ref)
-      out <- sp.use { case (_, p) => body(p, ref) }
+      out <- serverResource(ref, 9080).serve.use(_ => body(9080, ref))
     } yield out
 }
