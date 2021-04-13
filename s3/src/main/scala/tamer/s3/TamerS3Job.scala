@@ -18,9 +18,9 @@ import scala.math.Ordering.Implicits.infixOrderingOps
 
 class TamerS3Job[
     R <: zio.s3.S3 with Blocking with Clock with KafkaConfig,
-    K <: Product: Codec,
-    V <: Product: Codec,
-    S <: Product: Codec
+    K: Codec,
+    V: Codec,
+    S: Codec
 ](
     setup: S3Configuration[R, K, V, S]
 ) extends AbstractStatefulSourceTamerJob[R, K, V, S, Keys](setup.generic) {
@@ -112,9 +112,9 @@ class TamerS3Job[
 object TamerS3Job {
   def apply[
       R <: zio.s3.S3 with Blocking with Clock with KafkaConfig,
-      K <: Product: Codec,
-      V <: Product: Codec,
-      S <: Product: Codec
+      K: Codec,
+      V: Codec,
+      S: Codec
   ](
       setup: S3Configuration[R, K, V, S]
   ) = new TamerS3Job[R, K, V, S](setup)

@@ -11,9 +11,9 @@ import java.time.Duration
 
 abstract class AbstractStatefulSourceTamerJob[
     R <: Blocking with Clock with KafkaConfig,
-    K <: Product: Codec,
-    V <: Product: Codec,
-    S <: Product: Codec,
+    K: Codec,
+    V: Codec,
+    S: Codec,
     SS
 ](genericParameters: SourceConfiguration[K, V, S])
     extends AbstractTamerJob[R, K, V, S](genericParameters) {

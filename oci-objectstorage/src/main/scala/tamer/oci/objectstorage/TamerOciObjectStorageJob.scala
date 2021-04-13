@@ -12,9 +12,9 @@ import zio.oci.objectstorage.{ListObjectsOptions, ObjectStorage, getObject, list
 object TamerOciObjectStorageJob {
   def apply[
       R <: ZEnv with ObjectStorage with KafkaConfig,
-      K <: Product: Codec,
-      V <: Product: Codec,
-      S <: Product: Codec
+      K: Codec,
+      V: Codec,
+      S: Codec
   ](
       setup: OciObjectStorageConfiguration[R, K, V, S]
   ) = new TamerOciObjectStorageJob[R, K, V, S](setup)
@@ -22,9 +22,9 @@ object TamerOciObjectStorageJob {
 
 class TamerOciObjectStorageJob[
     R <: ZEnv with ObjectStorage with KafkaConfig,
-    K <: Product: Codec,
-    V <: Product: Codec,
-    S <: Product: Codec
+    K: Codec,
+    V: Codec,
+    S: Codec
 ](
     setup: OciObjectStorageConfiguration[R, K, V, S]
 ) extends AbstractTamerJob[R, K, V, S](setup.generic) {
