@@ -22,9 +22,9 @@ object OciObjectStorageConfiguration {
 
 final case class OciObjectStorageConfiguration[
     R,
-    K <: Product: Codec,
-    V <: Product: Codec,
-    S <: Product: Codec
+    K: Codec,
+    V: Codec,
+    S: Codec
 ](
     namespace: String,
     bucketName: String,

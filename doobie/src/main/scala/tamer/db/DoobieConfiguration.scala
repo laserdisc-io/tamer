@@ -21,9 +21,9 @@ final case class ResultMetadata(queryExecutionTime: Long)
 final case class QueryResult[V](metadata: ResultMetadata, results: List[V])
 
 final case class DoobieConfiguration[
-    K <: Product: Codec,
-    V <: Product: Codec,
-    S <: Product: Codec: HashableState
+    K: Codec,
+    V: Codec,
+    S: Codec: HashableState
 ](
     queryBuilder: QueryBuilder[V, S],
     defaultState: S,
@@ -51,9 +51,9 @@ final case class DoobieConfiguration[
 
 object DoobieConfiguration {
   final def apply[
-      K <: Product: Codec,
-      V <: Product: Codec,
-      S <: Product: Codec: HashableState
+      K: Codec,
+      V: Codec,
+      S: Codec: HashableState
   ](
       queryBuilder: S => Query0[V]
   )(defaultState: S, keyExtract: V => K, stateFoldM: S => QueryResult[V] => UIO[S]): DoobieConfiguration[K, V, S] = {
@@ -65,7 +65,7 @@ object DoobieConfiguration {
     new DoobieConfiguration[K, V, S](queryBuilder = qBuilder, defaultState = defaultState, keyExtract = keyExtract, stateFoldM = stateFoldM)
   }
 
-  final def fromTimeSegment[K <: Product: Codec, V <: Product with Timestamped: Ordering: Codec](
+  final def fromTimeSegment[K: Codec, V <: Timestamped: Ordering: Codec](
       queryBuilder: TimeSegment => Query0[V]
   )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): DoobieConfiguration[K, V, TimeSegment] = {
 

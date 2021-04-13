@@ -35,7 +35,7 @@ object Serde {
   private[this] final val Magic: Byte = 0x0
   private[this] final val intByteSize = 4
 
-  final def apply[A <: Product: Codec](isKey: Boolean = false) =
+  final def apply[A: Codec](isKey: Boolean = false) =
     new RecordSerde[A](isKey, implicitly[Codec[A]].codec.schema)
 
   final class RecordSerde[A: Decoder: Encoder](override final val isKey: Boolean, override final val schema: Schema) extends Serde[A] {

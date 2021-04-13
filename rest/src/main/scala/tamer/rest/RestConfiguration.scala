@@ -18,9 +18,9 @@ trait RestQueryBuilder[-S] {
 
 final case class RestConfiguration[
     -R,
-    K <: Product: Codec,
-    V <: Product: Codec,
-    S <: Product: Codec: HashableState
+    K: Codec,
+    V: Codec,
+    S: Codec: HashableState
 ](
     queryBuilder: RestQueryBuilder[S],
     transducer: ZTransducer[R, TamerError, Byte, V],
