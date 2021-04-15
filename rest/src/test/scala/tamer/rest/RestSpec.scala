@@ -11,7 +11,7 @@ import zio.stream.ZTransducer
 import zio.test.Assertion._
 import zio.test.TestAspect.timeout
 import zio.test.{assertM, _}
-import zio.{Chunk, Has, Queue, Ref, Task, ZEnv, ZIO, ZLayer, stream}
+import zio.{Chunk, Has, Queue, RIO, Ref, Task, ZEnv, ZIO, ZLayer, stream}
 
 import java.util.concurrent.TimeUnit
 import scala.annotation.unused
@@ -50,14 +50,14 @@ object RestSpec extends DefaultRunnableSpec {
     val conf: RestConfiguration[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State] =
       new RestConfiguration(
         qb,
-        StaticFixtures.transducer,
+        StaticFixtures.decoder,
         StaticFixtures.transitions
       )
 
     val confAuth: RestConfiguration[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State] =
       new RestConfiguration(
         qbAuth,
-        StaticFixtures.transducer,
+        StaticFixtures.decoder,
         StaticFixtures.transitions
       )
 
@@ -94,14 +94,11 @@ object RestSpec extends DefaultRunnableSpec {
   case class KafkaLog(count: Int)
 
   object StaticFixtures {
-    val transducer: ZTransducer[ZEnv with SttpClient, TamerError, Byte, Value] = {
-      ZTransducer.utf8Decode >>> ZTransducer.fromFunctionM { v: String =>
-        (for {
-          p   <- ZIO.fromEither(io.circe.parser.parse(v))
-          out <- ZIO.fromEither(implicitly[Codec[Value]].decodeJson(p))
-
-        } yield out).catchAll(e => ZIO.fail(new TamerError(s"Decoder failed!", e)))
-      }
+    val decoder: String => Task[DecodedPage[Value, TamerRestJob.Offset]] = DecodedPage.fromString { v =>
+      (for {
+         p <- ZIO.fromEither(io.circe.parser.parse(v))
+         out <- ZIO.fromEither(implicitly[Codec[Value]].decodeJson(p))
+      } yield List(out)).catchAll(e => ZIO.fail(new RuntimeException(s"Decoder failed!\n${e}")))
     }
 
     val transitions: RestConfiguration.State[Key, Value, State] =

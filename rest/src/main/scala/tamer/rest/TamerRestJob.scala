@@ -3,18 +3,15 @@ package tamer.rest
 import com.sksamuel.avro4s.Codec
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import sttp.capabilities.zio.ZioStreams
 import sttp.client3.httpclient.zio.{SttpClient, send}
-import sttp.client3.{Identity, RequestT, UriContext, asStreamUnsafe, basicRequest}
+import sttp.client3.{UriContext, basicRequest}
 import sttp.model.Uri
-import tamer.{AvroCodec, HashableState, TamerError}
 import tamer.config.KafkaConfig
 import tamer.job.AbstractTamerJob
-import zio.stream.ZTransducer
-import zio.{Chunk, Queue, Task, UIO, ZEnv, ZIO, stream}
+import tamer.{AvroCodec, HashableState, TamerError}
+import zio.{Chunk, Queue, RIO, Task, UIO, ZEnv, ZIO}
 
-import java.util.concurrent.TimeUnit
-import scala.concurrent.duration.{Duration, DurationInt}
+import scala.concurrent.duration.DurationInt
 import scala.util.hashing.MurmurHash3.stringHash
 
 object TamerRestJob {
@@ -48,6 +45,7 @@ object TamerRestJob {
       V <: Product: Codec
   ](
       baseUrl: String,
+      pageDecoder: String => RIO[R, DecodedPage[V, Offset]],
       offsetParameterName: String = "page",
       increment: Int = 1
   )(deriveKafkaRecordKey: (Offset, V) => K): TamerRestJob[R, K, V, Offset] = {
@@ -63,7 +61,7 @@ object TamerRestJob {
     val transitions: RestConfiguration.State[K, V, Offset] =
       RestConfiguration.State(Offset(0))(s => UIO(s.incrementedBy(increment)), deriveKafkaRecordKey)
 
-    new TamerRestJob[R, K, V, Offset](RestConfiguration(queryBuilder = queryBuilder, transitions = transitions))
+    new TamerRestJob[R, K, V, Offset](RestConfiguration(queryBuilder = queryBuilder, transitions = transitions, pageDecoder = pageDecoder))
   }
 }
 

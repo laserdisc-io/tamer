@@ -2,9 +2,10 @@ package tamer.example
 import sttp.client3.httpclient.zio.{HttpClientZioBackend, SttpClient}
 import tamer.{AvroCodec, TamerError}
 import tamer.config.{Config, KafkaConfig}
-import tamer.rest.TamerRestJob
+import tamer.rest.TamerRestJob.Offset
+import tamer.rest.{DecodedPage, TamerRestJob}
 import zio.stream.ZTransducer
-import zio.{ExitCode, Layer, URIO, ZEnv, ZLayer}
+import zio.{ExitCode, IO, Layer, RIO, Task, UIO, URIO, ZEnv, ZIO, ZLayer}
 
 object RestSimple extends zio.App {
   val httpClientLayer: ZLayer[ZEnv, Throwable, SttpClient] =
@@ -22,10 +23,17 @@ object RestSimple extends zio.App {
     implicit val codec = AvroCodec.codec[MyKey]
   }
 
-  val transducer = ZTransducer.utf8Decode.map(_.toInt).map(MyData(_))
+  val pageDecoder: String => RIO[Any, DecodedPage[MyData, Offset]] = DecodedPage.fromString { pageBody =>
+    val dataRegex = """"data":"(-?[\d]+)"""".r
+    pageBody match {
+      case dataRegex(data) => Task(List(MyData(data.toInt)))
+      case _ => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
+    }
+  }
+
   private val program = TamerRestJob.withPagination(
     baseUrl = "localhost:9095",
-    transducer = transducer,
+    pageDecoder = pageDecoder,
     offsetParameterName = "offset",
     increment = 2
   )((_, data) => MyKey(data.i))

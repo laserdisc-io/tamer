@@ -2,11 +2,9 @@ package tamer
 package rest
 
 import com.sksamuel.avro4s.Codec
-import sttp.capabilities.zio.ZioStreams
-import sttp.client3.{Identity, RequestT}
 import sttp.model.Uri
-import zio.stream.ZTransducer
-import zio.{UIO, ZIO, stream, RIO}
+import tamer.rest.TamerRestJob.Offset
+import zio.{RIO, UIO}
 
 trait RestQueryBuilder[-S] {
 
@@ -18,6 +16,10 @@ trait RestQueryBuilder[-S] {
 }
 
 final case class DecodedPage[V, S](data: List[V], stateSideband: Option[S])
+object DecodedPage {
+  def fromString[R, V](decoder: String => RIO[R, List[V]]): String => RIO[R, DecodedPage[V, Offset]] = decoder.andThen(_.map(DecodedPage(_, None)))
+}
+
 final case class RestConfiguration[
     -R,
     K: Codec,
