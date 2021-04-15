@@ -3,7 +3,6 @@ package rest
 
 import com.sksamuel.avro4s.Codec
 import sttp.model.Uri
-import tamer.rest.TamerRestJob.Offset
 import zio.{RIO, UIO}
 
 trait RestQueryBuilder[-S] {
@@ -17,7 +16,8 @@ trait RestQueryBuilder[-S] {
 
 final case class DecodedPage[V, S](data: List[V], stateSideband: Option[S])
 object DecodedPage {
-  def fromString[R, V](decoder: String => RIO[R, List[V]]): String => RIO[R, DecodedPage[V, Offset]] = decoder.andThen(_.map(DecodedPage(_, None)))
+  def fromString[R, V, S](decoder: String => RIO[R, List[V]]): String => RIO[R, DecodedPage[V, S]] =
+    decoder.andThen(_.map(DecodedPage(_, Option.empty[S])))
 }
 
 final case class RestConfiguration[
@@ -50,14 +50,23 @@ final case class RestConfiguration[
 }
 
 object RestConfiguration {
+  def apply[
+      R,
+      K,
+      V,
+      S
+  ](queryBuilder: RestQueryBuilder[S])(
+      pageDecoder: String => RIO[R, DecodedPage[V, S]]
+  )(transitions: State[K, V, S])(implicit k: Codec[K], v: Codec[V], s1: Codec[S], s2: HashableState[S], d: DummyImplicit) =
+    new RestConfiguration(queryBuilder, pageDecoder, transitions)
+
   case class State[K, V, S](
       initialState: S,
       getNextState: S => UIO[S],
       deriveKafkaRecordKey: (S, V) => K
   )
   object State {
-    def apply[K, V, S] = apply2[K, V, S] _
-    def apply2[K, V, S](initialState: S)(getNextState: S => UIO[S], deriveKafkaRecordKey: (S, V) => K) =
+    def apply[K, V, S](initialState: S)(getNextState: S => UIO[S], deriveKafkaRecordKey: (S, V) => K)(implicit d: DummyImplicit) =
       new State(initialState, getNextState, deriveKafkaRecordKey)
   }
 }

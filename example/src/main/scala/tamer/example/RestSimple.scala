@@ -1,11 +1,10 @@
 package tamer.example
 import sttp.client3.httpclient.zio.{HttpClientZioBackend, SttpClient}
-import tamer.{AvroCodec, TamerError}
 import tamer.config.{Config, KafkaConfig}
 import tamer.rest.TamerRestJob.Offset
 import tamer.rest.{DecodedPage, TamerRestJob}
-import zio.stream.ZTransducer
-import zio.{ExitCode, IO, Layer, RIO, Task, UIO, URIO, ZEnv, ZIO, ZLayer}
+import tamer.{AvroCodec, TamerError}
+import zio.{ExitCode, Layer, RIO, Task, URIO, ZEnv, ZLayer}
 
 object RestSimple extends zio.App {
   val httpClientLayer: ZLayer[ZEnv, Throwable, SttpClient] =
