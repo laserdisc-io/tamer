@@ -2,16 +2,26 @@ package tamer
 package rest
 
 import com.sksamuel.avro4s.Codec
+import sttp.capabilities.{Effect, WebSockets}
+import sttp.capabilities.zio.ZioStreams
+import sttp.client3.{Request, RequestT}
 import sttp.model.Uri
-import zio.{RIO, UIO}
+import zio.{RIO, Task, UIO}
+
+//trait AuthType
+//case object Basic extends AuthType
+//case object Bearer extends AuthType
 
 trait RestQueryBuilder[-S] {
+
 
   /** Used for hashing purposes
     */
   val queryId: Int
 
-  def query(state: S): Uri
+  def query(state: S): Request[_, ZioStreams with Effect[Task] with WebSockets]
+
+  def authenticateQuery: Request[_, ZioStreams with Effect[Task] with WebSockets]
 }
 
 final case class DecodedPage[V, S](data: List[V], stateSideband: Option[S])

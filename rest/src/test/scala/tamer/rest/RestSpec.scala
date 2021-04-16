@@ -2,6 +2,8 @@ package tamer.rest
 
 import _root_.zio.test.environment.TestEnvironment
 import io.circe.Codec
+import sttp.capabilities.{Effect, WebSockets}
+import sttp.capabilities.zio.ZioStreams
 import sttp.model.Uri
 import tamer.TamerError
 import tamer.config.KafkaConfig
@@ -12,7 +14,9 @@ import zio.test.TestAspect.timeout
 import zio.test.{assertM, _}
 import zio.{Chunk, Has, Queue, Ref, Task, UIO, ZEnv, ZIO, ZLayer}
 
+import java.util.concurrent.TimeUnit
 import scala.annotation.unused
+import scala.concurrent.duration.Duration
 
 object RestSpec extends DefaultRunnableSpec {
   import Fixtures._
@@ -27,13 +31,13 @@ object RestSpec extends DefaultRunnableSpec {
     private val qb: RestQueryBuilder[State] = new RestQueryBuilder[State] {
       override val queryId: Int = 0
 
-      override def query(state: State): Uri = uri"http://localhost:$port/random"
+      override def query(state: State): Request[Either[String, String], Any] = basicRequest.get(uri"http://localhost:$port/random").readTimeout(Duration(20,TimeUnit.SECONDS))
     }
 
     private val qbAuth: RestQueryBuilder[State] = new RestQueryBuilder[State] {
       override val queryId: Int = 0
 
-      override def query(state: State) = uri"http://localhost:$port/auth-token"
+      override def query(state: State): Request[Either[String, String], Any] = basicRequest.get(uri"http://localhost:$port/auth-token").readTimeout(Duration(20,TimeUnit.SECONDS))
     }
 
     val conf: RestConfiguration[Any, Key, Value, State] = RestConfiguration.apply(qb)(StaticFixtures.decoder)(StaticFixtures.transitions)
@@ -114,12 +118,12 @@ object RestSpec extends DefaultRunnableSpec {
     io.provideSomeLayer[ZEnv with KafkaConfig](f.tamerLayer ++ f.outLayer)
   }
 
-  private def testRestFlowAuth(port: Int, serverLog: Ref[ServerLog]) = {
+  @unused private def testRestFlowAuth(port: Int, serverLog: Ref[ServerLog]) = {
     val f = new JobFixtures(port)
 
     val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Throwable, TestResult] = for {
       _ <- f.jobAuth.fetch().fork
-      _ <- (ZIO.effect(println("Awaiting a request to our test server")) *> ZIO.sleep(500.millis))
+      _ <- (ZIO.effect(println("Awaiting an authenticated request to our test server")) *> ZIO.sleep(500.millis))
         .repeatUntilM(_ => serverLog.get.map(_.lastRequestTimestamp.isDefined))
       output <- ZIO.service[Ref[KafkaLog]]
       _ <- (ZIO.effect(println("Awaiting state change")) *> ZIO.sleep(500.millis))
@@ -133,7 +137,7 @@ object RestSpec extends DefaultRunnableSpec {
     suite("RestSpec")(
       testM("Should run a test with provisioned http4s")(withServer(testHttp4sStartup)),
       testM("Should support e2e rest flow")(withServer(testRestFlow)) @@ timeout(30.seconds),
-      testM("Should support auth flow")(withServer(testRestFlowAuth)) @@ timeout(30.seconds)
+      testM("Should support auth flow")(withServer(testRestFlowAuth)) @@ timeout(30.seconds),
     )
       .provideSomeLayerShared[ZEnv with TestEnvironment](StaticFixtures.kafkaConfigLayer.mapError(e => TestFailure.die(e)))
       .provideCustomLayer(ZEnv.live)

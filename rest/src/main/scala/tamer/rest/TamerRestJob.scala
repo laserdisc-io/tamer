@@ -4,14 +4,15 @@ import com.sksamuel.avro4s.Codec
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import sttp.client3.httpclient.zio.{SttpClient, send}
-import sttp.client3.{UriContext, basicRequest}
+import sttp.client3.{Identity, Request, RequestT, UriContext, basicRequest}
 import sttp.model.Uri
 import tamer.config.KafkaConfig
 import tamer.job.AbstractTamerJob
 import tamer.{AvroCodec, HashableState, TamerError}
 import zio.{Chunk, Queue, RIO, Task, UIO, ZEnv, ZIO}
 
-import scala.concurrent.duration.DurationInt
+import java.util.concurrent.TimeUnit
+import scala.concurrent.duration.{Duration, DurationInt}
 import scala.util.hashing.MurmurHash3.stringHash
 
 object TamerRestJob {
@@ -55,7 +56,7 @@ object TamerRestJob {
         */
       override val queryId: Int = stringHash(baseUrl + offsetParameterName) + increment
 
-      override def query(state: Offset): Uri = uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)
+      override def query(state: Offset): Request[Either[String, String], Any] = basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(Duration(20, TimeUnit.SECONDS))
     }
 
     val transitions: RestConfiguration.State[K, V, Offset] =
@@ -76,24 +77,32 @@ class TamerRestJob[
 
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.rest")
 
+  private def attemptAuthenticationOnce() = setup.queryBuilder
+
+  private def fetchPageOrRetry(request: RequestT[Identity, Either[String, String], Any]) = send(request).map(_.body).map {
+    case Left(error) => auth
+    case Right(body) =>
+  }
+
   override protected def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
     val logic: ZIO[R with SttpClient, Throwable, S] = for {
       log <- logTask
-      request = basicRequest.get(setup.queryBuilder.query(currentState)).readTimeout(20.seconds)
-      _         <- log.debug(s"Going to execute request $request with params derived from $currentState")
-      nextState <- setup.transitions.getNextState.apply(currentState)
+      request = setup.queryBuilder.query(currentState)
+      _         <- log.info(s"Going to execute request $request with params derived from $currentState") // TODO: revert to debug
       response  <- send(request)
-      _ <- {
+      decodedPage <- {
         response.body match {
           case Left(value) =>
-            log.error(s"Request $request failed: $value")
+            // assume the cookie expired
+            log.error(s"Request $request failed: $value") // <- retry
           case Right(value) => setup.pageDecoder(value)
-            .map(
-              _.data.map(value => (setup.transitions.deriveKafkaRecordKey(nextState, value), value))
-                .foreach(c => q.offer(Chunk(c)))
-            )
         }
       }
+//        .map(decodedPage =>
+//          decodedPage.data.map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
+//            .foreach(c => q.offer(Chunk(c)))
+//        )
+      nextState <- setup.transitions.getNextState.apply(currentState)
     } yield nextState
 
     logic.mapError(e => TamerError(e.getLocalizedMessage, e))

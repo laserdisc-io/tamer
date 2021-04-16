@@ -98,6 +98,7 @@ lazy val D = new {
   )
 
   val zio = Seq(
+    "dev.zio" %% "zio"              % V.zio,
     "dev.zio" %% "zio-interop-cats" % V.`zio-interop`,
     "dev.zio" %% "zio-kafka"        % V.`zio-kafka`,
     "dev.zio" %% "zio-streams"      % V.zio,

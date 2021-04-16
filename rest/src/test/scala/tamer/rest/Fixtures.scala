@@ -1,6 +1,7 @@
 package tamer.rest
 
 import io.circe.generic.semiauto.deriveCodec
+import sttp.client3.UriContext
 import tamer.{AvroCodec, HashableState}
 import uzhttp.HTTPError.{Forbidden, NotFound}
 import uzhttp.Request.Method.POST
@@ -8,6 +9,7 @@ import uzhttp.{Request, Response}
 import uzhttp.server.Server
 import zio.blocking.Blocking
 import zio.clock.Clock
+import zio.random.Random
 import zio.stream.ZTransducer
 import zio.test._
 import zio.{Task, ZIO, _}
@@ -49,8 +51,17 @@ object Fixtures {
       out <- UIO(Response.plain(s"""{"time": $now, "uuid": "$uid"}""", headers = jsonHeaders))
     } yield out
 
+    def paginatedJson(r: Request) = for {
+      page <- Task.succeed(uri"${r.uri.toString}".paramsMap("page").toLong)
+      uid <- Task.succeed(UUID.randomUUID())
+      _   <- Task.succeed(println(s"Got request ${r.method.name} ${r.uri.toString}"))
+      _   <- gotRequest.update(l => l.copy(lastRequestTimestamp = Some(page)))
+      out <- UIO(Response.plain(s"""{"time": $page, "uuid": "$uid"}""", headers = jsonHeaders))
+    } yield out
+
     Server.builder(new InetSocketAddress("0.0.0.0", port)).handleSome {
       case r if r.uri.getPath == "/random" => randomJson(r)
+      case r if r.uri.getPath == "/paginated" => paginatedJson(r)
       case r if r.uri.getPath == "/auth-request-form" && r.method == POST =>
         for {
           body <- r.body.map(_.transduce(ZTransducer.utf8Decode).runCollect.map(_.mkString)).getOrElse(UIO(""))
@@ -68,9 +79,10 @@ object Fixtures {
     }
   }
 
-  def withServer[R](body: (Int, Ref[ServerLog]) => ZIO[R, Throwable, TestResult]): ZIO[R with Blocking with Clock, Throwable, TestResult] =
+  def withServer[R](body: (Int, Ref[ServerLog]) => ZIO[R, Throwable, TestResult]): ZIO[R with Blocking with Clock with Random, Throwable, TestResult] =
     for {
       ref <- Ref.make(ServerLog(None))
-      out <- serverResource(ref, 9080).serve.use(_ => body(9080, ref))
+      randomPort <- random.nextIntBetween(10000, 50000)
+      out <- serverResource(ref, randomPort).serve.use(_ => body(randomPort, ref))
     } yield out
 }
