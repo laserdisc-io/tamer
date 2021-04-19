@@ -2,9 +2,6 @@ package tamer.rest
 
 import _root_.zio.test.environment.TestEnvironment
 import io.circe.Codec
-import sttp.capabilities.{Effect, WebSockets}
-import sttp.capabilities.zio.ZioStreams
-import sttp.model.Uri
 import tamer.TamerError
 import tamer.config.KafkaConfig
 import tamer.kafka.embedded.KafkaTest
@@ -28,13 +25,13 @@ object RestSpec extends DefaultRunnableSpec {
     val fullLayer: ZLayer[ZEnv, Throwable, SttpClient] =
       HttpClientZioBackend.layer()
 
-    private val qb: RestQueryBuilder[State] = new RestQueryBuilder[State] {
+    private val qb: RestQueryBuilder[Any, State] = new RestQueryBuilder[Any, State] {
       override val queryId: Int = 0
 
       override def query(state: State): Request[Either[String, String], Any] = basicRequest.get(uri"http://localhost:$port/random").readTimeout(Duration(20,TimeUnit.SECONDS))
     }
 
-    private val qbAuth: RestQueryBuilder[State] = new RestQueryBuilder[State] {
+    private val qbAuth: RestQueryBuilder[Any, State] = new RestQueryBuilder[Any, State] {
       override val queryId: Int = 0
 
       override def query(state: State): Request[Either[String, String], Any] = basicRequest.get(uri"http://localhost:$port/auth-token").readTimeout(Duration(20,TimeUnit.SECONDS))

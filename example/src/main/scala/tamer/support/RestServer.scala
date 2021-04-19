@@ -11,8 +11,8 @@ import java.net.InetSocketAddress
 object RestServer extends zio.App {
   val jsonHeader = List("content-type" -> "application/json")
   val server: Server.Builder[Random] = Server.builder(new InetSocketAddress("0.0.0.0", 9095)).handleSome {
-    case req if req.uri.getPath == "/auth" && req.headers.get("Authorization").contains("Basic validUserPass") =>
-      UIO(Response.plain(s"""{"rubbish":"...","token":"validToken"}""", headers = jsonHeader))
+    case req if req.uri.getPath == "/auth" && req.headers.get("Authorization").contains("Basic dXNlcjpwYXNz") => // user:pass
+      UIO(Response.plain("validToken"))
     case req if req.uri.getPath == "/" && req.headers.get("Authorization").contains("Bearer validToken") =>
       random.nextInt.map(i => Response.plain(s"""{"rubbish":"...","data":"$i"}""", headers = jsonHeader))
     case _ => ZIO.fail(Forbidden(s"You don't have access to this resource."))

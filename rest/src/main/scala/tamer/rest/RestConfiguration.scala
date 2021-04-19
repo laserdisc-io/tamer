@@ -2,29 +2,24 @@ package tamer
 package rest
 
 import com.sksamuel.avro4s.Codec
-import sttp.capabilities.{Effect, WebSockets}
 import sttp.capabilities.zio.ZioStreams
-import sttp.client3.{Request, RequestT}
-import sttp.model.Uri
+import sttp.capabilities.{Effect, WebSockets}
+import sttp.client3.Request
 import zio.{RIO, Task, UIO}
 
-//trait AuthType
-//case object Basic extends AuthType
-//case object Bearer extends AuthType
-
-trait RestQueryBuilder[-S] {
+trait RestQueryBuilder[-R, -S] {
 
 
   /** Used for hashing purposes
     */
   val queryId: Int
 
-  def query(state: S): Request[_, ZioStreams with Effect[Task] with WebSockets]
+  def query(state: S): Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets]
 
-  def authenticateQuery: Request[_, ZioStreams with Effect[Task] with WebSockets]
+  val authentication: Option[Authentication[R]] = None
 }
 
-final case class DecodedPage[V, S](data: List[V], stateSideband: Option[S])
+final case class DecodedPage[V, S](data: List[V], nextState: Option[S])
 object DecodedPage {
   def fromString[R, V, S](decoder: String => RIO[R, List[V]]): String => RIO[R, DecodedPage[V, S]] =
     decoder.andThen(_.map(DecodedPage(_, Option.empty[S])))
@@ -36,7 +31,7 @@ final case class RestConfiguration[
     V: Codec,
     S: Codec: HashableState
 ](
-    queryBuilder: RestQueryBuilder[S],
+    queryBuilder: RestQueryBuilder[R, S],
     pageDecoder: String => RIO[R, DecodedPage[V, S]],
     transitions: RestConfiguration.State[K, V, S]
 ) {
@@ -65,7 +60,7 @@ object RestConfiguration {
       K,
       V,
       S
-  ](queryBuilder: RestQueryBuilder[S])(
+  ](queryBuilder: RestQueryBuilder[R, S])(
       pageDecoder: String => RIO[R, DecodedPage[V, S]]
   )(transitions: State[K, V, S])(implicit k: Codec[K], v: Codec[V], s1: Codec[S], s2: HashableState[S], d: DummyImplicit) =
     new RestConfiguration(queryBuilder, pageDecoder, transitions)

@@ -15,5 +15,5 @@ SCRIPT_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit; pwd -P)
 cd "$SCRIPT_PATH"/../.. || exit
 
 sbt "example/runMain tamer.support.RestServer" &
-sleep 10
+sleep 15
 sbt "example/runMain tamer.example.RestSimple" -jvm-debug 5005
