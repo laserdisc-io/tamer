@@ -1,20 +1,19 @@
 package tamer.example
 
-import sttp.capabilities.zio.ZioStreams
-import sttp.capabilities.{Effect, WebSockets}
 import sttp.client3.httpclient.zio.{HttpClientZioBackend, SttpClient, send}
-import sttp.client3.{Request, UriContext, basicRequest}
+import sttp.client3.{UriContext, basicRequest}
 import tamer.config.{Config, KafkaConfig}
 import tamer.rest.TamerRestJob.Offset
-import tamer.rest.{Authentication, DecodedPage, TamerRestJob}
+import tamer.rest.{Authentication, DecodedPage, SttpRequest, TamerRestJob}
 import tamer.{AvroCodec, TamerError}
-import zio.{ExitCode, Layer, RIO, Task, UIO, URIO, ZEnv, ZIO, ZLayer}
+import zio.{ExitCode, Has, Layer, RIO, Ref, Task, UIO, URIO, ZEnv, ZIO, ZLayer}
 
 object RestSimple extends zio.App {
   val httpClientLayer: ZLayer[ZEnv, Throwable, SttpClient] =
     HttpClientZioBackend.layer()
   val kafkaConfigLayer: Layer[TamerError, KafkaConfig] = Config.live
-  val fullLayer: ZLayer[ZEnv, Throwable, SttpClient with KafkaConfig] = httpClientLayer ++ kafkaConfigLayer
+  val localStateLayer: ZLayer[Any, Nothing, Has[Ref[Option[String]]]] = ZLayer.fromEffect(Ref.make(Option.empty[String])) // TODO: use type alias
+  val fullLayer: ZLayer[ZEnv, Throwable, SttpClient with KafkaConfig with Has[Ref[Option[String]]]] = httpClientLayer ++ kafkaConfigLayer ++ localStateLayer // TODO: use type alias
 
   case class MyData(i: Int)
 
@@ -37,20 +36,18 @@ object RestSimple extends zio.App {
   }
 
   val authentication: Authentication[SttpClient] = new Authentication[SttpClient] {
-    override def requestTransform(authInfo: Option[String]): ZIO[SttpClient, TamerError, (Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets] => Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets], Option[String])] = {
-      val token = authInfo match {
-        case Some(token) => UIO(token)
-        case None => send(basicRequest.get(uri"http://localhost:9095/auth").auth.basic("user", "pass")).flatMap(_.body match {
-          case Left(error) => ZIO.fail(TamerError(error))
-          case Right(token) => ZIO.succeed(token)
-        }).mapError(throwable => TamerError("Error while fetching token", throwable))
-      }
-      token.map { bearerToken =>
-        val transformAction = { request: Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets] =>
-          request.auth.bearer(bearerToken)
-        }
-        (transformAction, Some(bearerToken))
-      }.mapError(throwable => TamerError("Error while doing an authenticated request", throwable))
+
+    override def addAuthentication(request: SttpRequest, bearerToken: String): SttpRequest = request.auth.bearer(bearerToken)
+
+    override def setSecret(secretRef: Ref[Option[String]]): ZIO[SttpClient, TamerError, Unit] = {
+      val fetchToken = send(basicRequest.get(uri"http://localhost:9095/auth").auth.basic("user", "pass")).flatMap(_.body match {
+        case Left(error) => ZIO.fail(TamerError(error))
+        case Right(token) => ZIO.succeed(token) <* UIO(println("-" * 200 + s"\nNEW TOKEN! ($token)\n" + "-" * 200))
+      }).mapError(throwable => TamerError("Error while fetching token", throwable))
+      for {
+        token <- fetchToken
+        _ <- secretRef.set(Some(token))
+      } yield ()
     }
   }
 

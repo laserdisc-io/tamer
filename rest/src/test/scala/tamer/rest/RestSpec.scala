@@ -48,11 +48,11 @@ object RestSpec extends DefaultRunnableSpec {
 
     val outLayer: ZLayer[Any, Nothing, Has[Ref[KafkaLog]]] = Ref.make(KafkaLog(0)).toLayer
 
-    val job = new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State](conf) {
+    val job = new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], Key, Value, State](conf) {
       override protected def next(
           currentState: State,
           q: Queue[Chunk[(Key, Value)]]
-      ): ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], TamerError, State] =
+      ): ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], TamerError, State] =
         for {
           next <- super.next(currentState, q)
           log  <- ZIO.service[Ref[KafkaLog]]
@@ -60,11 +60,11 @@ object RestSpec extends DefaultRunnableSpec {
         } yield next
     }
 
-    val jobAuth = new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State](confAuth) {
+    val jobAuth = new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], Key, Value, State](confAuth) {
       override protected def next(
           currentState: State,
           q: Queue[Chunk[(Key, Value)]]
-      ): ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], TamerError, State] =
+      ): ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], TamerError, State] =
         for {
           next <- super.next(currentState, q)
           log  <- ZIO.service[Ref[KafkaLog]]
@@ -72,8 +72,8 @@ object RestSpec extends DefaultRunnableSpec {
         } yield next
     }
 
-    val tamerLayer: ZLayer[ZEnv, Throwable, ZEnv with SttpClient] =
-      ZLayer.requires[ZEnv] ++ fullLayer
+    val tamerLayer: ZLayer[ZEnv, Throwable, ZEnv with SttpClient with Has[Ref[Option[String]]]] =
+      ZLayer.requires[ZEnv] ++ fullLayer ++ ZLayer.fromEffect(Ref.make(Option.empty[String]))
   }
 
   case class KafkaLog(count: Int)
@@ -103,7 +103,7 @@ object RestSpec extends DefaultRunnableSpec {
   private def testRestFlow(port: Int, serverLog: Ref[ServerLog]) = {
     val f = new JobFixtures(port)
 
-    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Throwable, TestResult] = for {
+    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], Throwable, TestResult] = for {
       _ <- f.job.fetch().fork
       _ <- (ZIO.effect(println("Awaiting a request to our test server")) *> ZIO.sleep(500.millis))
         .repeatUntilM(_ => serverLog.get.map(_.lastRequestTimestamp.isDefined))
@@ -118,7 +118,7 @@ object RestSpec extends DefaultRunnableSpec {
   @unused private def testRestFlowAuth(port: Int, serverLog: Ref[ServerLog]) = {
     val f = new JobFixtures(port)
 
-    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Throwable, TestResult] = for {
+    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[Option[String]]] with Has[Ref[KafkaLog]], Throwable, TestResult] = for {
       _ <- f.jobAuth.fetch().fork
       _ <- (ZIO.effect(println("Awaiting an authenticated request to our test server")) *> ZIO.sleep(500.millis))
         .repeatUntilM(_ => serverLog.get.map(_.lastRequestTimestamp.isDefined))
