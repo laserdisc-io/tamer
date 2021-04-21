@@ -152,11 +152,10 @@ def versionDependent(scalaVersion: String) =
       flags ++ Seq(
         "-Xfuture",
         "-Xlint:by-name-right-associative",
-        "-Xlint:unsound-match",
+        "-Xlint:unsound-match,-infer-any",
         "-Yno-adapted-args",
         "-Ypartial-unification",
         "-Ywarn-inaccessible",
-        "-Ywarn-infer-any",
         "-Ywarn-nullary-override",
         "-Ywarn-nullary-unit"
       )
