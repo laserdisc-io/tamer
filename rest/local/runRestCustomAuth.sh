@@ -16,4 +16,4 @@ cd "$SCRIPT_PATH"/../.. || exit
 
 sbt "example/runMain tamer.support.RestServer" &
 sleep 15
-sbt "example/runMain tamer.example.RestSimple" -jvm-debug 5005
+sbt "example/runMain tamer.example.RestCustomAuth" -jvm-debug 5005

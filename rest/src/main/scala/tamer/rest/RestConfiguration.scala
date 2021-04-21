@@ -9,7 +9,6 @@ import zio.{RIO, Task, UIO}
 
 trait RestQueryBuilder[-R, -S] {
 
-
   /** Used for hashing purposes
     */
   val queryId: Int

@@ -67,7 +67,7 @@ object Fixtures {
           body <- r.body.map(_.transduce(ZTransducer.utf8Decode).runCollect.map(_.mkString)).getOrElse(UIO(""))
           out <-
             if (r.headers.get("header1").contains("value1") && body == "valid body")
-              UIO(Response.plain("""{"token_type":"bearer","access_token":"valid-token","expires_in":3600}"""))
+              UIO(Response.plain("valid-token"))
             else
               IO.fail(Forbidden("No access"))
         } yield out

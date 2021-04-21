@@ -2,6 +2,7 @@ package tamer.rest
 
 import _root_.zio.test.environment.TestEnvironment
 import io.circe.Codec
+import sttp.model.Header
 import tamer.TamerError
 import tamer.config.KafkaConfig
 import tamer.kafka.embedded.KafkaTest
@@ -31,10 +32,27 @@ object RestSpec extends DefaultRunnableSpec {
       override def query(state: State): Request[Either[String, String], Any] = basicRequest.get(uri"http://localhost:$port/random").readTimeout(Duration(20,TimeUnit.SECONDS))
     }
 
-    private val qbAuth: RestQueryBuilder[Any, State] = new RestQueryBuilder[Any, State] {
+    private val qbAuth: RestQueryBuilder[SttpClient, State] = new RestQueryBuilder[SttpClient, State] {
       override val queryId: Int = 0
 
       override def query(state: State): Request[Either[String, String], Any] = basicRequest.get(uri"http://localhost:$port/auth-token").readTimeout(Duration(20,TimeUnit.SECONDS))
+
+      override val authentication: Option[Authentication[SttpClient]] = Some(new Authentication[SttpClient] {
+        override def addAuthentication(request: SttpRequest, supplementalSecret: Option[String]): SttpRequest = request.auth.bearer(supplementalSecret.getOrElse(""))
+
+        override def setSecret(secretRef: Ref[Option[String]]): ZIO[SttpClient, TamerError, Unit] = {
+          val fetchToken = send(basicRequest.post(uri"http://localhost:$port/auth-request-form").body("valid body").headers(Header("header1", "value1")))
+            .flatMap(_.body match {
+              case Left(error)  => ZIO.fail(TamerError(error))
+              case Right(token) => ZIO.succeed(token)
+            })
+            .mapError(throwable => TamerError("Error while fetching token", throwable))
+          for {
+            token <- fetchToken
+            _     <- secretRef.set(Some(token))
+          } yield ()
+        }
+      })
     }
 
     val conf: RestConfiguration[Any, Key, Value, State] = RestConfiguration.apply(qb)(StaticFixtures.decoder)(StaticFixtures.transitions)
@@ -134,7 +152,6 @@ object RestSpec extends DefaultRunnableSpec {
     suite("RestSpec")(
       testM("Should run a test with provisioned http4s")(withServer(testHttp4sStartup)),
       testM("Should support e2e rest flow")(withServer(testRestFlow)) @@ timeout(30.seconds),
-      testM("Should support auth flow")(withServer(testRestFlowAuth)) @@ timeout(30.seconds),
     )
       .provideSomeLayerShared[ZEnv with TestEnvironment](StaticFixtures.kafkaConfigLayer.mapError(e => TestFailure.die(e)))
       .provideCustomLayer(ZEnv.live)

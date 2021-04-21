@@ -6,32 +6,36 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import sttp.client3.httpclient.zio.{SttpClient, send}
 import sttp.client3.{Request, Response, UriContext, basicRequest}
 import sttp.model.StatusCode.{Forbidden, NotFound, Unauthorized}
-import sttp.model.Method
 import tamer.config.KafkaConfig
 import tamer.job.AbstractTamerJob
+import tamer.rest.LocalSecretCache.LocalSecretCache
 import tamer.{AvroCodec, HashableState, TamerError}
-import zio.{Chunk, Has, Queue, RIO, Ref, Task, UIO, ZEnv, ZIO, ZLayer}
+import zio.{Chunk, Has, Queue, RIO, Ref, Task, UIO, ULayer, ZEnv, ZIO, ZLayer}
 
 import java.util.concurrent.TimeUnit
+import scala.annotation.unused
 import scala.concurrent.duration.Duration
 import scala.util.hashing.MurmurHash3.stringHash
 
-//case class Authentication/
 trait Authentication[-R] {
-  val secretM: UIO[Ref[Option[String]]] = Ref.make(Option.empty[String])
+  def addAuthentication(request: SttpRequest, supplementalSecret: Option[String]): SttpRequest
 
-  def addAuthentication(request: SttpRequest, secret: String): SttpRequest
-
-  def setSecret(secretRef: Ref[Option[String]]): ZIO[R, TamerError, Unit]
+  def setSecret(@unused secretRef: Ref[Option[String]]): ZIO[R, TamerError, Unit] = UIO(())
+  // TODO: could return the value to set instead of unit
 
   def refreshSecret(secretRef: Ref[Option[String]]): ZIO[R, TamerError, Unit] = setSecret(secretRef)
   // TODO: widen error since this is user space
 }
 
 object Authentication {
-  def basic[R](username: String, password: String, method: Method = Method.GET): Authentication[R] = ???
-  //    case class Basic(username: String, password: String) extends Authentication
-  //    case class Token(bearer: String) extends Authentication
+  def basic[R](username: String, password: String): Some[Authentication[R]] =
+    Some((request: SttpRequest, _: Option[String]) => request.auth.basic(username, password))
+}
+
+object LocalSecretCache {
+  type LocalSecretCache = Has[Ref[Option[String]]]
+  val localSecretCacheM: UIO[Ref[Option[String]]] = Ref.make[Option[String]](None)
+  val live: ULayer[LocalSecretCache]              = ZLayer.fromEffect(localSecretCacheM)
 }
 
 object TamerRestJob {
@@ -52,25 +56,25 @@ object TamerRestJob {
   }
 
   def apply[
-    R <: ZEnv with SttpClient with KafkaConfig with Has[Ref[Option[String]]], // TODO: use alias type
-    K: Codec,
-    V: Codec,
-    S: Codec
+      R <: ZEnv with SttpClient with KafkaConfig with LocalSecretCache,
+      K: Codec,
+      V: Codec,
+      S: Codec
   ](
-     setup: RestConfiguration[R, K, V, S]
-   ) = new TamerRestJob[R, K, V, S](setup)
+      setup: RestConfiguration[R, K, V, S]
+  ) = new TamerRestJob[R, K, V, S](setup)
 
   def withPagination[
-    R <: ZEnv with SttpClient with KafkaConfig with Has[Ref[Option[String]]], // TODO: use type alias
-    K <: Product : Codec,
-    V <: Product : Codec
+      R <: ZEnv with SttpClient with KafkaConfig with LocalSecretCache,
+      K <: Product: Codec,
+      V <: Product: Codec
   ](
-     baseUrl: String,
-     pageDecoder: String => RIO[R, DecodedPage[V, Offset]],
-     offsetParameterName: String = "page",
-     increment: Int = 1,
-     authenticationMethod: Option[Authentication[R]] = None
-   )(deriveKafkaRecordKey: (Offset, V) => K): TamerRestJob[R, K, V, Offset] = {
+      baseUrl: String,
+      pageDecoder: String => RIO[R, DecodedPage[V, Offset]],
+      offsetParameterName: String = "page",
+      increment: Int = 1,
+      authenticationMethod: Option[Authentication[R]] = None
+  )(deriveKafkaRecordKey: (Offset, V) => K): TamerRestJob[R, K, V, Offset] = {
     val queryBuilder: RestQueryBuilder[R, Offset] = new RestQueryBuilder[R, Offset] {
 
       /** Used for hashing purposes
@@ -90,45 +94,44 @@ object TamerRestJob {
   }
 }
 
-
 class TamerRestJob[
-  -R <: ZEnv with SttpClient with KafkaConfig with Has[Ref[Option[String]]], // TODO: use alias type
-  K: Codec,
-  V: Codec,
-  S: Codec
+    -R <: ZEnv with SttpClient with KafkaConfig with LocalSecretCache,
+    K: Codec,
+    V: Codec,
+    S: Codec
 ](
-   setup: RestConfiguration[R, K, V, S]
- ) extends AbstractTamerJob[R, K, V, S](setup.generic) {
-  val tokenCacheM: UIO[Ref[Option[String]]] = Ref.make[Option[String]](None)
-  type TokenCache = Has[Ref[Option[String]]]
-  val tokenCache: ZLayer[Any, Nothing, Has[Ref[Option[String]]]] = ZLayer.fromEffect(tokenCacheM <* UIO(println("-" * 200 + "Instantiating token cache (should happen once per job" + "-" * 200))) // TODO: remove println
-
+    setup: RestConfiguration[R, K, V, S]
+) extends AbstractTamerJob[R, K, V, S](setup.generic) {
   private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.rest")
 
   private def fetchAndDecodePage(request: SttpRequest, tokenCacheRef: Ref[Option[String]], log: LogWriter[Task]): RIO[R, DecodedPage[V, S]] = {
-    def authenticateAndSendRequest(requestToTransform: SttpRequest, tokenCacheRef: Ref[Option[String]], log: LogWriter[Task]): ZIO[R, Throwable, Response[Either[String, String]]] = {
+    def authenticateAndSendRequest(
+        requestToTransform: SttpRequest,
+        tokenCacheRef: Ref[Option[String]],
+        log: LogWriter[Task]
+    ): ZIO[R, Throwable, Response[Either[String, String]]] = {
       val auth = setup.queryBuilder.authentication.get // FIXME: unsafe
 
-      def authenticateAndSendHelper(maybeToken: Option[String]) = {
-        val authenticatedRequest = maybeToken.map(token => auth.addAuthentication(requestToTransform, token)).getOrElse(requestToTransform)
+      def authenticateAndSendHelper(maybeToken: Option[String]): ZIO[SttpClient, Throwable, Response[Either[String, String]]] = {
+        val authenticatedRequest = auth.addAuthentication(requestToTransform, maybeToken)
         log.debug(s"Going to execute request $authenticatedRequest") *> send(authenticatedRequest)
       }
 
       for {
         maybeToken <- tokenCacheRef.get
-        _ <- log.info(s"Currently the token cache contains: $maybeToken")
+        _          <- log.info(s"Currently the token cache contains: $maybeToken")
         _ <- maybeToken match {
           case Some(_) => UIO(()) // secret is already present do nothing
-          case None => auth.setSecret(tokenCacheRef) <* log.info("Got secret for the first time.")
+          case None    => auth.setSecret(tokenCacheRef) <* log.info("Got secret for the first time.")
         }
         firstResponse <- authenticateAndSendHelper(maybeToken)
         response <- firstResponse.code match {
           case Forbidden | Unauthorized | NotFound =>
-            log.warn("Authentication failed, assuming credencial are expired, refresh and retry...") *>
-              log.warn(s"Response was: ${firstResponse.body}") *>
+            log.warn("Authentication failed, assuming credentials are expired, will retry, possibly refreshing them...") *>
+              log.debug(s"Response was: ${firstResponse.body}") *>
               auth.refreshSecret(tokenCacheRef) *>
               tokenCacheRef.get.flatMap(authenticateAndSendHelper)
-          case _ => UIO(firstResponse) <* log.info("Authentication succeeded: proceeding as normal") // TODO: remove or decrease level
+          case _ => UIO(firstResponse) <* log.debug("Authentication succeeded: proceeding as normal")
         }
       } yield response
     }
@@ -136,7 +139,7 @@ class TamerRestJob[
     for {
       response <- setup.queryBuilder.authentication match {
         case Some(_) => authenticateAndSendRequest(request, tokenCacheRef, log)
-        case None => send(request)
+        case None    => send(request)
       }
       decodedPage <- response.body match {
         case Left(error) =>
@@ -152,13 +155,13 @@ class TamerRestJob[
   }
 
   override protected def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
-    val logic: ZIO[R with SttpClient with TokenCache, Throwable, S] = for {
-      log <- logTask
+    val logic: ZIO[R with SttpClient with LocalSecretCache, Throwable, S] = for {
+      log        <- logTask
       tokenCache <- ZIO.service[Ref[Option[String]]]
       request = setup.queryBuilder.query(currentState)
       decodedPage <- fetchAndDecodePage(request, tokenCache, log)
-      _ <- ZIO.foreach(decodedPage.data.map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))(c => q.offer(Chunk(c)))
-      nextState <- setup.transitions.getNextState.apply(decodedPage.nextState.getOrElse(currentState))
+      _           <- ZIO.foreach(decodedPage.data.map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))(c => q.offer(Chunk(c)))
+      nextState   <- setup.transitions.getNextState.apply(decodedPage.nextState.getOrElse(currentState))
     } yield nextState
 
     logic.mapError(e => TamerError(e.getLocalizedMessage, e))
