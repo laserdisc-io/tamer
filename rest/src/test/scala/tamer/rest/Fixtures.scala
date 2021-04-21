@@ -53,14 +53,14 @@ object Fixtures {
 
     def paginatedJson(r: Request) = for {
       page <- Task.succeed(uri"${r.uri.toString}".paramsMap("page").toLong)
-      uid <- Task.succeed(UUID.randomUUID())
-      _   <- Task.succeed(println(s"Got request ${r.method.name} ${r.uri.toString}"))
-      _   <- gotRequest.update(l => l.copy(lastRequestTimestamp = Some(page)))
-      out <- UIO(Response.plain(s"""{"time": $page, "uuid": "$uid"}""", headers = jsonHeaders))
+      uid  <- Task.succeed(UUID.randomUUID())
+      _    <- Task.succeed(println(s"Got request ${r.method.name} ${r.uri.toString}"))
+      _    <- gotRequest.update(l => l.copy(lastRequestTimestamp = Some(page)))
+      out  <- UIO(Response.plain(s"""{"time": $page, "uuid": "$uid"}""", headers = jsonHeaders))
     } yield out
 
     Server.builder(new InetSocketAddress("0.0.0.0", port)).handleSome {
-      case r if r.uri.getPath == "/random" => randomJson(r)
+      case r if r.uri.getPath == "/random"    => randomJson(r)
       case r if r.uri.getPath == "/paginated" => paginatedJson(r)
       case r if r.uri.getPath == "/auth-request-form" && r.method == POST =>
         for {
@@ -79,10 +79,12 @@ object Fixtures {
     }
   }
 
-  def withServer[R](body: (Int, Ref[ServerLog]) => ZIO[R, Throwable, TestResult]): ZIO[R with Blocking with Clock with Random, Throwable, TestResult] =
+  def withServer[R](
+      body: (Int, Ref[ServerLog]) => ZIO[R, Throwable, TestResult]
+  ): ZIO[R with Blocking with Clock with Random, Throwable, TestResult] =
     for {
-      ref <- Ref.make(ServerLog(None))
+      ref        <- Ref.make(ServerLog(None))
       randomPort <- random.nextIntBetween(10000, 50000)
-      out <- serverResource(ref, randomPort).serve.use(_ => body(randomPort, ref))
+      out        <- serverResource(ref, randomPort).serve.use(_ => body(randomPort, ref))
     } yield out
 }

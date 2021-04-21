@@ -29,24 +29,28 @@ object RestSpec extends DefaultRunnableSpec {
     private val qb: RestQueryBuilder[Any, State] = new RestQueryBuilder[Any, State] {
       override val queryId: Int = 0
 
-      override def query(state: State): Request[Either[String, String], Any] = basicRequest.get(uri"http://localhost:$port/random").readTimeout(Duration(20,TimeUnit.SECONDS))
+      override def query(state: State): Request[Either[String, String], Any] =
+        basicRequest.get(uri"http://localhost:$port/random").readTimeout(Duration(20, TimeUnit.SECONDS))
     }
 
     private val qbAuth: RestQueryBuilder[SttpClient, State] = new RestQueryBuilder[SttpClient, State] {
       override val queryId: Int = 0
 
-      override def query(state: State): Request[Either[String, String], Any] = basicRequest.get(uri"http://localhost:$port/auth-token").readTimeout(Duration(20,TimeUnit.SECONDS))
+      override def query(state: State): Request[Either[String, String], Any] =
+        basicRequest.get(uri"http://localhost:$port/auth-token").readTimeout(Duration(20, TimeUnit.SECONDS))
 
       override val authentication: Option[Authentication[SttpClient]] = Some(new Authentication[SttpClient] {
-        override def addAuthentication(request: SttpRequest, supplementalSecret: Option[String]): SttpRequest = request.auth.bearer(supplementalSecret.getOrElse(""))
+        override def addAuthentication(request: SttpRequest, supplementalSecret: Option[String]): SttpRequest =
+          request.auth.bearer(supplementalSecret.getOrElse(""))
 
         override def setSecret(secretRef: Ref[Option[String]]): ZIO[SttpClient, TamerError, Unit] = {
-          val fetchToken = send(basicRequest.post(uri"http://localhost:$port/auth-request-form").body("valid body").headers(Header("header1", "value1")))
-            .flatMap(_.body match {
-              case Left(error)  => ZIO.fail(TamerError(error))
-              case Right(token) => ZIO.succeed(token)
-            })
-            .mapError(throwable => TamerError("Error while fetching token", throwable))
+          val fetchToken =
+            send(basicRequest.post(uri"http://localhost:$port/auth-request-form").body("valid body").headers(Header("header1", "value1")))
+              .flatMap(_.body match {
+                case Left(error)  => ZIO.fail(TamerError(error))
+                case Right(token) => ZIO.succeed(token)
+              })
+              .mapError(throwable => TamerError("Error while fetching token", throwable))
           for {
             token <- fetchToken
             _     <- secretRef.set(Some(token))
@@ -78,17 +82,18 @@ object RestSpec extends DefaultRunnableSpec {
         } yield next
     }
 
-    val jobAuth = new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], Key, Value, State](confAuth) {
-      override protected def next(
-          currentState: State,
-          q: Queue[Chunk[(Key, Value)]]
-      ): ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], TamerError, State] =
-        for {
-          next <- super.next(currentState, q)
-          log  <- ZIO.service[Ref[KafkaLog]]
-          _    <- log.update(l => l.copy(l.count + 1))
-        } yield next
-    }
+    val jobAuth =
+      new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], Key, Value, State](confAuth) {
+        override protected def next(
+            currentState: State,
+            q: Queue[Chunk[(Key, Value)]]
+        ): ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], TamerError, State] =
+          for {
+            next <- super.next(currentState, q)
+            log  <- ZIO.service[Ref[KafkaLog]]
+            _    <- log.update(l => l.copy(l.count + 1))
+          } yield next
+      }
 
     val tamerLayer: ZLayer[ZEnv, Throwable, ZEnv with SttpClient with Has[Ref[Option[String]]]] =
       ZLayer.requires[ZEnv] ++ fullLayer ++ ZLayer.fromEffect(Ref.make(Option.empty[String]))
@@ -99,8 +104,8 @@ object RestSpec extends DefaultRunnableSpec {
   object StaticFixtures {
     val decoder: String => Task[DecodedPage[Value, State]] = DecodedPage.fromString { v =>
       (for {
-         p <- ZIO.fromEither(io.circe.parser.parse(v))
-         out <- ZIO.fromEither(implicitly[Codec[Value]].decodeJson(p))
+        p   <- ZIO.fromEither(io.circe.parser.parse(v))
+        out <- ZIO.fromEither(implicitly[Codec[Value]].decodeJson(p))
       } yield List(out)).catchAll(e => ZIO.fail(new RuntimeException(s"Decoder failed!\n$e")))
     }
 
@@ -151,7 +156,7 @@ object RestSpec extends DefaultRunnableSpec {
   override def spec: Spec[TestEnvironment, TestFailure[Throwable], TestSuccess] =
     suite("RestSpec")(
       testM("Should run a test with provisioned http4s")(withServer(testHttp4sStartup)),
-      testM("Should support e2e rest flow")(withServer(testRestFlow)) @@ timeout(30.seconds),
+      testM("Should support e2e rest flow")(withServer(testRestFlow)) @@ timeout(30.seconds)
     )
       .provideSomeLayerShared[ZEnv with TestEnvironment](StaticFixtures.kafkaConfigLayer.mapError(e => TestFailure.die(e)))
       .provideCustomLayer(ZEnv.live)
