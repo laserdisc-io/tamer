@@ -33,40 +33,7 @@ object RestSpec extends DefaultRunnableSpec {
         basicRequest.get(uri"http://localhost:$port/random").readTimeout(Duration(20, TimeUnit.SECONDS))
     }
 
-    private val qbAuth: RestQueryBuilder[SttpClient, State] = new RestQueryBuilder[SttpClient, State] {
-      override val queryId: Int = 0
-
-      override def query(state: State): Request[Either[String, String], Any] =
-        basicRequest.get(uri"http://localhost:$port/auth-token").readTimeout(Duration(20, TimeUnit.SECONDS))
-
-      override val authentication: Option[Authentication[SttpClient]] = Some(new Authentication[SttpClient] {
-        override def addAuthentication(request: SttpRequest, supplementalSecret: Option[String]): SttpRequest =
-          request.auth.bearer(supplementalSecret.getOrElse(""))
-
-        override def setSecret(secretRef: Ref[Option[String]]): ZIO[SttpClient, TamerError, Unit] = {
-          val fetchToken =
-            send(basicRequest.post(uri"http://localhost:$port/auth-request-form").body("valid body").headers(Header("header1", "value1")))
-              .flatMap(_.body match {
-                case Left(error)  => ZIO.fail(TamerError(error))
-                case Right(token) => ZIO.succeed(token)
-              })
-              .mapError(throwable => TamerError("Error while fetching token", throwable))
-          for {
-            token <- fetchToken
-            _     <- secretRef.set(Some(token))
-          } yield ()
-        }
-      })
-    }
-
     val conf: RestConfiguration[Any, Key, Value, State] = RestConfiguration.apply(qb)(StaticFixtures.decoder)(StaticFixtures.transitions)
-
-    val confAuth: RestConfiguration[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State] =
-      new RestConfiguration(
-        qbAuth,
-        StaticFixtures.decoder,
-        StaticFixtures.transitions
-      )
 
     val outLayer: ZLayer[Any, Nothing, Has[Ref[KafkaLog]]] = Ref.make(KafkaLog(0)).toLayer
 
@@ -81,19 +48,6 @@ object RestSpec extends DefaultRunnableSpec {
           _    <- log.update(l => l.copy(l.count + 1))
         } yield next
     }
-
-    val jobAuth =
-      new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], Key, Value, State](confAuth) {
-        override protected def next(
-            currentState: State,
-            q: Queue[Chunk[(Key, Value)]]
-        ): ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], TamerError, State] =
-          for {
-            next <- super.next(currentState, q)
-            log  <- ZIO.service[Ref[KafkaLog]]
-            _    <- log.update(l => l.copy(l.count + 1))
-          } yield next
-      }
 
     val tamerLayer: ZLayer[ZEnv, Throwable, ZEnv with SttpClient with Has[Ref[Option[String]]]] =
       ZLayer.requires[ZEnv] ++ fullLayer ++ ZLayer.fromEffect(Ref.make(Option.empty[String]))
@@ -129,21 +83,6 @@ object RestSpec extends DefaultRunnableSpec {
     val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with Has[Ref[Option[String]]], Throwable, TestResult] = for {
       _ <- f.job.fetch().fork
       _ <- (ZIO.effect(println("Awaiting a request to our test server")) *> ZIO.sleep(500.millis))
-        .repeatUntilM(_ => serverLog.get.map(_.lastRequestTimestamp.isDefined))
-      output <- ZIO.service[Ref[KafkaLog]]
-      _ <- (ZIO.effect(println("Awaiting state change")) *> ZIO.sleep(500.millis))
-        .repeatUntilM(_ => output.get.map(_.count > 0))
-    } yield assertCompletes
-
-    io.provideSomeLayer[ZEnv with KafkaConfig](f.tamerLayer ++ f.outLayer)
-  }
-
-  @unused private def testRestFlowAuth(port: Int, serverLog: Ref[ServerLog]) = {
-    val f = new JobFixtures(port)
-
-    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[Option[String]]] with Has[Ref[KafkaLog]], Throwable, TestResult] = for {
-      _ <- f.jobAuth.fetch().fork
-      _ <- (ZIO.effect(println("Awaiting an authenticated request to our test server")) *> ZIO.sleep(500.millis))
         .repeatUntilM(_ => serverLog.get.map(_.lastRequestTimestamp.isDefined))
       output <- ZIO.service[Ref[KafkaLog]]
       _ <- (ZIO.effect(println("Awaiting state change")) *> ZIO.sleep(500.millis))
