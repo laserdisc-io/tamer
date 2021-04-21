@@ -39,7 +39,7 @@ object LocalSecretCache {
 }
 
 object TamerRestJob {
-  case class Offset(offset: Int, token: Option[String]) {
+  case class Offset(offset: Int) {
     def incrementedBy(increment: Int): Offset = this.copy(offset = offset + increment)
   }
 
@@ -88,7 +88,7 @@ object TamerRestJob {
     }
 
     val transitions: RestConfiguration.State[K, V, Offset] =
-      RestConfiguration.State(Offset(0, None))(s => UIO(s.incrementedBy(increment)), deriveKafkaRecordKey)
+      RestConfiguration.State(Offset(0))(s => UIO(s.incrementedBy(increment)), deriveKafkaRecordKey)
 
     new TamerRestJob[R, K, V, Offset](RestConfiguration(queryBuilder = queryBuilder, transitions = transitions, pageDecoder = pageDecoder))
   }
