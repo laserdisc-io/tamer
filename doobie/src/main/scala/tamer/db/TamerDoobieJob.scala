@@ -21,14 +21,14 @@ import java.time.{Duration, Instant}
 object TamerDoobieJob {
   def apply[
       R <: ZEnv with DbConfig with TamerDBConfig with KafkaConfig,
-      K <: Product: Codec,
-      V <: Product: Codec,
-      S <: Product: Codec
+      K: Codec,
+      V: Codec,
+      S: Codec
   ](
       setup: DoobieConfiguration[K, V, S]
   ) = new TamerDoobieJob[R, K, V, S](setup)
 
-  final def fetchWithTimeSegment[K <: Product: Codec, V <: Product with Timestamped: Ordering: Codec](
+  final def fetchWithTimeSegment[K: Codec, V <: Timestamped: Ordering: Codec](
       queryBuilder: TimeSegment => Query0[V]
   )(earliest: Instant, tumblingStep: Duration, keyExtract: V => K): ZIO[ZEnv, TamerError, Unit] = {
     val transactorLayer: Layer[TamerError, DbTransactor]               = (Blocking.live ++ ConfigDb.live) >>> db.hikariLayer
@@ -40,9 +40,9 @@ object TamerDoobieJob {
 }
 class TamerDoobieJob[
     R <: ZEnv with DbConfig with TamerDBConfig with KafkaConfig,
-    K <: Product: Codec,
-    V <: Product: Codec,
-    S <: Product: Codec
+    K: Codec,
+    V: Codec,
+    S: Codec
 ](
     setup: DoobieConfiguration[K, V, S]
 ) extends AbstractTamerJob[R, K, V, S](setup.generic) {

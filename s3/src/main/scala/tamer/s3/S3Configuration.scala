@@ -12,9 +12,9 @@ import scala.util.hashing.MurmurHash3.stringHash
 
 final case class S3Configuration[
     R,
-    K <: Product: Codec: SchemaFor,
-    V <: Product: Codec: SchemaFor,
-    S <: Product: Codec: SchemaFor
+    K: Codec: SchemaFor,
+    V: Codec: SchemaFor,
+    S: Codec: SchemaFor
 ](
     bucketName: String,
     prefix: String,
@@ -88,7 +88,7 @@ object S3Configuration {
   )(lastProcessedInstant: LastProcessedInstant, keys: Keys): Option[String] =
     keys.find(_.contains(zonedDateTimeFormatter.value.format(lastProcessedInstant.instant)))
 
-  final def mkTimeBased[R, K <: Product: Codec: SchemaFor, V <: Product: Codec: SchemaFor](
+  final def mkTimeBased[R, K: Codec: SchemaFor, V: Codec: SchemaFor](
       bucketName: String,
       filePathPrefix: String,
       afterwards: LastProcessedInstant,

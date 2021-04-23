@@ -34,9 +34,9 @@ object SourceConfiguration {
 
   object SourceSerde {
     def apply[
-        K <: Product: Codec,
-        V <: Product: Codec,
-        S <: Product: Codec
+        K: Codec,
+        V: Codec,
+        S: Codec
     ](): SourceSerde[K, V, S] =
       SourceSerde(
         Serde[K](isKey = true).serializer,
