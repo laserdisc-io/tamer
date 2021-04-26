@@ -9,10 +9,10 @@ import tamer.{AvroCodec, TamerError}
 import zio.{ExitCode, Layer, RIO, Task, URIO, ZEnv, ZLayer}
 
 object RestBasicAuth extends zio.App {
-  val httpClientLayer: ZLayer[ZEnv, Throwable, SttpClient] =
+  val httpClientLayer: RLayer[ZEnv, SttpClient] =
     HttpClientZioBackend.layer()
   val kafkaConfigLayer: Layer[TamerError, KafkaConfig] = Config.live
-  val fullLayer: ZLayer[ZEnv, Throwable, SttpClient with KafkaConfig with LocalSecretCache] =
+  val fullLayer: RLayer[ZEnv, SttpClient with KafkaConfig with LocalSecretCache] =
     httpClientLayer ++ kafkaConfigLayer ++ LocalSecretCache.live
 
   case class MyData(i: Int)
@@ -27,7 +27,7 @@ object RestBasicAuth extends zio.App {
     implicit val codec = AvroCodec.codec[MyKey]
   }
 
-  val pageDecoder: String => RIO[Any, DecodedPage[MyData, Offset]] =
+  val pageDecoder: String => Task[DecodedPage[MyData, Offset]] =
     DecodedPage.fromString { pageBody =>
       val dataRegex = """.*"data":"(-?[\d]+).*""".r
       pageBody match {
@@ -44,5 +44,5 @@ object RestBasicAuth extends zio.App {
     authenticationMethod = Authentication.basic("user", "pass")
   )((_, data) => MyKey(data.i))
 
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = program.fetch().provideCustomLayer(fullLayer).exitCode
+  override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.fetch().provideCustomLayer(fullLayer).exitCode
 }
