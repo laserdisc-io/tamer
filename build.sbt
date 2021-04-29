@@ -148,9 +148,9 @@ def versionDependent(scalaVersion: String) =
     case Some((2, major)) if major >= 13 =>
       flags ++ Seq(
         "-Wconf:any:error",
-        "-Wconf:cat=unused-nowarns:s",
         "-Ymacro-annotations",
-        "-Xlint:-byname-implicit"
+        "-Xlint:-byname-implicit",
+        "-Ywarn-unused:-nowarn"
       )
     case _ =>
       flags ++ Seq(
