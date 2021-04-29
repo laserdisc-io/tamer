@@ -10,7 +10,8 @@ import tamer.config.KafkaConfig
 import tamer.job.AbstractTamerJob
 import tamer.rest.LocalSecretCache.LocalSecretCache
 import tamer.{AvroCodec, HashableState, TamerError}
-import zio.{Chunk, Has, Queue, RIO, Ref, Task, UIO, ULayer, ZEnv, ZIO, ZLayer}
+import zio.duration.durationInt
+import zio.{Chunk, Has, Queue, RIO, Ref, Schedule, Task, UIO, ULayer, ZEnv, ZIO, ZLayer}
 
 import java.util.concurrent.TimeUnit
 import scala.annotation.unused
@@ -39,8 +40,9 @@ object LocalSecretCache {
 }
 
 object TamerRestJob {
-  case class Offset(offset: Int) {
-    def incrementedBy(increment: Int): Offset = this.copy(offset = offset + increment)
+  case class Offset(offset: Int, nextIndex: Int) {
+    def incrementedBy(increment: Int): Offset = this.copy(offset = offset + increment, nextIndex = 0)
+    def nextIndex(index: Int): Offset         = this.copy(nextIndex = index)
   }
 
   object Offset {
@@ -66,13 +68,14 @@ object TamerRestJob {
 
   def withPagination[
       R <: ZEnv with SttpClient with KafkaConfig with LocalSecretCache,
-      K <: Product: Codec,
-      V <: Product: Codec
+      K: Codec,
+      V: Codec
   ](
       baseUrl: String,
       pageDecoder: String => RIO[R, DecodedPage[V, Offset]],
       offsetParameterName: String = "page",
       increment: Int = 1,
+      fixedPageElementCount: Option[Int] = None,
       authenticationMethod: Option[Authentication[R]] = None
   )(deriveKafkaRecordKey: (Offset, V) => K): TamerRestJob[R, K, V, Offset] = {
     val queryBuilder: RestQueryBuilder[R, Offset] = new RestQueryBuilder[R, Offset] {
@@ -87,10 +90,35 @@ object TamerRestJob {
       override val authentication: Option[Authentication[R]] = authenticationMethod
     }
 
-    val transitions: RestConfiguration.State[K, V, Offset] =
-      RestConfiguration.State(Offset(0))(s => UIO(s.incrementedBy(increment)), deriveKafkaRecordKey)
+    def getNextState(offset: Offset): UIO[Offset] = fixedPageElementCount match {
+      case Some(expectedElemCount) if offset.nextIndex <= expectedElemCount - 1 => UIO(offset)
+      case _                                                                    => UIO(offset.incrementedBy(increment))
+    }
 
-    new TamerRestJob[R, K, V, Offset](RestConfiguration(queryBuilder = queryBuilder, transitions = transitions, pageDecoder = pageDecoder))
+    val transitions: RestConfiguration.State[K, V, Offset] =
+      new RestConfiguration.State(Offset(0, 0))(getNextState, deriveKafkaRecordKey)
+
+    val setup = new RestConfiguration(queryBuilder = queryBuilder, pageDecoder = pageDecoder)(transitions = transitions)
+    new TamerRestJob[R, K, V, Offset](setup) {
+      private final def fetchAndDecode(currentState: Offset, tokenCache: Ref[Option[String]], log: LogWriter[Task]): RIO[R, (List[V], Int)] = for {
+        decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log)
+        dataFromIndex = decodedPage.data.drop(currentState.nextIndex)
+        pageLength    = decodedPage.data.length
+        _ <- log.debug(s"Fetch and Decode retrieved ${dataFromIndex.length} new datapoints. ($pageLength total for page ${currentState.offset})")
+      } yield (dataFromIndex, pageLength)
+
+      override protected def next(currentState: Offset, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, Offset] = {
+        val logic: RIO[R with SttpClient with LocalSecretCache, Offset] = for {
+          log                         <- this.logTask
+          tokenCache                  <- ZIO.service[Ref[Option[String]]]
+          (dataFromIndex, pageLength) <- fetchAndDecode(currentState, tokenCache, log).repeat(Schedule.exponential(500.millis) *> Schedule.recurWhile { case (data, _) => data.isEmpty })
+          _                           <- ZIO.foreach_(dataFromIndex.map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))(c => q.offer(Chunk(c)))
+          nextState                   <- setup.transitions.getNextState.apply(currentState.nextIndex(pageLength))
+        } yield nextState
+
+        logic.mapError(e => TamerError(e.getLocalizedMessage, e))
+      }
+    }
   }
 }
 
@@ -102,14 +130,14 @@ class TamerRestJob[
 ](
     setup: RestConfiguration[R, K, V, S]
 ) extends AbstractTamerJob[R, K, V, S](setup.generic) {
-  private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.rest")
+  protected[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.rest")
 
-  private def fetchAndDecodePage(request: SttpRequest, tokenCacheRef: Ref[Option[String]], log: LogWriter[Task]): RIO[R, DecodedPage[V, S]] = {
+  protected def fetchAndDecodePage(request: SttpRequest, tokenCacheRef: Ref[Option[String]], log: LogWriter[Task]): RIO[R, DecodedPage[V, S]] = {
     def authenticateAndSendRequest(
         requestToTransform: SttpRequest,
         tokenCacheRef: Ref[Option[String]],
         log: LogWriter[Task]
-    ): ZIO[R, Throwable, Response[Either[String, String]]] = {
+    ): RIO[R, Response[Either[String, String]]] = {
       val auth = setup.queryBuilder.authentication.get // FIXME: unsafe
 
       def authenticateAndSendHelper(maybeToken: Option[String]): ZIO[SttpClient, Throwable, Response[Either[String, String]]] = {
@@ -121,8 +149,8 @@ class TamerRestJob[
         maybeToken <- tokenCacheRef.get
         _          <- log.info(s"Currently the token cache contains: $maybeToken")
         _ <- maybeToken match {
-          case Some(_) => UIO(()) // secret is already present do nothing
-          case None    => auth.setSecret(tokenCacheRef) <* log.info("Got secret for the first time.")
+          case Some(_) => UIO.unit // secret is already present do nothing
+          case None    => auth.setSecret(tokenCacheRef)
         }
         firstResponse <- authenticateAndSendHelper(maybeToken)
         response <- firstResponse.code match {
@@ -147,7 +175,6 @@ class TamerRestJob[
           log.error(s"""Request failed with error "$error"""") *>
             tokenCacheRef.set(None) *> // clear cache
             RIO.fail(TamerError("Request failed, giving up."))
-        //fetchAndDecodePage(request, tokenCacheRef, log)
         case Right(body) =>
           setup.pageDecoder(body)
       }
@@ -155,12 +182,11 @@ class TamerRestJob[
   }
 
   override protected def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
-    val logic: ZIO[R with SttpClient with LocalSecretCache, Throwable, S] = for {
-      log        <- logTask
-      tokenCache <- ZIO.service[Ref[Option[String]]]
-      request = setup.queryBuilder.query(currentState)
-      decodedPage <- fetchAndDecodePage(request, tokenCache, log)
-      _           <- ZIO.foreach(decodedPage.data.map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))(c => q.offer(Chunk(c)))
+    val logic: RIO[R with SttpClient with LocalSecretCache, S] = for {
+      log         <- logTask
+      tokenCache  <- ZIO.service[Ref[Option[String]]]
+      decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log)
+      _           <- ZIO.foreach_(decodedPage.data.map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))(c => q.offer(Chunk(c)))
       nextState   <- setup.transitions.getNextState.apply(decodedPage.nextState.getOrElse(currentState))
     } yield nextState
 

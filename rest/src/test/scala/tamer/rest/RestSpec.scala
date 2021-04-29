@@ -10,7 +10,7 @@ import zio.duration.durationInt
 import zio.test.Assertion._
 import zio.test.TestAspect.timeout
 import zio.test.{assertM, _}
-import zio.{Chunk, Has, Queue, Ref, Task, UIO, ZEnv, ZIO, ZLayer}
+import zio.{Chunk, Has, Queue, RIO, RLayer, Ref, Task, UIO, ZEnv, ZIO, ZLayer}
 
 import java.util.concurrent.TimeUnit
 import scala.annotation.unused
@@ -33,7 +33,7 @@ object RestSpec extends DefaultRunnableSpec {
         basicRequest.get(uri"http://localhost:$port/random").readTimeout(Duration(20, TimeUnit.SECONDS))
     }
 
-    val conf: RestConfiguration[Any, Key, Value, State] = RestConfiguration.apply(qb)(StaticFixtures.decoder)(StaticFixtures.transitions)
+    val conf: RestConfiguration[Any, Key, Value, State] = new RestConfiguration(qb, StaticFixtures.decoder)(StaticFixtures.transitions)
 
     val outLayer: ZLayer[Any, Nothing, Has[Ref[KafkaLog]]] = Ref.make(KafkaLog(0)).toLayer
 
@@ -49,8 +49,8 @@ object RestSpec extends DefaultRunnableSpec {
         } yield next
     }
 
-    val tamerLayer: ZLayer[ZEnv, Throwable, ZEnv with SttpClient with Has[Ref[Option[String]]]] =
-      ZLayer.requires[ZEnv] ++ fullLayer ++ ZLayer.fromEffect(Ref.make(Option.empty[String]))
+    val tamerLayer: RLayer[ZEnv, ZEnv with SttpClient with Has[Ref[Option[String]]]] =
+      ZLayer.requires[ZEnv] ++ fullLayer ++ Ref.make(Option.empty[String]).toLayer
   }
 
   case class KafkaLog(count: Int)
@@ -63,7 +63,7 @@ object RestSpec extends DefaultRunnableSpec {
       } yield List(out)).catchAll(e => ZIO.fail(new RuntimeException(s"Decoder failed!\n$e")))
     }
 
-    val transitions = RestConfiguration.State(State(0))(s => UIO(s.copy(count = s.count + 1)), (_, v: Value) => Key(v.time))
+    val transitions = new RestConfiguration.State(State(0))(s => UIO(s.copy(count = s.count + 1)), (_, v: Value) => Key(v.time))
 
     val kafkaConfigLayer: ZLayer[ZEnv, Throwable, KafkaConfig] = KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig
   }
@@ -80,7 +80,7 @@ object RestSpec extends DefaultRunnableSpec {
   private def testRestFlow(port: Int, serverLog: Ref[ServerLog]) = {
     val f = new JobFixtures(port)
 
-    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with LocalSecretCache, Throwable, TestResult] = for {
+    val io: RIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with LocalSecretCache, TestResult] = for {
       _ <- f.job.fetch().fork
       _ <- (ZIO.effect(println("Awaiting a request to our test server")) *> ZIO.sleep(500.millis))
         .repeatUntilM(_ => serverLog.get.map(_.lastRequestTimestamp.isDefined))

@@ -7,6 +7,7 @@ lazy val V = new {
   val avro4s        = "4.0.7"
   val cats          = "2.6.0"
   val ciris         = "1.2.1"
+  val `scala-compat`= "2.4.3"
   val confluent     = "6.1.0"
   val doobie        = "0.13.1"
   val `json-schema` = "1.12.2"
@@ -115,6 +116,8 @@ lazy val D = new {
     "io.circe" %% "circe-generic",
     "io.circe" %% "circe-parser"
   ).map(_ % V.circeVersion)
+
+  val compat = Seq("org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`)
 }
 
 lazy val flags = Seq(
@@ -152,7 +155,7 @@ def versionDependent(scalaVersion: String) =
       flags ++ Seq(
         "-Xfuture",
         "-Xlint:by-name-right-associative",
-        "-Xlint:unsound-match,-infer-any",
+        "-Xlint:unsound-match",
         "-Yno-adapted-args",
         "-Ypartial-unification",
         "-Ywarn-inaccessible",
@@ -179,7 +182,7 @@ lazy val tamer = project
   .settings(commonSettings)
   .settings(
     name := "tamer-core",
-    libraryDependencies ++= (D.cats ++ D.config ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
+    libraryDependencies ++= (D.cats ++ D.compat ++ D.config ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
       .map(_.withSources)
       .map(_.withJavadoc),
     libraryDependencies ++= D.avro,

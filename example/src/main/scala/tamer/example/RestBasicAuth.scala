@@ -6,9 +6,9 @@ import tamer.rest.LocalSecretCache.LocalSecretCache
 import tamer.rest.TamerRestJob.Offset
 import tamer.rest.{Authentication, DecodedPage, LocalSecretCache, TamerRestJob}
 import tamer.{AvroCodec, TamerError}
-import zio.{ExitCode, Layer, RIO, Task, URIO, ZEnv, ZLayer}
+import zio._
 
-object RestBasicAuth extends zio.App {
+object RestBasicAuth extends App {
   val httpClientLayer: RLayer[ZEnv, SttpClient] =
     HttpClientZioBackend.layer()
   val kafkaConfigLayer: Layer[TamerError, KafkaConfig] = Config.live
@@ -27,13 +27,11 @@ object RestBasicAuth extends zio.App {
     implicit val codec = AvroCodec.codec[MyKey]
   }
 
+  val dataRegex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] =
-    DecodedPage.fromString { pageBody =>
-      val dataRegex = """.*"data":"(-?[\d]+).*""".r
-      pageBody match {
-        case dataRegex(data) => Task(List(MyData(data.toInt)))
-        case _               => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
-      }
+    DecodedPage.fromString {
+      case dataRegex(data) => Task(List(MyData(data.toInt)))
+      case pageBody        => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
     }
 
   private val program = TamerRestJob.withPagination(

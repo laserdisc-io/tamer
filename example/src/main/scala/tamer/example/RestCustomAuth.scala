@@ -6,9 +6,11 @@ import tamer.config.{Config, KafkaConfig}
 import tamer.rest.TamerRestJob.Offset
 import tamer.rest.{Authentication, DecodedPage, LocalSecretCache, SttpRequest, TamerRestJob}
 import tamer.{AvroCodec, TamerError}
-import zio.{ExitCode, Has, Layer, RIO, Ref, Task, URIO, ZEnv, ZIO, ZLayer}
+import zio._
 
-object RestCustomAuth extends zio.App {
+import scala.util.matching.Regex
+
+object RestCustomAuth extends App {
   val httpClientLayer: RLayer[ZEnv, SttpClient] =
     HttpClientZioBackend.layer()
   val kafkaConfigLayer: Layer[TamerError, KafkaConfig] = Config.live
@@ -27,12 +29,10 @@ object RestCustomAuth extends zio.App {
     implicit val codec = AvroCodec.codec[MyKey]
   }
 
-  val pageDecoder: String => Task[DecodedPage[MyData, Offset]] = DecodedPage.fromString { pageBody =>
-    val dataRegex = """.*"data":"(-?[\d]+).*""".r
-    pageBody match {
-      case dataRegex(data) => Task(List(MyData(data.toInt)))
-      case _               => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
-    }
+  val dataRegex: Regex = """.*"data":"(-?[\d]+).*""".r
+  val pageDecoder: String => Task[DecodedPage[MyData, Offset]] = DecodedPage.fromString {
+    case dataRegex(data) => Task(List(MyData(data.toInt)))
+    case pageBody => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
   }
 
   val authentication: Authentication[SttpClient] = new Authentication[SttpClient] {
@@ -45,7 +45,7 @@ object RestCustomAuth extends zio.App {
           case Left(error)  => ZIO.fail(TamerError(error))
           case Right(token) => ZIO.succeed(token)
         })
-        .mapError(throwable => TamerError("Error while fetching token", throwable))
+        .mapError(TamerError("Error while fetching token", _))
       for {
         token <- fetchToken
         _     <- secretRef.set(Some(token))

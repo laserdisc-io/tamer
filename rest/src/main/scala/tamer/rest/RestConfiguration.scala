@@ -24,15 +24,15 @@ object DecodedPage {
     decoder.andThen(_.map(DecodedPage(_, Option.empty[S])))
 }
 
-final case class RestConfiguration[
+final class RestConfiguration[
     -R,
     K: Codec,
     V: Codec,
     S: Codec: HashableState
 ](
-    queryBuilder: RestQueryBuilder[R, S],
-    pageDecoder: String => RIO[R, DecodedPage[V, S]],
-    transitions: RestConfiguration.State[K, V, S]
+    val queryBuilder: RestQueryBuilder[R, S],
+    val pageDecoder: String => RIO[R, DecodedPage[V, S]])(
+    val transitions: RestConfiguration.State[K, V, S]
 ) {
   private val keyId: Int = queryBuilder.queryId + HashableState[S].stateHash(transitions.initialState)
   private val repr: String =
@@ -50,27 +50,12 @@ final case class RestConfiguration[
     keyId,
     repr
   )
-
 }
 
 object RestConfiguration {
-  def apply[
-      R,
-      K,
-      V,
-      S
-  ](queryBuilder: RestQueryBuilder[R, S])(
-      pageDecoder: String => RIO[R, DecodedPage[V, S]]
-  )(transitions: State[K, V, S])(implicit k: Codec[K], v: Codec[V], s1: Codec[S], s2: HashableState[S], d: DummyImplicit) =
-    new RestConfiguration(queryBuilder, pageDecoder, transitions)
-
-  case class State[K, V, S](
-      initialState: S,
-      getNextState: S => UIO[S],
-      deriveKafkaRecordKey: (S, V) => K
+  class State[K, V, S](
+      val initialState: S)(
+      val getNextState: S => UIO[S],
+      val deriveKafkaRecordKey: (S, V) => K
   )
-  object State {
-    def apply[K, V, S](initialState: S)(getNextState: S => UIO[S], deriveKafkaRecordKey: (S, V) => K)(implicit d: DummyImplicit) =
-      new State(initialState, getNextState, deriveKafkaRecordKey)
-  }
 }

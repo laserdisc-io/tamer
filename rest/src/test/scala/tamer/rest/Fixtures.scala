@@ -81,7 +81,7 @@ object Fixtures {
 
   def withServer[R](
       body: (Int, Ref[ServerLog]) => ZIO[R, Throwable, TestResult]
-  ): ZIO[R with Blocking with Clock with Random, Throwable, TestResult] =
+  ): RIO[R with Blocking with Clock with Random, TestResult] =
     for {
       ref        <- Ref.make(ServerLog(None))
       randomPort <- random.nextIntBetween(10000, 50000)
