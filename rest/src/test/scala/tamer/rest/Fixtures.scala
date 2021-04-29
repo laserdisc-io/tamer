@@ -80,7 +80,7 @@ object Fixtures {
   }
 
   def withServer[R](
-      body: (Int, Ref[ServerLog]) => ZIO[R, Throwable, TestResult]
+      body: (Int, Ref[ServerLog]) => RIO[R, TestResult]
   ): RIO[R with Blocking with Clock with Random, TestResult] =
     for {
       ref        <- Ref.make(ServerLog(None))
