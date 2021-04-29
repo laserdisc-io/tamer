@@ -4,29 +4,29 @@ lazy val scala_212 = "2.12.13"
 lazy val scala_213 = "2.13.4"
 
 lazy val V = new {
-  val avro4s        = "4.0.7"
-  val cats          = "2.6.0"
-  val ciris         = "1.2.1"
-  val `scala-compat`= "2.4.3"
-  val confluent     = "6.1.0"
-  val doobie        = "0.13.1"
-  val `json-schema` = "1.12.2"
-  val kafka         = "2.7.0"
-  val logback       = "1.2.3"
-  val `log-effect`  = "0.15.0"
-  val ociSdk        = "1.36.1"
-  val postgres      = "42.2.20"
-  val refined       = "0.9.24"
-  val scalacheck    = "1.15.3"
-  val scalatest     = "3.2.8"
-  val silencer      = "1.7.3"
-  val sttp          = "3.2.3"
-  val uzhttp        = "0.2.7"
-  val zio           = "1.0.7"
-  val `zio-interop` = "2.4.0.0"
-  val `zio-kafka`   = "0.14.0"
-  val `zio-oci-os`  = "0.2.0"
-  val `zio-s3`      = "0.3.1"
+  val avro4s         = "4.0.7"
+  val cats           = "2.6.0"
+  val ciris          = "1.2.1"
+  val `scala-compat` = "2.4.3"
+  val confluent      = "6.1.0"
+  val doobie         = "0.13.1"
+  val `json-schema`  = "1.12.2"
+  val kafka          = "2.7.0"
+  val logback        = "1.2.3"
+  val `log-effect`   = "0.15.0"
+  val ociSdk         = "1.36.1"
+  val postgres       = "42.2.20"
+  val refined        = "0.9.24"
+  val scalacheck     = "1.15.3"
+  val scalatest      = "3.2.8"
+  val silencer       = "1.7.3"
+  val sttp           = "3.2.3"
+  val uzhttp         = "0.2.7"
+  val zio            = "1.0.7"
+  val `zio-interop`  = "2.4.0.0"
+  val `zio-kafka`    = "0.14.0"
+  val `zio-oci-os`   = "0.2.0"
+  val `zio-s3`       = "0.3.1"
 
   val circeVersion = "0.13.0"
 }
@@ -182,7 +182,7 @@ lazy val tamer = project
   .settings(commonSettings)
   .settings(
     name := "tamer-core",
-    libraryDependencies ++= (D.cats ++ D.compat ++ D.config ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
+    libraryDependencies ++= (D.cats ++ D.config ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
       .map(_.withSources)
       .map(_.withJavadoc),
     libraryDependencies ++= D.avro,
@@ -237,8 +237,7 @@ lazy val example = project
   .dependsOn(tamer, doobie, ociObjectStorage, rest, s3)
   .settings(commonSettings)
   .settings(
-    libraryDependencies ++= D.postgres,
-    libraryDependencies ++= D.uzhttp,
+    libraryDependencies ++= D.postgres ++ D.uzhttp ++ D.compat,
     publish / skip := true
   )
 

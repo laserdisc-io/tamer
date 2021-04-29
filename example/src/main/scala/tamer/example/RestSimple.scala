@@ -8,6 +8,8 @@ import tamer.rest.TamerRestJob.Offset
 import tamer.rest.{DecodedPage, LocalSecretCache, TamerRestJob}
 import zio._
 
+import scala.annotation.nowarn
+
 object RestSimple extends App {
   val httpClientLayer: RLayer[ZEnv, SttpClient] =
     HttpClientZioBackend.layer()
@@ -15,6 +17,7 @@ object RestSimple extends App {
   val fullLayer: RLayer[ZEnv, SttpClient with KafkaConfig with LocalSecretCache] =
     httpClientLayer ++ kafkaConfigLayer ++ LocalSecretCache.live
 
+  @nowarn
   val pageDecoder: String => Task[DecodedPage[String, Offset]] =
     DecodedPage.fromString { body =>
       Task(body.split(",").toList.filterNot(_.isBlank))

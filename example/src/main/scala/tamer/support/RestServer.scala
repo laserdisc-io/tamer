@@ -10,6 +10,8 @@ import zio.{ExitCode, Ref, Schedule, UIO, URIO, ZIO, random}
 
 import java.net.InetSocketAddress
 
+import scala.annotation.nowarn
+
 object RestServer extends zio.App {
   val rotatingSecretM: URIO[Clock, Ref[Int]] = for {
     secret <- Ref.make(0)
@@ -20,13 +22,13 @@ object RestServer extends zio.App {
     random.nextInt.map(i => Response.plain(s"""{"rubbish":"...","data":"$i"}""", headers = jsonHeader))
   val dynamicPaginationM = for {
     pages <- Ref.make(List(1 to 20: _*))
-    _     <- pages.update(l => l.appended(l.last + 1)).repeat(Schedule.spaced(2.seconds)).fork
+    _     <- pages.update(l => l :+ (l.last + 1)).repeat(Schedule.spaced(2.seconds)).fork
   } yield pages
 
   def server(rotatingSecret: Ref[Int], dynamicPagination: Ref[List[Int]]): Server.Builder[Random] =
     Server.builder(new InetSocketAddress("0.0.0.0", 9095)).handleSome {
       case req if req.uri.getPath == "/auth" && req.headers.get("Authorization").contains("Basic dXNlcjpwYXNz") => // user:pass
-        rotatingSecret.get.flatMap(currentToken => UIO(Response.plain("validToken" + currentToken)))
+        rotatingSecret.get.flatMap(currentToken => UIO(Response.plain("validToken" + currentToken))): @nowarn
       case req if req.uri.getPath == "/" =>
         rotatingSecret.get.flatMap { currentToken =>
           if (req.headers.get("Authorization").contains("Bearer validToken" + currentToken)) {
