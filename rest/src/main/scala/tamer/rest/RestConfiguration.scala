@@ -29,9 +29,7 @@ final class RestConfiguration[
     K: Codec,
     V: Codec,
     S: Codec: HashableState
-](
-    val queryBuilder: RestQueryBuilder[R, S],
-    val pageDecoder: String => RIO[R, DecodedPage[V, S]])(
+](val queryBuilder: RestQueryBuilder[R, S], val pageDecoder: String => RIO[R, DecodedPage[V, S]])(
     val transitions: RestConfiguration.State[K, V, S]
 ) {
   private val keyId: Int = queryBuilder.queryId + HashableState[S].stateHash(transitions.initialState)
@@ -53,8 +51,7 @@ final class RestConfiguration[
 }
 
 object RestConfiguration {
-  class State[K, V, S](
-      val initialState: S)(
+  class State[K, V, S](val initialState: S)(
       val getNextState: S => UIO[S],
       val deriveKafkaRecordKey: (S, V) => K
   )

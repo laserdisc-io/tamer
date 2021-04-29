@@ -32,7 +32,7 @@ object RestCustomAuth extends App {
   val dataRegex: Regex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] = DecodedPage.fromString {
     case dataRegex(data) => Task(List(MyData(data.toInt)))
-    case pageBody => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
+    case pageBody        => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
   }
 
   val authentication: Authentication[SttpClient] = new Authentication[SttpClient] {

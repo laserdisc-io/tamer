@@ -5,14 +5,14 @@ import sttp.client3.UriContext
 import tamer.{AvroCodec, HashableState}
 import uzhttp.HTTPError.{Forbidden, NotFound}
 import uzhttp.Request.Method.POST
-import uzhttp.{Request, Response}
 import uzhttp.server.Server
+import uzhttp.{Request, Response}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.random.Random
 import zio.stream.ZTransducer
 import zio.test._
-import zio.{Task, ZIO, _}
+import zio.{Task, _}
 
 import java.net.InetSocketAddress
 import java.util.UUID

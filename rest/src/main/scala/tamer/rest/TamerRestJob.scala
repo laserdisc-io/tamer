@@ -109,11 +109,13 @@ object TamerRestJob {
 
       override protected def next(currentState: Offset, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, Offset] = {
         val logic: RIO[R with SttpClient with LocalSecretCache, Offset] = for {
-          log                         <- this.logTask
-          tokenCache                  <- ZIO.service[Ref[Option[String]]]
-          (dataFromIndex, pageLength) <- fetchAndDecode(currentState, tokenCache, log).repeat(Schedule.exponential(500.millis) *> Schedule.recurWhile { case (data, _) => data.isEmpty })
-          _                           <- ZIO.foreach_(dataFromIndex.map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))(c => q.offer(Chunk(c)))
-          nextState                   <- setup.transitions.getNextState.apply(currentState.nextIndex(pageLength))
+          log        <- this.logTask
+          tokenCache <- ZIO.service[Ref[Option[String]]]
+          (dataFromIndex, pageLength) <- fetchAndDecode(currentState, tokenCache, log).repeat(
+            Schedule.exponential(500.millis) *> Schedule.recurWhile { case (data, _) => data.isEmpty }
+          )
+          _         <- ZIO.foreach_(dataFromIndex.map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))(c => q.offer(Chunk(c)))
+          nextState <- setup.transitions.getNextState.apply(currentState.nextIndex(pageLength))
         } yield nextState
 
         logic.mapError(e => TamerError(e.getLocalizedMessage, e))
