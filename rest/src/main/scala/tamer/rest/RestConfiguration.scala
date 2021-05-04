@@ -5,7 +5,7 @@ import com.sksamuel.avro4s.Codec
 import sttp.capabilities.zio.ZioStreams
 import sttp.capabilities.{Effect, WebSockets}
 import sttp.client3.Request
-import zio.{RIO, Task, UIO}
+import zio.{RIO, Task, URIO}
 
 trait RestQueryBuilder[-R, -S] {
 
@@ -30,7 +30,7 @@ final class RestConfiguration[
     V: Codec,
     S: Codec: HashableState
 ](val queryBuilder: RestQueryBuilder[R, S], val pageDecoder: String => RIO[R, DecodedPage[V, S]])(
-    val transitions: RestConfiguration.State[K, V, S]
+    val transitions: RestConfiguration.State[R, K, V, S]
 ) {
   private val keyId: Int = queryBuilder.queryId + HashableState[S].stateHash(transitions.initialState)
   private val repr: String =
@@ -51,8 +51,10 @@ final class RestConfiguration[
 }
 
 object RestConfiguration {
-  class State[K, V, S](val initialState: S)(
-      val getNextState: S => UIO[S],
-      val deriveKafkaRecordKey: (S, V) => K
+  def identityFilter[V, S](decodedPage: DecodedPage[V, S]): List[V] = decodedPage.data
+  class State[-R, K, V, S](val initialState: S)(
+      val deriveKafkaRecordKey: (S, V) => K)(
+      val getNextState: (DecodedPage[V, S], S) => URIO[R, S],
+      val filterPage: (DecodedPage[V, S], S) => List[V] = (decodedPage: DecodedPage[V, S], _: S) => identityFilter(decodedPage)
   )
 }

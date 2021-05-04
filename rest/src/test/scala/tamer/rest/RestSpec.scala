@@ -63,7 +63,7 @@ object RestSpec extends DefaultRunnableSpec {
       } yield List(out)).catchAll(e => ZIO.fail(new RuntimeException(s"Decoder failed!\n$e")))
     }
 
-    val transitions = new RestConfiguration.State(State(0))(s => UIO(s.copy(count = s.count + 1)), (_, v: Value) => Key(v.time))
+    val transitions = new RestConfiguration.State(State(0))((_, v: Value) => Key(v.time))((_, s) => UIO(s.copy(count = s.count + 1)))
 
     val kafkaConfigLayer: ZLayer[ZEnv, Throwable, KafkaConfig] = KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig
   }

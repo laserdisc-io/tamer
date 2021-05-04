@@ -103,7 +103,7 @@ object Kafka {
 
       val stateKeySerde = Serde[StateKey](isKey = true)(AvroCodec.codec[StateKey])
       val initializeAssignedPartitions: ZIO[Blocking with Clock, Throwable, Unit] = subscribeToExistingState.flatMap {
-        case PreexistingState => log.info(s"consumer group ${config.state.groupId} resuming consumption from ${config.state.topic}")
+        case PreexistingState => log.info(s"consumer group ${config.state.groupId} resuming consumption from '${config.state.topic}'")
         case EmptyState =>
           log.info(
             s"consumer group ${config.state.groupId} never consumed from ${config.state.topic}, setting offset to earliest"
@@ -132,9 +132,9 @@ object Kafka {
                     .flatMap(rmd => log.debug(s"pushed state $newState to $rmd"))
                     .as(offset)
                 }
-          case CommittableRecord(_, offset) =>
+          case CommittableRecord(record, offset) =>
             log.debug(
-              s"consumer group ${config.state.groupId} ignored state (wrong key) from ${offset.topicPartition}@${offset.offset}"
+              s"consumer group ${config.state.groupId} ignored state (wrong key: ${record.key} != $stateKey) from ${offset.topicPartition}@${offset.offset}"
             ) *> UIO(offset)
         }
 

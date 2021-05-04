@@ -10,9 +10,13 @@ import tamer.config.KafkaConfig
 import tamer.job.AbstractTamerJob
 import tamer.rest.LocalSecretCache.LocalSecretCache
 import tamer.{AvroCodec, HashableState, TamerError}
-import zio.duration.durationInt
-import zio.{Chunk, Has, Queue, RIO, Ref, Schedule, Task, UIO, ULayer, ZEnv, ZIO, ZLayer}
+import zio.clock.Clock
+import zio.console.Console
+import zio.duration.{durationInt, Duration => ZDuration}
+import zio.interop.console.cats.putStrLn
+import zio.{Chunk, Has, Queue, RIO, Ref, Schedule, Task, UIO, ULayer, URIO, ZEnv, ZIO, ZLayer, clock}
 
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import scala.annotation.unused
 import scala.concurrent.duration.Duration
@@ -44,7 +48,6 @@ object TamerRestJob {
     def incrementedBy(increment: Int): Offset = this.copy(offset = offset + increment, nextIndex = 0)
     def nextIndex(index: Int): Offset         = this.copy(nextIndex = index)
   }
-
   object Offset {
     implicit val codec = AvroCodec.codec[Offset]
     implicit val hashableState: HashableState[Offset] = new HashableState[Offset] {
@@ -53,7 +56,22 @@ object TamerRestJob {
         * for the same semantic state. This is in contrast with the built-in
         * `hashCode` method.
         */
-      override def stateHash(s: Offset): Int = s.offset
+      override def stateHash(s: Offset): Int = s.offset * s.nextIndex
+    }
+  }
+
+  case class PeriodicOffset(offset: Int, periodStart: Instant) {
+    def incrementedBy(increment: Int): PeriodicOffset = this.copy(offset = offset + increment)
+  }
+  object PeriodicOffset {
+    implicit val codec = AvroCodec.codec[PeriodicOffset]
+    implicit val hashableState: HashableState[PeriodicOffset] = new HashableState[PeriodicOffset] {
+
+      /** It is required for this hash to be consistent even across executions
+        * for the same semantic state. This is in contrast with the built-in
+        * `hashCode` method.
+        */
+      override def stateHash(s: PeriodicOffset): Int = s.offset * (s.periodStart.getEpochSecond + s.periodStart.getNano.longValue).toInt
     }
   }
 
@@ -90,32 +108,124 @@ object TamerRestJob {
       override val authentication: Option[Authentication[R]] = authenticationMethod
     }
 
-    def getNextState(offset: Offset): UIO[Offset] = fixedPageElementCount match {
-      case Some(expectedElemCount) if offset.nextIndex <= expectedElemCount - 1 => UIO(offset)
-      case _                                                                    => UIO(offset.incrementedBy(increment))
+    def nextPageOrNextIndexIfPageNotComplete(decodedPage: DecodedPage[V, Offset], offset: Offset): UIO[Offset] = {
+      val fetchedElementCount = decodedPage.data.length
+      val nextElementIndex    = decodedPage.data.length
+      lazy val defaultNextState = fixedPageElementCount match {
+        case Some(expectedElemCount) if fetchedElementCount <= expectedElemCount - 1 => UIO(offset.nextIndex(nextElementIndex))
+        case _                                                                       => UIO(offset.incrementedBy(increment))
+      }
+      decodedPage.nextState.map(UIO(_)).getOrElse(defaultNextState)
     }
 
-    val transitions: RestConfiguration.State[K, V, Offset] =
-      new RestConfiguration.State(Offset(0, 0))(getNextState, deriveKafkaRecordKey)
+    def filterPage(decodedPage: DecodedPage[V, Offset], offset: Offset): List[V] = {
+      val previousElementCount = offset.nextIndex
+      decodedPage.data.drop(previousElementCount)
+    }
+
+    val transitions: RestConfiguration.State[R, K, V, Offset] =
+      new RestConfiguration.State(Offset(0, 0))(deriveKafkaRecordKey)(nextPageOrNextIndexIfPageNotComplete, filterPage)
 
     val setup = new RestConfiguration(queryBuilder = queryBuilder, pageDecoder = pageDecoder)(transitions = transitions)
     new TamerRestJob[R, K, V, Offset](setup) {
-      private final def fetchAndDecode(currentState: Offset, tokenCache: Ref[Option[String]], log: LogWriter[Task]): RIO[R, (List[V], Int)] = for {
-        decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log)
-        dataFromIndex = decodedPage.data.drop(currentState.nextIndex)
-        pageLength    = decodedPage.data.length
-        _ <- log.debug(s"Fetch and Decode retrieved ${dataFromIndex.length} new datapoints. ($pageLength total for page ${currentState.offset})")
-      } yield (dataFromIndex, pageLength)
-
       override protected def next(currentState: Offset, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, Offset] = {
         val logic: RIO[R with SttpClient with LocalSecretCache, Offset] = for {
-          log        <- this.logTask
+          log         <- this.logTask
+          tokenCache  <- ZIO.service[Ref[Option[String]]]
+          decodedPage <- fetchWaitingNewEntries(currentState, log, tokenCache)
+          _ <- ZIO.foreach_(
+            setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
+          )(c => q.offer(Chunk(c)))
+          nextState <- setup.transitions.getNextState(decodedPage, currentState)
+        } yield nextState
+
+        logic.mapError(e => TamerError(e.getLocalizedMessage, e))
+      }
+
+      private final def fetchWaitingNewEntries(
+          currentState: Offset,
+          log: LogWriter[Task],
+          tokenCache: Ref[Option[String]]
+      ): RIO[R with Clock, DecodedPage[V, Offset]] =
+        fetchAndDecode(currentState, tokenCache, log).repeat(
+          Schedule.exponential(500.millis) *> Schedule.recurWhile(_.data.isEmpty)
+        )
+
+      private final def fetchAndDecode(currentState: Offset, tokenCache: Ref[Option[String]], log: LogWriter[Task]): RIO[R, DecodedPage[V, Offset]] =
+        for {
+          decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log)
+          dataFromIndex = decodedPage.data.drop(currentState.nextIndex)
+          pageLength    = decodedPage.data.length
+          _ <- log.debug(s"Fetch and Decode retrieved ${dataFromIndex.length} new datapoints. ($pageLength total for page ${currentState.offset})")
+        } yield decodedPage
+    }
+  }
+
+  def withPaginationPeriodic[
+      R <: ZEnv with SttpClient with KafkaConfig with LocalSecretCache,
+      K: Codec,
+      V: Codec
+  ](
+      baseUrl: String,
+      pageDecoder: String => RIO[R, DecodedPage[V, PeriodicOffset]],
+      periodStart: Instant,
+      offsetParameterName: String = "page",
+      increment: Int = 1,
+      authenticationMethod: Option[Authentication[R]] = None,
+      minPeriod: zio.duration.Duration = 5.minutes,
+      maxPeriod: zio.duration.Duration = 1.hour
+  )(deriveKafkaRecordKey: (PeriodicOffset, V) => K): TamerRestJob[R, K, V, PeriodicOffset] = {
+    val queryBuilder: RestQueryBuilder[R with Clock, PeriodicOffset] = new RestQueryBuilder[R, PeriodicOffset] {
+
+      /** Used for hashing purposes
+        */
+      override val queryId: Int = stringHash(baseUrl + offsetParameterName) + increment
+
+      override def query(state: PeriodicOffset): Request[Either[String, String], Any] =
+        basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(Duration(20, TimeUnit.SECONDS))
+
+      override val authentication: Option[Authentication[R]] = authenticationMethod
+    }
+
+    def getNextState(decodedPage: DecodedPage[V, PeriodicOffset], periodicOffset: PeriodicOffset): URIO[R with Clock, PeriodicOffset] = {
+      lazy val defaultNextState: URIO[Clock with Console, PeriodicOffset] = for {
+        now <- zio.clock.instant
+        newOffset <-
+          if (
+            now.isAfter(periodicOffset.periodStart.plus(maxPeriod)) ||
+              (decodedPage.data.isEmpty && now.isAfter(periodicOffset.periodStart.plus(minPeriod)))
+          ) {
+            UIO(PeriodicOffset(offset = 0, periodStart = now)) <* {
+              if (now.isAfter(periodicOffset.periodStart.plus(maxPeriod))) putStrLn("-" * 100 + "we are after the end of the current period maximum duration, resetting period")
+              else putStrLn("-" * 100 + "the page returned empty and we are passed the minimum period duration, resetting period")
+            }
+          } else if (decodedPage.data.isEmpty) {
+            val nextPeriodStart: Instant = periodicOffset.periodStart.plus(minPeriod)
+            UIO(PeriodicOffset(offset = 0, periodStart = nextPeriodStart)) <* putStrLn("-" * 100 + "there is no more data but we are not past the minimum duration, setting next state to next period")
+          } else {
+            UIO(periodicOffset.incrementedBy(increment)) <* putStrLn("-" * 100 + s"still more data (${decodedPage.data.mkString(",")}) and we are inside the maximum period range, incrementing page")
+          }
+      } yield newOffset
+      decodedPage.nextState.map(UIO(_)).getOrElse(defaultNextState)
+    }
+
+    val transitions =
+      new RestConfiguration.State[R with Clock, K, V, PeriodicOffset](PeriodicOffset(0, periodStart))(deriveKafkaRecordKey)(getNextState)
+
+    val setup = new RestConfiguration(queryBuilder = queryBuilder, pageDecoder = pageDecoder)(transitions = transitions)
+    new TamerRestJob[R with Clock with Console, K, V, PeriodicOffset](setup) {
+      override protected def next(currentState: PeriodicOffset, q: Queue[Chunk[(K, V)]]): ZIO[R with Clock, TamerError, PeriodicOffset] = {
+        val logic: RIO[R with SttpClient with LocalSecretCache with Clock with Console, PeriodicOffset] = for {
+          log        <- logTask
           tokenCache <- ZIO.service[Ref[Option[String]]]
-          (dataFromIndex, pageLength) <- fetchAndDecode(currentState, tokenCache, log).repeat(
-            Schedule.exponential(500.millis) *> Schedule.recurWhile { case (data, _) => data.isEmpty }
-          )
-          _         <- ZIO.foreach_(dataFromIndex.map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))(c => q.offer(Chunk(c)))
-          nextState <- setup.transitions.getNextState.apply(currentState.nextIndex(pageLength))
+          now        <- clock.instant
+          delayUntilNextPeriod = if (currentState.periodStart.isBefore(now)) ZDuration.Zero else ZDuration.fromInterval(now, currentState.periodStart)
+          _ <- log.debug(s"Time until the next period: ${delayUntilNextPeriod.toString}")
+          decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log).delay(delayUntilNextPeriod)
+          _ <- ZIO.foreach_(
+            setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
+          )(c => q.offer(Chunk(c)))
+          nextState <- setup.transitions.getNextState(decodedPage, currentState)
         } yield nextState
 
         logic.mapError(e => TamerError(e.getLocalizedMessage, e))
@@ -188,8 +298,10 @@ class TamerRestJob[
       log         <- logTask
       tokenCache  <- ZIO.service[Ref[Option[String]]]
       decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log)
-      _           <- ZIO.foreach_(decodedPage.data.map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))(c => q.offer(Chunk(c)))
-      nextState   <- setup.transitions.getNextState.apply(decodedPage.nextState.getOrElse(currentState))
+      _ <- ZIO.foreach_(
+        setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
+      )(c => q.offer(Chunk(c)))
+      nextState <- setup.transitions.getNextState(decodedPage, currentState)
     } yield nextState
 
     logic.mapError(e => TamerError(e.getLocalizedMessage, e))
