@@ -192,7 +192,7 @@ object TamerRestJob {
         newOffset <-
           if (
             now.isAfter(periodicOffset.periodStart.plus(maxPeriod)) ||
-              (decodedPage.data.isEmpty && now.isAfter(periodicOffset.periodStart.plus(minPeriod)))
+            (decodedPage.data.isEmpty && now.isAfter(periodicOffset.periodStart.plus(minPeriod)))
           ) {
             UIO(PeriodicOffset(offset = 0, periodStart = now))
           } else if (decodedPage.data.isEmpty) {
@@ -215,8 +215,13 @@ object TamerRestJob {
           log        <- logTask
           tokenCache <- ZIO.service[Ref[Option[String]]]
           now        <- clock.instant
-          delayUntilNextPeriod = if (currentState.periodStart.isBefore(now)) ZDuration.Zero else ZDuration.fromInterval(now, currentState.periodStart)
-          _ <- log.info(s"Time until the next period: ${delayUntilNextPeriod.toString}")
+          delayUntilNextPeriod <-
+            if (currentState.periodStart.isBefore(now))
+              UIO(ZDuration.Zero)
+            else
+              UIO(ZDuration.fromInterval(now, currentState.periodStart)).tap(delayUntilNextPeriod =>
+                log.info(s"Time until the next period: ${delayUntilNextPeriod.toString}")
+              )
           decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log).delay(delayUntilNextPeriod)
           _ <- ZIO.foreach_(
             setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
