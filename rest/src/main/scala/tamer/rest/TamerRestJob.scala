@@ -295,7 +295,7 @@ class TamerRestJob[
       decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log)
       _ <- ZIO.foreach_(
         setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
-      )(c => q.offer(Chunk(c)))
+      )(c => q.offer(Chunk(c))) // TODO: surely there is a way to offer only one chunk with everything in it
       nextState <- setup.transitions.getNextState(decodedPage, currentState)
     } yield nextState
 
