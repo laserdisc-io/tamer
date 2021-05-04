@@ -255,7 +255,6 @@ class TamerRestJob[
 
       for {
         maybeToken <- tokenCacheRef.get
-        _          <- log.info(s"Currently the token cache contains: $maybeToken")
         _ <- maybeToken match {
           case Some(_) => UIO.unit // secret is already present do nothing
           case None    => auth.setSecret(tokenCacheRef)
