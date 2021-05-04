@@ -46,7 +46,6 @@ object KafkaSpec extends DefaultRunnableSpec {
         (for {
           outputVector <- ZIO.service[OutputR]
           _            <- tamer.kafka.runLoop.timeout(7.seconds)
-          _            <- TestConsole.output.flatMap(s => putStrLn("bau: " + s.mkString)) // TODO: remove
           result       <- outputVector.get
         } yield assert(result)(equalTo(Vector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))))
       } @@ timeout(20.seconds)
