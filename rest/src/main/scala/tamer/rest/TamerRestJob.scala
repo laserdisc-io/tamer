@@ -216,7 +216,7 @@ object TamerRestJob {
           tokenCache <- ZIO.service[Ref[Option[String]]]
           now        <- clock.instant
           delayUntilNextPeriod = if (currentState.periodStart.isBefore(now)) ZDuration.Zero else ZDuration.fromInterval(now, currentState.periodStart)
-          _ <- log.debug(s"Time until the next period: ${delayUntilNextPeriod.toString}")
+          _ <- log.info(s"Time until the next period: ${delayUntilNextPeriod.toString}")
           decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log).delay(delayUntilNextPeriod)
           _ <- ZIO.foreach_(
             setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
