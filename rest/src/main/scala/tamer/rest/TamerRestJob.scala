@@ -195,15 +195,12 @@ object TamerRestJob {
             now.isAfter(periodicOffset.periodStart.plus(maxPeriod)) ||
               (decodedPage.data.isEmpty && now.isAfter(periodicOffset.periodStart.plus(minPeriod)))
           ) {
-            UIO(PeriodicOffset(offset = 0, periodStart = now)) <* {
-              if (now.isAfter(periodicOffset.periodStart.plus(maxPeriod))) putStrLn("-" * 100 + "we are after the end of the current period maximum duration, resetting period")
-              else putStrLn("-" * 100 + "the page returned empty and we are passed the minimum period duration, resetting period")
-            }
+            UIO(PeriodicOffset(offset = 0, periodStart = now))
           } else if (decodedPage.data.isEmpty) {
             val nextPeriodStart: Instant = periodicOffset.periodStart.plus(minPeriod)
-            UIO(PeriodicOffset(offset = 0, periodStart = nextPeriodStart)) <* putStrLn("-" * 100 + "there is no more data but we are not past the minimum duration, setting next state to next period")
+            UIO(PeriodicOffset(offset = 0, periodStart = nextPeriodStart))
           } else {
-            UIO(periodicOffset.incrementedBy(increment)) <* putStrLn("-" * 100 + s"still more data (${decodedPage.data.mkString(",")}) and we are inside the maximum period range, incrementing page")
+            UIO(periodicOffset.incrementedBy(increment))
           }
       } yield newOffset
       decodedPage.nextState.map(UIO(_)).getOrElse(defaultNextState)

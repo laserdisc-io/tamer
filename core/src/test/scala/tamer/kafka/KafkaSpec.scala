@@ -6,11 +6,11 @@ import tamer.kafka.embedded.KafkaTest
 import tamer.{SourceConfiguration, TamerError}
 import zio.blocking.Blocking
 import zio.clock.Clock
-import zio.console.{Console, putStrLn}
+import zio.console.Console
 import zio.duration.durationInt
 import zio.test.Assertion.equalTo
 import zio.test.TestAspect.timeout
-import zio.test.environment.{TestConsole, TestEnvironment}
+import zio.test.environment.TestEnvironment
 import zio.test.{DefaultRunnableSpec, TestFailure, ZSpec, assert}
 import zio.{Chunk, Has, Queue, Ref, UIO, ZEnv, ZIO, ZLayer}
 
