@@ -132,9 +132,8 @@ object TamerRestJob {
           log         <- this.logTask
           tokenCache  <- ZIO.service[Ref[Option[String]]]
           decodedPage <- fetchWaitingNewEntries(currentState, log, tokenCache)
-          _ <- ZIO.foreach_(
-            setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
-          )(c => q.offer(Chunk(c)))
+          chunk = Chunk.fromIterable(setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))
+          _ <- q.offer(chunk)
           nextState <- setup.transitions.getNextState(decodedPage, currentState)
         } yield nextState
 
@@ -223,9 +222,8 @@ object TamerRestJob {
                 log.info(s"Time until the next period: ${delayUntilNextPeriod.toString}")
               )
           decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log).delay(delayUntilNextPeriod)
-          _ <- ZIO.foreach_(
-            setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
-          )(c => q.offer(Chunk(c)))
+          chunk = Chunk.fromIterable(setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))
+          _ <- q.offer(chunk)
           nextState <- setup.transitions.getNextState(decodedPage, currentState)
         } yield nextState
 
@@ -293,14 +291,19 @@ class TamerRestJob[
     } yield decodedPage
   }
 
+  // TODO: it seems the common pattern for the specializations of this function is to schedule
+  // `fetchAndDecode` page depending on the current state. Either the execution is delayed
+  // (for example when we have to repeat all the queries after resetting the offset) or repeated
+  // (for example when we are waiting new pages to appear). This has to be combined with an
+  // intuitive filtering of the page result and automatic type inference of the state for
+  // the page decoder helper functions.
   override protected def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] = {
     val logic: RIO[R with SttpClient with LocalSecretCache, S] = for {
       log         <- logTask
       tokenCache  <- ZIO.service[Ref[Option[String]]]
       decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log)
-      _ <- ZIO.foreach_(
-        setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
-      )(c => q.offer(Chunk(c))) // TODO: surely there is a way to offer only one chunk with everything in it
+      chunk = Chunk.fromIterable(setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))
+      _ <- q.offer(chunk)
       nextState <- setup.transitions.getNextState(decodedPage, currentState)
     } yield nextState
 
