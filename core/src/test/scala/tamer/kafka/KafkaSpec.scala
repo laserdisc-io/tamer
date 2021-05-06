@@ -6,11 +6,11 @@ import tamer.kafka.embedded.KafkaTest
 import tamer.{SourceConfiguration, TamerError}
 import zio.blocking.Blocking
 import zio.clock.Clock
-import zio.console.{Console, putStrLn}
+import zio.console.Console
 import zio.duration.durationInt
 import zio.test.Assertion.equalTo
 import zio.test.TestAspect.timeout
-import zio.test.environment.{TestConsole, TestEnvironment}
+import zio.test.environment.TestEnvironment
 import zio.test.{DefaultRunnableSpec, TestFailure, ZSpec, assert}
 import zio.{Chunk, Has, Queue, Ref, UIO, ZEnv, ZIO, ZLayer}
 
@@ -46,7 +46,6 @@ object KafkaSpec extends DefaultRunnableSpec {
         (for {
           outputVector <- ZIO.service[OutputR]
           _            <- tamer.kafka.runLoop.timeout(7.seconds)
-          _            <- TestConsole.output.flatMap(s => putStrLn("bau: " + s.mkString)) // TODO: remove
           result       <- outputVector.get
         } yield assert(result)(equalTo(Vector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))))
       } @@ timeout(20.seconds)

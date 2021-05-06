@@ -3,28 +3,34 @@ package rest
 
 import com.sksamuel.avro4s.Codec
 import sttp.capabilities.zio.ZioStreams
-import sttp.client3.{Identity, RequestT}
-import zio.stream.ZTransducer
-import zio.{UIO, stream}
+import sttp.capabilities.{Effect, WebSockets}
+import sttp.client3.Request
+import zio.{RIO, Task, URIO}
 
-trait RestQueryBuilder[-S] {
+trait RestQueryBuilder[-R, -S] {
 
   /** Used for hashing purposes
     */
   val queryId: Int
 
-  def query(state: S): RequestT[Identity, Either[String, stream.Stream[Throwable, Byte]], ZioStreams]
+  def query(state: S): Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets]
+
+  val authentication: Option[Authentication[R]] = None
 }
 
-final case class RestConfiguration[
+final case class DecodedPage[V, S](data: List[V], nextState: Option[S])
+object DecodedPage {
+  def fromString[R, V, S](decoder: String => RIO[R, List[V]]): String => RIO[R, DecodedPage[V, S]] =
+    decoder.andThen(_.map(DecodedPage(_, Option.empty[S])))
+}
+
+final class RestConfiguration[
     -R,
     K: Codec,
     V: Codec,
     S: Codec: HashableState
-](
-    queryBuilder: RestQueryBuilder[S],
-    transducer: ZTransducer[R, TamerError, Byte, V],
-    transitions: RestConfiguration.State[K, V, S]
+](val queryBuilder: RestQueryBuilder[R, S], val pageDecoder: String => RIO[R, DecodedPage[V, S]])(
+    val transitions: RestConfiguration.State[R, K, V, S]
 ) {
   private val keyId: Int = queryBuilder.queryId + HashableState[S].stateHash(transitions.initialState)
   private val repr: String =
@@ -42,13 +48,12 @@ final case class RestConfiguration[
     keyId,
     repr
   )
-
 }
 
 object RestConfiguration {
-  case class State[K, V, S](
-      initialState: S,
-      getNextState: S => UIO[S],
-      deriveKafkaRecordKey: (S, V) => K
+  def identityFilter[V, S](decodedPage: DecodedPage[V, S]): List[V] = decodedPage.data
+  class State[-R, K, V, S](val initialState: S)(val deriveKafkaRecordKey: (S, V) => K)(
+      val getNextState: (DecodedPage[V, S], S) => URIO[R, S],
+      val filterPage: (DecodedPage[V, S], S) => List[V] = (decodedPage: DecodedPage[V, S], _: S) => identityFilter(decodedPage)
   )
 }

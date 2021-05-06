@@ -4,40 +4,36 @@ lazy val scala_212 = "2.12.13"
 lazy val scala_213 = "2.13.4"
 
 lazy val V = new {
-  val avro4s        = "4.0.7"
-  val cats          = "2.6.0"
-  val ciris         = "1.2.1"
-  val confluent     = "6.1.0"
-  val doobie        = "0.13.1"
-  val `json-schema` = "1.12.2"
-  val kafka         = "2.7.0"
-  val logback       = "1.2.3"
-  val `log-effect`  = "0.15.0"
-  val ociSdk        = "1.36.3"
-  val postgres      = "42.2.20"
-  val refined       = "0.9.24"
-  val scalacheck    = "1.15.4"
-  val scalatest     = "3.2.8"
-  val silencer      = "1.7.3"
-  val sttp          = "3.3.0"
-  val zio           = "1.0.7"
-  val `zio-kafka`   = "0.14.0"
-  val `zio-oci-os`  = "0.2.0"
-  val `zio-s3`      = "0.3.1"
-
-  val http4s = "1.0.0-M10" // last compatible with CE 2.3
-
-  private val `cats-effect-version` = "2.3"
-  val `cats-effect`                 = s"${`cats-effect-version`}.3"
-  val `zio-interop`                 = s"${`cats-effect-version`}.1.0"
+  val avro4s         = "4.0.7"
+  val cats           = "2.6.0"
+  val ciris          = "1.2.1"
+  val confluent      = "6.1.0"
+  val doobie         = "0.13.1"
+  val `json-schema`  = "1.12.2"
+  val kafka          = "2.7.0"
+  val logback        = "1.2.3"
+  val `log-effect`   = "0.15.0"
+  val ociSdk         = "1.36.3"
+  val postgres       = "42.2.20"
+  val refined        = "0.9.24"
+  val `scala-compat` = "2.4.3"
+  val scalacheck     = "1.15.4"
+  val scalatest      = "3.2.8"
+  val silencer       = "1.7.3"
+  val sttp           = "3.3.0"
+  val uzhttp         = "0.2.7"
+  val zio            = "1.0.7"
+  val `zio-interop`  = "2.4.0.0"
+  val `zio-kafka`    = "0.14.0"
+  val `zio-oci-os`   = "0.2.0"
+  val `zio-s3`       = "0.3.1"
 
   val circeVersion = "0.13.0"
 }
 
 lazy val D = new {
   val cats = Seq(
-    "org.typelevel" %% "cats-core"   % V.cats,
-    "org.typelevel" %% "cats-effect" % V.`cats-effect`
+    "org.typelevel" %% "cats-core" % V.cats
   )
 
   val config = Seq(
@@ -98,7 +94,12 @@ lazy val D = new {
     "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test
   )
 
+  val uzhttp = Seq(
+    "org.polynote" %% "uzhttp" % V.uzhttp
+  )
+
   val zio = Seq(
+    "dev.zio" %% "zio"              % V.zio,
     "dev.zio" %% "zio-interop-cats" % V.`zio-interop`,
     "dev.zio" %% "zio-kafka"        % V.`zio-kafka`,
     "dev.zio" %% "zio-streams"      % V.zio,
@@ -110,17 +111,13 @@ lazy val D = new {
     "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp
   )
 
-  val http4s = Seq(
-    "org.http4s" %% "http4s-dsl"          % V.http4s,
-    "org.http4s" %% "http4s-blaze-server" % V.http4s,
-    "org.http4s" %% "http4s-blaze-client" % V.http4s
-  )
-
   val circe = Seq(
     "io.circe" %% "circe-core",
     "io.circe" %% "circe-generic",
     "io.circe" %% "circe-parser"
   ).map(_ % V.circeVersion)
+
+  val compat = Seq("org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`)
 }
 
 lazy val flags = Seq(
@@ -152,7 +149,8 @@ def versionDependent(scalaVersion: String) =
       flags ++ Seq(
         "-Wconf:any:error",
         "-Ymacro-annotations",
-        "-Xlint:-byname-implicit"
+        "-Xlint:-byname-implicit",
+        "-Ywarn-unused:-nowarn"
       )
     case _ =>
       flags ++ Seq(
@@ -162,7 +160,6 @@ def versionDependent(scalaVersion: String) =
         "-Yno-adapted-args",
         "-Ypartial-unification",
         "-Ywarn-inaccessible",
-        "-Ywarn-infer-any",
         "-Ywarn-nullary-override",
         "-Ywarn-nullary-unit"
       )
@@ -230,7 +227,7 @@ lazy val rest = project
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= D.sttp,
-    libraryDependencies ++= D.http4s.map(_ % Test),
+    libraryDependencies ++= D.uzhttp.map(_ % Test),
     libraryDependencies ++= D.circe.map(_ % Test),
     libraryDependencies ++= D.tests
   )
@@ -241,7 +238,7 @@ lazy val example = project
   .dependsOn(tamer, doobie, ociObjectStorage, rest, s3)
   .settings(commonSettings)
   .settings(
-    libraryDependencies ++= D.postgres,
+    libraryDependencies ++= D.postgres ++ D.uzhttp ++ D.compat,
     publish / skip := true
   )
 

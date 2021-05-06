@@ -2,19 +2,18 @@ package tamer.rest
 
 import _root_.zio.test.environment.TestEnvironment
 import io.circe.Codec
-import sttp.capabilities.zio.ZioStreams
 import tamer.TamerError
 import tamer.config.KafkaConfig
 import tamer.kafka.embedded.KafkaTest
+import tamer.rest.LocalSecretCache.LocalSecretCache
 import zio.duration.durationInt
-import zio.stream.ZTransducer
 import zio.test.Assertion._
 import zio.test.TestAspect.timeout
 import zio.test.{assertM, _}
-import zio.{Chunk, Has, Queue, Ref, Task, ZEnv, ZIO, ZLayer, stream}
+import zio.{Chunk, Has, Queue, RIO, RLayer, Ref, Task, UIO, ZEnv, ZIO, ZLayer}
 
 import java.util.concurrent.TimeUnit
-import scala.annotation.unused
+import scala.annotation.{nowarn, unused}
 import scala.concurrent.duration.Duration
 
 object RestSpec extends DefaultRunnableSpec {
@@ -27,30 +26,22 @@ object RestSpec extends DefaultRunnableSpec {
     val fullLayer: ZLayer[ZEnv, Throwable, SttpClient] =
       HttpClientZioBackend.layer()
 
-    private val qb: RestQueryBuilder[State] = new RestQueryBuilder[State] {
+    private val qb: RestQueryBuilder[Any, State] = new RestQueryBuilder[Any, State] {
       override val queryId: Int = 0
 
-      override def query(state: State): RequestT[Identity, Either[String, stream.Stream[Throwable, Byte]], ZioStreams] =
-        basicRequest
-          .get(uri"http://localhost:$port/random")
-          .response(asStreamUnsafe(ZioStreams))
-          .readTimeout(Duration.create(20, TimeUnit.SECONDS))
+      override def query(state: State): Request[Either[String, String], Any] =
+        basicRequest.get(uri"http://localhost:$port/random").readTimeout(Duration(20, TimeUnit.SECONDS))
     }
 
-    val conf: RestConfiguration[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State] =
-      new RestConfiguration(
-        qb,
-        StaticFixtures.transducer,
-        StaticFixtures.transitions
-      )
+    val conf: RestConfiguration[Any, Key, Value, State] = new RestConfiguration(qb, StaticFixtures.decoder)(StaticFixtures.transitions)
 
     val outLayer: ZLayer[Any, Nothing, Has[Ref[KafkaLog]]] = Ref.make(KafkaLog(0)).toLayer
 
-    val job = new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Key, Value, State](conf) {
+    val job = new TamerRestJob[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with LocalSecretCache, Key, Value, State](conf) {
       override protected def next(
           currentState: State,
           q: Queue[Chunk[(Key, Value)]]
-      ): ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], TamerError, State] =
+      ): ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with LocalSecretCache, TamerError, State] =
         for {
           next <- super.next(currentState, q)
           log  <- ZIO.service[Ref[KafkaLog]]
@@ -58,25 +49,22 @@ object RestSpec extends DefaultRunnableSpec {
         } yield next
     }
 
-    val tamerLayer: ZLayer[ZEnv, Throwable, ZEnv with SttpClient] =
-      ZLayer.requires[ZEnv] ++ fullLayer
+    val tamerLayer: RLayer[ZEnv, ZEnv with SttpClient with Has[Ref[Option[String]]]] =
+      ZLayer.requires[ZEnv] ++ fullLayer ++ Ref.make(Option.empty[String]).toLayer
   }
 
   case class KafkaLog(count: Int)
 
   object StaticFixtures {
-    val transducer: ZTransducer[ZEnv with SttpClient, TamerError, Byte, Value] = {
-      ZTransducer.utf8Decode >>> ZTransducer.fromFunctionM { v: String =>
-        (for {
-          p   <- ZIO.fromEither(io.circe.parser.parse(v))
-          out <- ZIO.fromEither(implicitly[Codec[Value]].decodeJson(p))
-
-        } yield out).catchAll(e => ZIO.fail(new TamerError(s"Decoder failed!", e)))
-      }
+    val decoder: String => Task[DecodedPage[Value, State]] = DecodedPage.fromString { v =>
+      (for {
+        p   <- ZIO.fromEither(io.circe.parser.parse(v))
+        out <- ZIO.fromEither(implicitly[Codec[Value]].decodeJson(p))
+      } yield List(out)).catchAll(e => ZIO.fail(new RuntimeException(s"Decoder failed!\n$e")))
     }
 
-    val transitions: RestConfiguration.State[Key, Value, State] =
-      RestConfiguration.State[Key, Value, State](State(0), s => ZIO.succeed(s.copy(count = s.count + 1)), (_, v) => Key(v.time))
+    @nowarn
+    val transitions = new RestConfiguration.State(State(0))((_, v: Value) => Key(v.time))((_, s) => UIO(s.copy(count = s.count + 1)))
 
     val kafkaConfigLayer: ZLayer[ZEnv, Throwable, KafkaConfig] = KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig
   }
@@ -93,7 +81,7 @@ object RestSpec extends DefaultRunnableSpec {
   private def testRestFlow(port: Int, serverLog: Ref[ServerLog]) = {
     val f = new JobFixtures(port)
 
-    val io: ZIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]], Throwable, TestResult] = for {
+    val io: RIO[ZEnv with SttpClient with KafkaConfig with Has[Ref[KafkaLog]] with LocalSecretCache, TestResult] = for {
       _ <- f.job.fetch().fork
       _ <- (ZIO.effect(println("Awaiting a request to our test server")) *> ZIO.sleep(500.millis))
         .repeatUntilM(_ => serverLog.get.map(_.lastRequestTimestamp.isDefined))
