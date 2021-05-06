@@ -13,7 +13,7 @@ import zio.test.{assertM, _}
 import zio.{Chunk, Has, Queue, RIO, RLayer, Ref, Task, UIO, ZEnv, ZIO, ZLayer}
 
 import java.util.concurrent.TimeUnit
-import scala.annotation.unused
+import scala.annotation.{nowarn, unused}
 import scala.concurrent.duration.Duration
 
 object RestSpec extends DefaultRunnableSpec {
@@ -63,6 +63,7 @@ object RestSpec extends DefaultRunnableSpec {
       } yield List(out)).catchAll(e => ZIO.fail(new RuntimeException(s"Decoder failed!\n$e")))
     }
 
+    @nowarn
     val transitions = new RestConfiguration.State(State(0))((_, v: Value) => Key(v.time))((_, s) => UIO(s.copy(count = s.count + 1)))
 
     val kafkaConfigLayer: ZLayer[ZEnv, Throwable, KafkaConfig] = KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig
