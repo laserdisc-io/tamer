@@ -17,7 +17,7 @@ import zio.{Chunk, Has, Queue, RIO, Ref, Schedule, Task, UIO, ULayer, URIO, ZEnv
 
 import java.time.Instant
 import java.util.concurrent.TimeUnit
-import scala.annotation.unused
+import scala.annotation.{nowarn, unused}
 import scala.concurrent.duration.Duration
 import scala.util.hashing.MurmurHash3.stringHash
 
@@ -122,6 +122,7 @@ object TamerRestJob {
       decodedPage.data.drop(previousElementCount)
     }
 
+    @nowarn
     val transitions: RestConfiguration.State[R, K, V, Offset] =
       new RestConfiguration.State(Offset(0, 0))(deriveKafkaRecordKey)(nextPageOrNextIndexIfPageNotComplete, filterPage)
 
