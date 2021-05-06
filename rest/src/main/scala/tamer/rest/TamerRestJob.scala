@@ -132,8 +132,10 @@ object TamerRestJob {
           log         <- this.logTask
           tokenCache  <- ZIO.service[Ref[Option[String]]]
           decodedPage <- fetchWaitingNewEntries(currentState, log, tokenCache)
-          chunk = Chunk.fromIterable(setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))
-          _ <- q.offer(chunk)
+          chunk = Chunk.fromIterable(
+            setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
+          )
+          _         <- q.offer(chunk)
           nextState <- setup.transitions.getNextState(decodedPage, currentState)
         } yield nextState
 
@@ -222,8 +224,10 @@ object TamerRestJob {
                 log.info(s"Time until the next period: ${delayUntilNextPeriod.toString}")
               )
           decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log).delay(delayUntilNextPeriod)
-          chunk = Chunk.fromIterable(setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))
-          _ <- q.offer(chunk)
+          chunk = Chunk.fromIterable(
+            setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
+          )
+          _         <- q.offer(chunk)
           nextState <- setup.transitions.getNextState(decodedPage, currentState)
         } yield nextState
 
@@ -302,8 +306,10 @@ class TamerRestJob[
       log         <- logTask
       tokenCache  <- ZIO.service[Ref[Option[String]]]
       decodedPage <- fetchAndDecodePage(setup.queryBuilder.query(currentState), tokenCache, log)
-      chunk = Chunk.fromIterable(setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value)))
-      _ <- q.offer(chunk)
+      chunk = Chunk.fromIterable(
+        setup.transitions.filterPage(decodedPage, currentState).map(value => (setup.transitions.deriveKafkaRecordKey(currentState, value), value))
+      )
+      _         <- q.offer(chunk)
       nextState <- setup.transitions.getNextState(decodedPage, currentState)
     } yield nextState
 

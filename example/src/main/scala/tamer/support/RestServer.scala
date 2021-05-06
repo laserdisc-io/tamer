@@ -26,7 +26,7 @@ object RestServer extends zio.App {
   } yield pages
   val dynamicPaginationM: URIO[Clock, Ref[List[Int]]] = for {
     pages <- Ref.make(List.fill(5)(0))
-  _ <- pages.update(l => l.map(_ + 1)).repeat(Schedule.spaced(2.seconds)).fork
+    _     <- pages.update(l => l.map(_ + 1)).repeat(Schedule.spaced(2.seconds)).fork
   } yield pages
 
   def server(rotatingSecret: Ref[Int], finitePagination: Ref[List[Int]], dynamicPagination: Ref[List[Int]]): Server.Builder[Random] =
@@ -48,7 +48,7 @@ object RestServer extends zio.App {
         val bodyM = finitePagination.get.map(_.grouped(3).toList.lift(page)).map(_.map(_.mkString(",")).getOrElse(""))
         bodyM.map(Response.plain(_)) // outputs "1,2,3" "4,5,6" and so on...
       case req if req.uri.getPath == "/dynamic-pagination" =>
-        val page = req.uri.getQuery.dropWhile(c => !c.isDigit).toInt
+        val page  = req.uri.getQuery.dropWhile(c => !c.isDigit).toInt
         val bodyM = dynamicPagination.get.map(_.grouped(3).toList.lift(page)).map(_.map(_.mkString(",")).getOrElse(""))
         bodyM.map(Response.plain(_))
       case _ => ZIO.fail(Forbidden(s"You don't have access to this resource."))
@@ -57,7 +57,7 @@ object RestServer extends zio.App {
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] =
     for {
       rotatingSecret    <- rotatingSecretM
-      finitePagination <- finitePagination
+      finitePagination  <- finitePagination
       dynamicPagination <- dynamicPaginationM
       exit              <- server(rotatingSecret, finitePagination, dynamicPagination).serve.useForever.exitCode
     } yield exit

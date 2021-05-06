@@ -52,8 +52,7 @@ final class RestConfiguration[
 
 object RestConfiguration {
   def identityFilter[V, S](decodedPage: DecodedPage[V, S]): List[V] = decodedPage.data
-  class State[-R, K, V, S](val initialState: S)(
-      val deriveKafkaRecordKey: (S, V) => K)(
+  class State[-R, K, V, S](val initialState: S)(val deriveKafkaRecordKey: (S, V) => K)(
       val getNextState: (DecodedPage[V, S], S) => URIO[R, S],
       val filterPage: (DecodedPage[V, S], S) => List[V] = (decodedPage: DecodedPage[V, S], _: S) => identityFilter(decodedPage)
   )
