@@ -102,7 +102,9 @@ object TamerRestJob {
       override val queryId: Int = stringHash(baseUrl + offsetParameterName) + increment
 
       override def query(state: Offset): Request[Either[String, String], Any] =
-        basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(Duration.fromNanos(readRequestTimeout.toNanos))
+        basicRequest
+          .get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString))
+          .readTimeout(Duration.fromNanos(readRequestTimeout.toNanos))
 
       override val authentication: Option[Authentication[R]] = authenticationMethod
     }
@@ -184,7 +186,9 @@ object TamerRestJob {
       override val queryId: Int = stringHash(baseUrl + offsetParameterName) + increment
 
       override def query(state: PeriodicOffset): Request[Either[String, String], Any] =
-        basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(Duration.fromNanos(readRequestTimeout.toNanos))
+        basicRequest
+          .get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString))
+          .readTimeout(Duration.fromNanos(readRequestTimeout.toNanos))
 
       override val authentication: Option[Authentication[R]] = authenticationMethod
     }
