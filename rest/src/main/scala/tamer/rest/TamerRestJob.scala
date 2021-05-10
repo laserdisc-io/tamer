@@ -93,7 +93,8 @@ object TamerRestJob {
       offsetParameterName: String = "page",
       increment: Int = 1,
       fixedPageElementCount: Option[Int] = None,
-      authenticationMethod: Option[Authentication[R]] = None
+      authenticationMethod: Option[Authentication[R]] = None,
+      readRequestTimeout: zio.duration.Duration = 30.seconds
   )(deriveKafkaRecordKey: (Offset, V) => K): TamerRestJob[R, K, V, Offset] = {
     val queryBuilder: RestQueryBuilder[R, Offset] = new RestQueryBuilder[R, Offset] {
 
@@ -102,7 +103,7 @@ object TamerRestJob {
       override val queryId: Int = stringHash(baseUrl + offsetParameterName) + increment
 
       override def query(state: Offset): Request[Either[String, String], Any] =
-        basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(Duration(20, TimeUnit.SECONDS))
+        basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(Duration.fromNanos(readRequestTimeout.toNanos))
 
       override val authentication: Option[Authentication[R]] = authenticationMethod
     }
@@ -174,7 +175,8 @@ object TamerRestJob {
       increment: Int = 1,
       authenticationMethod: Option[Authentication[R]] = None,
       minPeriod: zio.duration.Duration = 5.minutes,
-      maxPeriod: zio.duration.Duration = 1.hour
+      maxPeriod: zio.duration.Duration = 1.hour,
+      readRequestTimeout: zio.duration.Duration = 30.seconds
   )(deriveKafkaRecordKey: (PeriodicOffset, V) => K): TamerRestJob[R, K, V, PeriodicOffset] = {
     val queryBuilder: RestQueryBuilder[R with Clock, PeriodicOffset] = new RestQueryBuilder[R, PeriodicOffset] {
 
@@ -183,7 +185,7 @@ object TamerRestJob {
       override val queryId: Int = stringHash(baseUrl + offsetParameterName) + increment
 
       override def query(state: PeriodicOffset): Request[Either[String, String], Any] =
-        basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(Duration(20, TimeUnit.SECONDS))
+        basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(Duration.fromNanos(readRequestTimeout.toNanos))
 
       override val authentication: Option[Authentication[R]] = authenticationMethod
     }
