@@ -5,7 +5,7 @@ lazy val scala_213 = "2.13.4"
 
 lazy val V = new {
   val avro4s         = "4.0.8"
-  val cats           = "2.6.0"
+  val cats           = "2.6.1"
   val ciris          = "1.2.1"
   val confluent      = "6.1.0"
   val doobie         = "0.13.2"
@@ -20,7 +20,7 @@ lazy val V = new {
   val scalacheck     = "1.15.4"
   val scalatest      = "3.2.8"
   val silencer       = "1.7.3"
-  val sttp           = "3.3.1"
+  val sttp           = "3.3.2"
   val uzhttp         = "0.2.7"
   val zio            = "1.0.7"
   val `zio-interop`  = "2.4.1.0"
