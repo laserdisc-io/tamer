@@ -21,8 +21,27 @@ object Config {
       closeTimeout: FiniteDuration,
       bufferSize: PosInt,
       sink: KafkaSink,
-      state: KafkaState
+      state: KafkaState,
+      properties: Map[String, AnyRef]
   )
+  object Kafka {
+    def apply(
+        brokers: HostList,
+        schemaRegistryUrl: UrlString,
+        closeTimeout: FiniteDuration,
+        bufferSize: PosInt,
+        sink: KafkaSink,
+        state: KafkaState
+    ): Kafka = new Kafka(
+      brokers = brokers,
+      schemaRegistryUrl = schemaRegistryUrl,
+      closeTimeout = closeTimeout,
+      bufferSize = bufferSize,
+      sink = sink,
+      state = state,
+      properties = Map.empty
+    )
+  }
 
   private[this] implicit final val hostListConfigDecoder: ConfigDecoder[String, HostList] =
     ConfigDecoder.identity[String].map(_.split(",").toList.map(_.trim)).mapEither(ConfigDecoder[List[String], HostList].decode)
@@ -40,7 +59,7 @@ object Config {
     env("KAFKA_BUFFER_SIZE").as[PosInt],
     kafkaSinkConfigValue,
     kafkaStateConfigValue
-  ).parMapN(Kafka)
+  ).parMapN(Kafka.apply)
 
   lazy val live: Layer[TamerError, KafkaConfig] = ZLayer.fromEffect {
     kafkaConfigValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce))
