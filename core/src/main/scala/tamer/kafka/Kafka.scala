@@ -182,11 +182,14 @@ object Kafka {
     ): ZManaged[Clock with Blocking, TamerError, Live[K, V, S]] = {
       val offsetRetrievalStrategy = OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest)
       val cSettings = ConsumerSettings(config.brokers)
+        .withProperties(config.properties)
         .withGroupId(config.state.groupId)
         .withClientId(config.state.clientId)
         .withCloseTimeout(config.closeTimeout.zio)
         .withOffsetRetrieval(offsetRetrievalStrategy)
-      val pSettings = ProducerSettings(config.brokers).withCloseTimeout(config.closeTimeout.zio)
+      val pSettings = ProducerSettings(config.brokers)
+        .withProperties(config.properties)
+        .withCloseTimeout(config.closeTimeout.zio)
 
       val stateKeySerde = Serde[StateKey](isKey = true)(AvroCodec.codec[StateKey])
       val stateConsumer = Consumer.make(cSettings).mapError(t => TamerError("Could not make state consumer", t))
