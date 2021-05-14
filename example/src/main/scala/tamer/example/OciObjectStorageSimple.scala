@@ -43,6 +43,7 @@ object OciObjectStorageSimple extends zio.App {
       "namespace",
       "bucketName",
       None,
+      _ => true,
       objectNameBuilder,
       OciObjectStorageConfiguration.State(initialState, getNextState, (o: ObjectsCursor, _: MyLine) => o),
       transducer
