@@ -29,6 +29,7 @@ final case class OciObjectStorageConfiguration[
     namespace: String,
     bucketName: String,
     prefix: Option[String],
+    objectNameFinder: String => Boolean,
     objectNameBuilder: ObjectNameBuilder[S],
     transitions: OciObjectStorageConfiguration.State[R, K, V, S],
     transducer: ZTransducer[R, TamerError, Byte, V]

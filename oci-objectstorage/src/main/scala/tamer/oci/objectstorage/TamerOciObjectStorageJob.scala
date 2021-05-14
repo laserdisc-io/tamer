@@ -7,7 +7,7 @@ import tamer.TamerError
 import tamer.config.KafkaConfig
 import tamer.job.AbstractTamerJob
 import zio.{Chunk, Queue, Task, ZEnv, ZIO}
-import zio.oci.objectstorage.{ListObjectsOptions, ObjectStorage, getObject, listObjects}
+import zio.oci.objectstorage.{Limit, ListObjectsOptions, ObjectStorage, getObject, listObjects}
 
 object TamerOciObjectStorageJob {
   def apply[
@@ -35,8 +35,9 @@ class TamerOciObjectStorageJob[
       log <- logTask
       _   <- log.debug(s"current state: $currentState")
       startAfter = setup.objectNameBuilder.startAfter(currentState)
-      nextObject <- listObjects(setup.namespace, setup.bucketName, ListObjectsOptions(setup.prefix, None, startAfter, 1))
-      newState   <- setup.transitions.getNextState(currentState, nextObject.objectSummaries.headOption.map(_.getName))
+      nextObject <- listObjects(setup.namespace, setup.bucketName, ListObjectsOptions(setup.prefix, None, startAfter, Limit.Max))
+      newState <- setup.transitions
+        .getNextState(currentState, nextObject.objectSummaries.find(os => setup.objectNameFinder(os.getName)).map(_.getName))
       _ <- setup.objectNameBuilder.objectName(currentState) match {
         case Some(name) =>
           log.info(s"getting object $name") *> getObject(setup.namespace, setup.bucketName, name)
