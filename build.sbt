@@ -25,7 +25,7 @@ lazy val V = new {
   val zio            = "1.0.7"
   val `zio-interop`  = "2.4.1.0"
   val `zio-kafka`    = "0.14.0"
-  val `zio-oci-os`   = "0.2.0"
+  val `zio-oci-os`   = "0.2.1"
   val `zio-s3`       = "0.3.1"
 
   val circeVersion = "0.13.0"
