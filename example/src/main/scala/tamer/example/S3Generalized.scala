@@ -1,21 +1,17 @@
-package tamer.example
+package tamer
+package example
 
-import eu.timepit.refined._
+import eu.timepit.refined.api.RefType
 import eu.timepit.refined.auto._
-import eu.timepit.refined.boolean.{And, Or}
-import eu.timepit.refined.collection.{Forall, NonEmpty}
-import eu.timepit.refined.string.{IPv4, Uri}
 import software.amazon.awssdk.regions.Region
-import tamer.config.Config.Kafka
-import tamer.config.{Config, KafkaConfig}
+import tamer.config._
 import tamer.s3.{Keys, KeysR, S3Configuration, TamerS3Job}
-import tamer.{AvroCodec, TamerError}
+import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
-import zio.s3.{InvalidCredentials, S3, S3Credentials}
-import zio.stream.{Transducer, ZTransducer}
-import zio.{ExitCode, Has, Layer, Queue, UIO, URIO, ZIO}
+import zio.s3.S3
+import zio.stream.Transducer
 
 import java.net.URI
 import scala.concurrent.duration.{FiniteDuration => ScalaFD}
@@ -27,60 +23,40 @@ object Line {
 }
 
 final case class LastProcessedNumber(number: Long)
-
 object LastProcessedNumber {
   implicit val codec = AvroCodec.codec[LastProcessedNumber]
 }
 
-object S3Generalized extends zio.App {
-  lazy val mkS3KafkaLayer: ZIO[Blocking, InvalidCredentials, Layer[RuntimeException, S3 with KafkaConfig]] =
-    S3Credentials.fromAll.map { s3Credentials =>
-      val kafkaState: Config.KafkaState = Config.KafkaState("state-topic", "groupid", "clientid")
-      val kafkaSink: Config.KafkaSink   = Config.KafkaSink("sink-topic")
-      val hostList                      = refineV[NonEmpty And Forall[IPv4 Or Uri]](List("localhost:9092"))
-      val kafkaConfigLayer: Layer[String, Has[Kafka]] =
-        ZIO.fromEither(hostList.map(hl => Config.Kafka(hl, "http://localhost:8081", ScalaFD(10, "seconds"), 50, kafkaSink, kafkaState))).toLayer
-      zio.s3.live(Region.AF_SOUTH_1, s3Credentials, Some(new URI("http://localhost:9000"))) ++ kafkaConfigLayer.mapError(e => TamerError(e))
-    }
+object S3Generalized extends App {
+  object internals {
+    val bucketName = "myBucket"
+    val prefix     = "myFolder2/myPrefix"
+    val transducer = Transducer.utf8Decode >>> Transducer.splitLines.map(Line.apply)
 
-  private val myTransducer: Transducer[Nothing, Byte, Line] =
-    ZTransducer.utf8Decode >>> ZTransducer.splitLines.map(Line.apply)
+    def getNextNumber(keysR: KeysR, afterwards: LastProcessedNumber): UIO[Option[Long]] =
+      keysR.get.map { keys =>
+        val sortedFileNumbers = keys.map(_.stripPrefix(prefix).toLong).filter(afterwards.number < _)
+        if (sortedFileNumbers.isEmpty) None else Some(sortedFileNumbers.min)
+      }
 
-  private final def getNextNumber(
-      keysR: KeysR,
-      afterwards: LastProcessedNumber,
-      prefix: String
-  ): ZIO[Any, Nothing, Option[Long]] = keysR.get.map { keys =>
-    val sortedFileNumbers = keys
-      .map(key => key.stripPrefix(prefix).toLong)
-      .filter(number => afterwards.number < number)
-
-    if (sortedFileNumbers.isEmpty) None else Some(sortedFileNumbers.min)
-  }
-
-  private final def getNextState(prefix: String)(
-      keysR: KeysR,
-      afterwards: LastProcessedNumber,
-      keysChangedToken: Queue[Unit]
-  ): UIO[LastProcessedNumber] = {
-    val retryAfterWaitingForKeyListChange =
-      keysChangedToken.take *> getNextState(prefix)(keysR, afterwards, keysChangedToken)
-    getNextNumber(keysR, afterwards, prefix)
-      .flatMap {
+    def getNextState(keysR: KeysR, afterwards: LastProcessedNumber, keysChangedToken: Queue[Unit] ): UIO[LastProcessedNumber] = {
+      val retryAfterWaitingForKeyListChange = keysChangedToken.take *> getNextState(keysR, afterwards, keysChangedToken)
+      getNextNumber(keysR, afterwards).flatMap {
         case Some(number) if number > afterwards.number => UIO(LastProcessedNumber(number))
         case _                                          => retryAfterWaitingForKeyListChange
       }
+    }
+
+    def selectObjectForInstant(lastProcessedNumber: LastProcessedNumber): Option[String] =
+      Some(s"$prefix${lastProcessedNumber.number}")
   }
 
-  private final def selectObjectForInstant(lastProcessedNumber: LastProcessedNumber): Option[String] =
-    Some(s"myFolder2/myPrefix${lastProcessedNumber.number}")
-
-  private val setup: S3Configuration[zio.s3.S3 with Blocking with Clock with KafkaConfig, LastProcessedNumber, Line, LastProcessedNumber] =
+  private val myS3Configuration: S3Configuration[S3 with Blocking with Clock with KafkaConfig, LastProcessedNumber, Line, LastProcessedNumber] =
     S3Configuration(
-      bucketName = "myBucket",
-      prefix = "myFolder2/myPrefix",
-      tamerStateKafkaRecordKey = stringHash("myBucket") + stringHash("myFolder2/myPrefix") + 0,
-      transducer = myTransducer,
+      bucketName = internals.bucketName,
+      prefix = internals.prefix,
+      tamerStateKafkaRecordKey = stringHash(internals.bucketName) + stringHash(internals.prefix) + 0,
+      transducer = internals.transducer,
       parallelism = 1,
       S3Configuration.S3PollingTimings(
         minimumIntervalForBucketFetch = 1.second,
@@ -88,16 +64,24 @@ object S3Generalized extends zio.App {
       ),
       S3Configuration.State(
         initialState = LastProcessedNumber(0),
-        getNextState = getNextState("myFolder2/myPrefix"),
+        getNextState = internals.getNextState,
         deriveKafkaRecordKey = (l: LastProcessedNumber, _: Line) => l,
-        selectObjectForState = (l: LastProcessedNumber, _: Keys) => selectObjectForInstant(l)
+        selectObjectForState = (l: LastProcessedNumber, _: Keys) => internals.selectObjectForInstant(l)
       )
     )
 
-  val program: ZIO[zio.s3.S3 with Blocking with Clock with KafkaConfig, TamerError, Unit] = for {
-    _ <- TamerS3Job(setup).fetch()
-  } yield ()
+  private val myProgram: ZIO[Blocking with Clock with S3 with KafkaConfig, TamerError, Unit] =
+    TamerS3Job(myS3Configuration).fetch().unit
 
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] =
-    mkS3KafkaLayer.flatMap(layer => program.provideCustomLayer(layer)).exitCode
+  private lazy val myKafkaConfigLayer = ZIO.fromEither {
+    val kafkaSink  = Config.KafkaSink("sink-topic")
+    val kafkaState = Config.KafkaState("state-topic", "groupid", "clientid")
+    RefType.applyRef[HostList](List("localhost:9092")).map { hostList =>
+      Config.Kafka(hostList, "http://localhost:8081", ScalaFD(10, "seconds"), 50, kafkaSink, kafkaState)
+    }
+  }.mapError(TamerError(_)).toLayer
+  private lazy val myS3Layer   = s3.liveM(Region.AF_SOUTH_1, s3.providers.default, Some(new URI("http://localhost:9000")))
+  private lazy val myFullLayer = myS3Layer ++ myKafkaConfigLayer
+
+  override final def run(args: List[String]): URIO[ZEnv, ExitCode] = myProgram.provideCustomLayer(myFullLayer).exitCode
 }
