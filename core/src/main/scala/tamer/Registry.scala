@@ -1,5 +1,4 @@
 package tamer
-package registry
 
 import io.confluent.kafka.schemaregistry.avro.AvroSchema
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient

@@ -3,7 +3,6 @@ package oci.objectstorage
 
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import tamer.kafka.KafkaConfig
 import zio.{Chunk, Has, Queue, Task, ZIO}
 import zio.blocking.Blocking
 import zio.clock.Clock

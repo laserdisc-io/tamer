@@ -4,7 +4,6 @@ package s3
 import com.sksamuel.avro4s.Codec
 import eu.timepit.refined.auto._
 import eu.timepit.refined.types.numeric.PosInt
-import tamer.kafka.KafkaConfig
 import zio.{Has, ZIO}
 import zio.blocking.Blocking
 import zio.clock.Clock

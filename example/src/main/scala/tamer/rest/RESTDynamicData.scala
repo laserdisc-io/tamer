@@ -2,14 +2,14 @@ package tamer
 package rest
 
 import sttp.client3.httpclient.zio.HttpClientZioBackend
-import tamer.kafka.KafkaConfig
-import tamer.rest.RESTTamer.PeriodicOffset
 import zio._
 
 import java.time.Instant
 import scala.annotation.nowarn
 
 object RestDynamicData extends App {
+  import RESTTamer.PeriodicOffset
+
   val httpClientLayer  = HttpClientZioBackend.layer()
   val kafkaConfigLayer = KafkaConfig.fromEnvironment
   val fullLayer        = httpClientLayer ++ kafkaConfigLayer ++ LocalSecretCache.live

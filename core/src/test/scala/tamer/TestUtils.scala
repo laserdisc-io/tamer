@@ -1,6 +1,5 @@
-package tamer.kafka
+package tamer
 
-import tamer.AvroCodec
 import zio.Task
 
 import java.util.UUID

@@ -1,6 +1,5 @@
 package tamer
 
-import tamer.kafka.KafkaConfig
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.{Chunk, Has, Queue, Ref, Schedule, UIO, ZIO}

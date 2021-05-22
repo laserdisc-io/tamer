@@ -1,5 +1,4 @@
 package tamer
-package kafka
 
 import cats.implicits._
 import ciris._

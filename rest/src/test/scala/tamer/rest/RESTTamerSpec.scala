@@ -1,17 +1,13 @@
 package tamer
 package rest
 
-import _root_.zio.test.environment.TestEnvironment
 import io.circe.Codec
-import tamer.TamerError
-import tamer.kafka.KafkaConfig
-import tamer.kafka.FakeKafka
-import tamer.rest.LocalSecretCache.LocalSecretCache
+import zio._
 import zio.duration.durationInt
 import zio.test.Assertion._
 import zio.test.TestAspect.timeout
 import zio.test.{assertM, _}
-import zio.{Chunk, Has, Queue, RIO, RLayer, Ref, Task, UIO, ZEnv, ZIO, ZLayer}
+import zio.test.environment.TestEnvironment
 
 import java.util.concurrent.TimeUnit
 import scala.annotation.{nowarn, unused}
@@ -19,6 +15,7 @@ import scala.concurrent.duration.Duration
 
 object RESTTamerSpec extends DefaultRunnableSpec {
   import Fixtures._
+  import LocalSecretCache.LocalSecretCache
   import sttp.client3._
   import sttp.client3.httpclient.zio._
 

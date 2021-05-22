@@ -2,7 +2,6 @@ package tamer
 package oci.objectstorage
 
 import com.oracle.bmc.Region
-import tamer.kafka.KafkaConfig
 import zio._
 import zio.clock.Clock
 import zio.duration.durationInt

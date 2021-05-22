@@ -1,7 +1,6 @@
 package tamer
 
 import com.sksamuel.avro4s.Codec
-import tamer.registry._
 import zio.kafka.serde.Serializer
 
 case class Setup[-K, -V, S](

@@ -8,7 +8,6 @@ import doobie.util.transactor.Transactor
 import fs2.Stream
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import tamer.kafka.KafkaConfig
 import zio.blocking.Blocking
 import zio.interop.catz.taskConcurrentInstance
 import zio.{Chunk, Has, Queue, Task, UIO, ZEnv, ZIO}

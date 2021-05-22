@@ -2,12 +2,12 @@ package tamer
 
 import com.sksamuel.avro4s._
 import org.apache.avro.Schema
-import tamer.registry._
 import zio.kafka.serde.{Deserializer, Serializer}
-import zio.{RIO, Task}
+import zio.{RIO, Task, URIO}
 
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import zio.Has
 
 object AvroCodec {
   def codec[V](implicit e: Encoder[V], d: Decoder[V], s: SchemaFor[V]): Codec[V] = new Codec[V] {
@@ -47,7 +47,7 @@ object Serde {
       else {
         val id = buffer.getInt()
         for {
-          _ <- registry.verifySchema(id, schema)
+          _ <- RIO.accessM[Has[Registry]](_.get.verifySchema(id, schema))
           res <- RIO.fromTry {
             val length  = buffer.limit() - 1 - intByteSize
             val payload = new Array[Byte](length)
@@ -59,8 +59,8 @@ object Serde {
     }
     override final val serializer: Serializer[RegistryInfo, A] = Serializer.byteArray.contramapM { a =>
       for {
-        t  <- registry.topic
-        id <- registry.getOrRegisterId(subject(t), schema)
+        t  <- URIO.service[TopicName]
+        id <- RIO.accessM[Has[Registry]](_.get.getOrRegisterId(subject(t), schema))
         arr <- Task {
           val baos = new ByteArrayOutputStream
           baos.write(Magic.toInt)

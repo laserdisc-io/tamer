@@ -2,7 +2,6 @@ package tamer
 package db
 
 import doobie.syntax.string._
-import tamer.kafka.KafkaConfig
 import zio._
 import zio.blocking.Blocking
 

@@ -2,23 +2,21 @@ package tamer
 package rest
 
 import sttp.client3.httpclient.zio.HttpClientZioBackend
-import tamer.kafka.KafkaConfig
-import tamer.rest.RESTTamer.Offset
 import zio._
 
 object RESTBasicAuth extends App {
+  import RESTTamer.Offset
+
   val sttpLayer        = HttpClientZioBackend.layer()
   val kafkaConfigLayer = KafkaConfig.fromEnvironment
   val fullLayer        = sttpLayer ++ kafkaConfigLayer ++ LocalSecretCache.live
 
   case class MyData(i: Int)
-
   object MyData {
     implicit val codec = AvroCodec.codec[MyData]
   }
 
   case class MyKey(i: Int)
-
   object MyKey {
     implicit val codec = AvroCodec.codec[MyKey]
   }

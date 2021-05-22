@@ -1,29 +1,26 @@
 package tamer
-package kafka
 
-import tamer.kafka.TestUtils._
-import zio.blocking.Blocking
+import zio.{Chunk, Has, Queue, Ref, UIO, ZEnv, ZIO, ZLayer}
 import zio.clock.Clock
 import zio.console.Console
 import zio.duration.durationInt
 import zio.test.Assertion.equalTo
 import zio.test.TestAspect.timeout
 import zio.test.environment.TestEnvironment
-import zio.test.{DefaultRunnableSpec, TestFailure, ZSpec, assert}
-import zio.{Chunk, Has, Queue, Ref, UIO, ZEnv, ZIO, ZLayer}
+import zio.test.{DefaultRunnableSpec, TestFailure, assert}
 
 object KafkaSpec extends DefaultRunnableSpec {
+  import TestUtils._
   type OutputR = Ref[Vector[Int]]
 
-  val kafkaLayer: ZLayer[Has[OutputR] with Console with Has[KafkaConfig] with Clock with Blocking, TamerError, Has[Kafka]] =
-    Kafka.live(Setup(Setup.Serdes[Key, Value, State], State(0), 0), stateTransitionFunction)
+  val baseTamerLayer = Tamer.live(Setup(Setup.Serdes[Key, Value, State], State(0), 0), stateTransitionFunction)
 
-  val embeddedKafkaLayer: ZLayer[Has[OutputR] with ZEnv, Throwable, Has[Kafka]] = {
+  val embeddedKafkaTamerLayer = {
     val kafkaConfigLayer = FakeKafka.embedded >>> FakeKafka.embeddedKafkaConfig
-    kafkaConfigLayer ++ ZLayer.requires[ZEnv] ++ ZLayer.requires[Has[OutputR]] >>> kafkaLayer
+    kafkaConfigLayer ++ ZLayer.requires[ZEnv] ++ ZLayer.requires[Has[OutputR]] >>> baseTamerLayer
   }
 
-  val output: UIO[OutputR] = Ref.make(Vector.empty[Int])
+  val output = Ref.make(Vector.empty[Int])
 
   def stateTransitionFunction(s: State, q: Queue[Chunk[(Key, Value)]]): ZIO[Has[OutputR] with Console, TamerError, State] =
     ZIO.service[OutputR].flatMap { variable =>
@@ -35,21 +32,21 @@ object KafkaSpec extends DefaultRunnableSpec {
         ZIO.never *> UIO(State(9999))
     }
 
-  override def spec: ZSpec[TestEnvironment, Throwable] = {
+  override final val spec = {
     lazy val outputLayer = output.toLayer
-    val tamerKafkaLayer: ZLayer[ZEnv, Throwable, Has[Kafka]] =
-      (ZLayer.requires[ZEnv] ++ outputLayer) >>> embeddedKafkaLayer
-    suite("KafkaSpec")(
+    val tamerLayer  = (ZLayer.requires[ZEnv] ++ outputLayer) >>> embeddedKafkaTamerLayer
+
+    suite("TamerSpec")(
       testM("should successfully run the stateTransitionFunction 10 times") {
         (for {
           outputVector <- ZIO.service[OutputR]
-          _            <- tamer.kafka.runLoop.timeout(7.seconds)
+          _            <- runLoop.timeout(7.seconds)
           result       <- outputVector.get
         } yield assert(result)(equalTo(Vector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))))
       } @@ timeout(20.seconds)
     )
       .provideSomeLayerShared[TestEnvironment](
-        (FakeKafka.embedded ++ tamerKafkaLayer ++ outputLayer)
+        (FakeKafka.embedded ++ tamerLayer ++ outputLayer)
           .mapError(TestFailure.fail)
       )
       .updateService[Clock.Service](_ => Clock.Service.live)

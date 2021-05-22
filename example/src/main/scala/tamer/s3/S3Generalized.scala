@@ -4,7 +4,6 @@ package s3
 import eu.timepit.refined.api.RefType
 import eu.timepit.refined.auto._
 import software.amazon.awssdk.regions.Region
-import tamer.kafka._
 import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock

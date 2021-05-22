@@ -4,8 +4,6 @@ package s3
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import tamer.TamerError
-import tamer.kafka.KafkaConfig
-import zio.ZIO.when
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
@@ -70,12 +68,12 @@ class S3Tamer[R <: S3 with Blocking with Clock with Has[KafkaConfig], K, V, S](s
         .flatMap(objListing => objListing.objectSummaries)
         .map(_.key)
       cleanKeyList = keyList.filter(_.startsWith(prefix))
-      _                  <- when(keyList.size != cleanKeyList.size)(warnAboutSpuriousKeys(log, keyList))
+      _                  <- ZIO.when(keyList.size != cleanKeyList.size)(warnAboutSpuriousKeys(log, keyList))
       _                  <- log.debug(s"Current key list has ${cleanKeyList.length} elements")
       _                  <- log.debug(s"The first and last elements are ${cleanKeyList.sorted.headOption} and ${cleanKeyList.sorted.lastOption}")
       previousListOfKeys <- keysR.getAndSet(cleanKeyList)
       detectedKeyListChanged = cleanKeyList.sorted != previousListOfKeys.sorted
-      _ <- when(detectedKeyListChanged)(log.debug("Detected change in key list") *> keysChangedToken.offer(()))
+      _ <- ZIO.when(detectedKeyListChanged)(log.debug("Detected change in key list") *> keysChangedToken.offer(()))
     } yield if (detectedKeyListChanged) SourceStateChanged(true) else SourceStateChanged(false)
   }
 

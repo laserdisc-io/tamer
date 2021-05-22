@@ -15,6 +15,6 @@ export LOG_LEVEL=WARNING
 SCRIPT_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit; pwd -P)
 cd "$SCRIPT_PATH"/../.. || exit
 
-sbt "example/runMain tamer.support.RestServer" &
+sbt "example/runMain tamer.rest.support.RESTServer" &
 sleep 15
-sbt "example/runMain tamer.example.RestDynamicData" -jvm-debug 5005
+sbt "example/runMain tamer.rest.RESTDynamicData" -jvm-debug 5005

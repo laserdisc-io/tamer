@@ -14,6 +14,6 @@ export KAFKA_STATE_CLIENT_ID=state-client
 SCRIPT_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit; pwd -P)
 cd "$SCRIPT_PATH"/../.. || exit
 
-sbt "example/runMain tamer.support.RestServer" &
+sbt "example/runMain tamer.rest.support.RESTServer" &
 sleep 15
-sbt "example/runMain tamer.example.RestSimple" -jvm-debug 5005
+sbt "example/runMain tamer.rest.RESTSimple" -jvm-debug 5005

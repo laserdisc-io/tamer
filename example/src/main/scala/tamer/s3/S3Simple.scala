@@ -2,7 +2,6 @@ package tamer
 package s3
 
 import software.amazon.awssdk.regions.Region
-import tamer.kafka.KafkaConfig
 import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock

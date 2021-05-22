@@ -1,46 +1,45 @@
 package tamer
-package kafka
 
 import eu.timepit.refined.auto._
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.{Metric, MetricName, TopicPartition}
-import tamer.kafka.TestUtils._
+import zio.{Chunk, RIO, Ref, Schedule, Task, UIO, ZIO}
 import zio.blocking.Blocking
 import zio.duration.durationInt
 import zio.kafka.producer.Producer.Service
 import zio.stream.ZStream
 import zio.test.Assertion._
-import zio.test.environment.{TestClock, TestEnvironment}
-import zio.test.{DefaultRunnableSpec, ZSpec, assert}
-import zio.{Chunk, RIO, Ref, Schedule, Task, UIO, ZIO}
+import zio.test.environment.TestClock
+import zio.test.{DefaultRunnableSpec, assert}
 
 object SinkSpec extends DefaultRunnableSpec {
-  override def spec: ZSpec[TestEnvironment, Any] =
-    suite("SinkSpec")(
-      testM("should correctly produce ") {
-        val fakeValueProducer = Test.mk[Any, Key, Value]
-        val fakeInputStream   = ZStream.repeat((Key(42), Value(42))).take(1)
-        for {
-          log                 <- log4sFromName.provide("test1")
-          fakeProducerService <- fakeValueProducer
-          _                   <- Kafka.sink(fakeInputStream, fakeProducerService, "topic", log)
-          producedRecords     <- fakeProducerService.producedValues.get
-        } yield assert(producedRecords)(contains(new ProducerRecord("topic", Key(42), Value(42))))
-      },
-      testM("should correctly produce in case of moderate jitter") {
-        val fakeFailingValueProducer = Test.mkFailing[Any, Key, Value]
-        val fakeInputStream          = ZStream.repeat((Key(42), Value(42))).take(1)
-        for {
-          log                 <- log4sFromName.provide("test2")
-          fakeProducerService <- fakeFailingValueProducer
-          fiber               <- Kafka.sink(fakeInputStream, fakeProducerService, "topic", log).fork
-          _                   <- TestClock.adjust(5.second).repeat(Schedule.recurs(10))
-          _                   <- fiber.join
-          producedRecords     <- fakeProducerService.producedValues.get
-        } yield assert(producedRecords)(contains(new ProducerRecord("topic", Key(42), Value(42))))
-      }
-    )
+  import TestUtils._
+
+  override final val spec = suite("SinkSpec")(
+    testM("should correctly produce ") {
+      val fakeValueProducer = Test.mk[Any, Key, Value]
+      val fakeInputStream   = ZStream.repeat((Key(42), Value(42))).take(1)
+      for {
+        log                 <- log4sFromName.provide("test1")
+        fakeProducerService <- fakeValueProducer
+        _                   <- Tamer.sink(fakeInputStream, fakeProducerService, "topic", log)
+        producedRecords     <- fakeProducerService.producedValues.get
+      } yield assert(producedRecords)(contains(new ProducerRecord("topic", Key(42), Value(42))))
+    },
+    testM("should correctly produce in case of moderate jitter") {
+      val fakeFailingValueProducer = Test.mkFailing[Any, Key, Value]
+      val fakeInputStream          = ZStream.repeat((Key(42), Value(42))).take(1)
+      for {
+        log                 <- log4sFromName.provide("test2")
+        fakeProducerService <- fakeFailingValueProducer
+        fiber               <- Tamer.sink(fakeInputStream, fakeProducerService, "topic", log).fork
+        _                   <- TestClock.adjust(5.second).repeat(Schedule.recurs(10))
+        _                   <- fiber.join
+        producedRecords     <- fakeProducerService.producedValues.get
+      } yield assert(producedRecords)(contains(new ProducerRecord("topic", Key(42), Value(42))))
+    }
+  )
 }
 
 class Test[R, K, V](val producedValues: Ref[Vector[ProducerRecord[K, V]]]) extends Service[R, K, V] {
@@ -56,15 +55,12 @@ class Test[R, K, V](val producedValues: Ref[Vector[ProducerRecord[K, V]]]) exten
 }
 object Test {
   def mk[R, K, V]: UIO[Test[R, K, V]] =
-    for {
-      producedValues <- Ref.make(Vector.empty[ProducerRecord[K, V]])
-    } yield new Test(producedValues)
+    Ref.make(Vector.empty[ProducerRecord[K, V]]).map(new Test(_))
 
-  def mkFailing[R, K, V]: UIO[Test[R, K, V]] =
-    for {
-      counter        <- Ref.make(0)
-      producedValues <- Ref.make(Vector.empty[ProducerRecord[K, V]])
-    } yield new FailingTest(producedValues, counter)
+  def mkFailing[R, K, V]: UIO[Test[R, K, V]] = for {
+    counter        <- Ref.make(0)
+    producedValues <- Ref.make(Vector.empty[ProducerRecord[K, V]])
+  } yield new FailingTest(producedValues, counter)
 }
 
 class FailingTest[R, K, V](override val producedValues: Ref[Vector[ProducerRecord[K, V]]], counter: Ref[Int]) extends Test[R, K, V](producedValues) {

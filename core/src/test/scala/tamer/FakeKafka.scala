@@ -1,5 +1,4 @@
 package tamer
-package kafka
 
 import eu.timepit.refined.api.RefType
 import eu.timepit.refined.auto._

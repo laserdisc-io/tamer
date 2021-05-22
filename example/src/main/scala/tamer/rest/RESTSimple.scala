@@ -2,13 +2,13 @@ package tamer
 package rest
 
 import sttp.client3.httpclient.zio.HttpClientZioBackend
-import tamer.kafka.KafkaConfig
-import tamer.rest.RESTTamer.Offset
 import zio._
 
 import scala.annotation.nowarn
 
 object RESTSimple extends App {
+  import RESTTamer.Offset
+
   val httpClientLayer  = HttpClientZioBackend.layer()
   val kafkaConfigLayer = KafkaConfig.fromEnvironment
   val fullLayer        = httpClientLayer ++ kafkaConfigLayer ++ LocalSecretCache.live

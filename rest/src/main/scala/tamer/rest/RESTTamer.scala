@@ -7,7 +7,6 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import sttp.client3.httpclient.zio.{SttpClient, send}
 import sttp.client3.{Request, Response, UriContext, basicRequest}
 import sttp.model.StatusCode.{Forbidden, NotFound, Unauthorized}
-import tamer.kafka.KafkaConfig
 import tamer.rest.LocalSecretCache.LocalSecretCache
 import zio.clock.Clock
 import zio.duration.{durationInt, Duration => ZDuration}
