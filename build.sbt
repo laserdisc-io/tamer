@@ -1,39 +1,46 @@
-import sbt.addCommandAlias
+val scala_212 = "2.12.13"
+val scala_213 = "2.13.6"
 
-lazy val scala_212 = "2.12.13"
-lazy val scala_213 = "2.13.4"
-
-lazy val V = new {
-  val avro4s         = "4.0.8"
+val V = new {
+  val avro4s         = "4.0.9"
   val cats           = "2.6.1"
+  val circe          = "0.13.0"
   val ciris          = "1.2.1"
-  val confluent      = "6.1.0"
-  val doobie         = "0.13.2"
+  val confluent      = "6.1.1"
+  val doobie         = "0.13.3"
   val `json-schema`  = "1.12.2"
   val kafka          = "2.7.0"
   val logback        = "1.2.3"
   val `log-effect`   = "0.15.0"
-  val ociSdk         = "1.36.4"
+  val ociSdk         = "1.36.5"
   val postgres       = "42.2.20"
   val refined        = "0.9.25"
   val `scala-compat` = "2.4.4"
   val scalacheck     = "1.15.4"
   val scalatest      = "3.2.9"
-  val silencer       = "1.7.3"
-  val sttp           = "3.3.3"
+  val silencer       = "1.7.4"
+  val sttp           = "3.3.4"
   val uzhttp         = "0.2.7"
-  val zio            = "1.0.7"
-  val `zio-interop`  = "2.4.1.0"
+  val zio            = "1.0.8"
+  val `zio-interop`  = "2.5.1.0"
   val `zio-kafka`    = "0.14.0"
-  val `zio-oci-os`   = "0.2.0"
+  val `zio-oci-os`   = "0.2.1"
   val `zio-s3`       = "0.3.4"
-
-  val circeVersion = "0.13.0"
 }
 
-lazy val D = new {
+val D = new {
   val cats = Seq(
     "org.typelevel" %% "cats-core" % V.cats
+  )
+
+  val circe = Seq(
+    "io.circe" %% "circe-core"    % V.circe,
+    "io.circe" %% "circe-generic" % V.circe,
+    "io.circe" %% "circe-parser"  % V.circe
+  )
+
+  val compat = Seq(
+    "org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`
   )
 
   val config = Seq(
@@ -85,6 +92,10 @@ lazy val D = new {
     "com.github.ghik" %% "silencer-lib" % V.silencer % Provided cross CrossVersion.full
   )
 
+  val sttp = Seq(
+    "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp
+  )
+
   val tests = Seq(
     "org.scalacheck"                   %% "scalacheck"                     % V.scalacheck    % Test,
     "org.scalactic"                    %% "scalactic"                      % V.scalatest     % Test,
@@ -106,21 +117,9 @@ lazy val D = new {
     "dev.zio" %% "zio-test"         % V.zio,
     "dev.zio" %% "zio-test-sbt"     % V.zio
   )
-
-  val sttp = Seq(
-    "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp
-  )
-
-  val circe = Seq(
-    "io.circe" %% "circe-core",
-    "io.circe" %% "circe-generic",
-    "io.circe" %% "circe-parser"
-  ).map(_ % V.circeVersion)
-
-  val compat = Seq("org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`)
 }
 
-lazy val flags = Seq(
+val flags = Seq(
   "-deprecation",
   "-encoding",
   "UTF-8",
@@ -178,7 +177,7 @@ lazy val commonSettings = Seq(
   Test / fork := true
 )
 
-lazy val tamer = project
+lazy val core = project
   .in(file("core"))
   .settings(commonSettings)
   .settings(
@@ -192,28 +191,27 @@ lazy val tamer = project
     Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )
 
-lazy val doobie = project
-  .in(file("doobie"))
-  .dependsOn(tamer)
+lazy val db = project
+  .in(file("db"))
+  .dependsOn(core)
   .settings(commonSettings)
   .settings(
-    name := "tamer-doobie",
+    name := "tamer-db",
     libraryDependencies ++= D.doobie
   )
 
 lazy val ociObjectStorage = project
   .in(file("oci-objectstorage"))
-  .dependsOn(tamer)
+  .dependsOn(core)
   .settings(commonSettings)
   .settings(
     name := "tamer-oci-objectstorage",
-    libraryDependencies ++= D.ociObjectStorage,
-    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
+    libraryDependencies ++= D.ociObjectStorage
   )
 
 lazy val s3 = project
   .in(file("s3"))
-  .dependsOn(tamer)
+  .dependsOn(core)
   .settings(commonSettings)
   .settings(
     name := "tamer-s3",
@@ -222,7 +220,7 @@ lazy val s3 = project
 
 lazy val rest = project
   .in(file("rest"))
-  .dependsOn(tamer % "compile->compile;test->compile,test")
+  .dependsOn(core % "compile->compile;test->compile,test")
   .settings(commonSettings)
   .settings(
     name := "tamer-rest",
@@ -235,25 +233,25 @@ lazy val rest = project
 lazy val example = project
   .in(file("example"))
   .enablePlugins(JavaAppPackaging)
-  .dependsOn(tamer, doobie, ociObjectStorage, rest, s3)
+  .dependsOn(core, db, ociObjectStorage, rest, s3)
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= D.postgres ++ D.uzhttp ++ D.compat,
     publish / skip := true
   )
 
-lazy val root = project
+lazy val tamer = project
   .in(file("."))
-  .aggregate(tamer, example, doobie, ociObjectStorage, rest, s3)
+  .aggregate(core, example, db, ociObjectStorage, rest, s3)
   .settings(commonSettings)
   .settings(
     publish / skip := true,
-    addCommandAlias("fmtCheck", ";scalafmtCheckAll;scalafmtSbtCheck"),
-    addCommandAlias("fmt", ";test:scalafmtAll;scalafmtAll;scalafmtSbt;test:scalafmtAll"),
-    addCommandAlias("fullTest", ";clean;test"),
+    addCommandAlias("fmtCheck", "scalafmtCheckAll; scalafmtSbtCheck"),
+    addCommandAlias("fmt", "scalafmtAll; scalafmtSbt"),
+    addCommandAlias("fullTest", "clean; test"),
     addCommandAlias(
       "setReleaseOptions",
-      "set scalacOptions ++= Seq(\"-opt:l:method\", \"-opt:l:inline\", \"-opt-inline-from:laserdisc.**\", \"-opt-inline-from:<sources>\")"
+      """set scalacOptions ++= Seq("-opt:l:method", "-opt:l:inline", "-opt-inline-from:tamer.**", "-opt-inline-from:<sources>")"""
     ),
-    addCommandAlias("releaseIt", ";clean;setReleaseOptions;session list;compile;ci-release")
+    addCommandAlias("releaseIt", "clean; setReleaseOptions; session list; compile; ci-release")
   )

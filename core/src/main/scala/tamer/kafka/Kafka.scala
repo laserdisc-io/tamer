@@ -8,7 +8,6 @@ import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.{KafkaException, TopicPartition}
-import tamer.config._
 import tamer.registry._
 import zio._
 import zio.blocking.Blocking
@@ -20,18 +19,16 @@ import zio.kafka.producer.{Producer, ProducerSettings}
 import zio.stream.ZStream
 
 final case class StateKey(stateKey: String, groupId: String)
-
 object StateKey {
-  implicit def codec = AvroCodec.codec[StateKey]
+  implicit final val codec = AvroCodec.codec[StateKey]
+}
 
+trait Kafka {
+  def runLoop: ZIO[Blocking with Clock, TamerError, Unit]
 }
 
 object Kafka {
   private val tenTimes = Schedule.recurs(10) && Schedule.exponential(100.milliseconds)
-
-  trait Service {
-    def runLoop: ZIO[Blocking with Clock, TamerError, Unit]
-  }
 
   private[this] final val tamerErrors: PartialFunction[Throwable, TamerError] = {
     case ke: KafkaException => TamerError(ke.getLocalizedMessage, ke)
@@ -59,21 +56,21 @@ object Kafka {
       .onError(e => log.warn(s"Could not push data to topic '$sinkTopic': ${e.prettyPrint}").orDie)
 
   case class Live[K, V, S](
-      config: Config.Kafka,
-      setup: SourceConfiguration[K, V, S],
+      config: KafkaConfig,
+      setup: Setup[K, V, S],
       stateTransitionFunction: (S, Queue[Chunk[(K, V)]]) => ZIO[Any, TamerError, S],
       stateConsumerService: Consumer.Service,
-      stateProducerService: Producer.Service[Registry with Topic, StateKey, S],
-      valueProducerService: Producer.Service[Registry with Topic, K, V]
-  ) extends Service {
+      stateProducerService: Producer.Service[RegistryInfo, StateKey, S],
+      valueProducerService: Producer.Service[RegistryInfo, K, V]
+  ) extends Kafka {
     private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.kafka")
 
-    private final def mkRegistry(src: SchemaRegistryClient, topic: String): ZLayer[Any, Nothing, Registry with Topic] =
-      (ZLayer.succeed(src) >>> Registry.live) ++ (ZLayer.succeed(topic) >>> Topic.live)
+    private final def mkRegistry(src: SchemaRegistryClient, topic: String): ULayer[RegistryInfo] =
+      (ZLayer.succeed(src) >>> Registry.live) ++ ZLayer.succeed(topic)
 
     final def source(
         dataQueue: Queue[Chunk[(K, V)]],
-        layer: ULayer[Registry with Topic],
+        layer: ULayer[RegistryInfo],
         log: LogWriter[Task]
     ): ZStream[Blocking with Clock, Throwable, Offset] = {
       sealed trait ExistingState
@@ -141,7 +138,7 @@ object Kafka {
       ZStream.fromEffect(initializeAssignedPartitions).drain ++ interlockingStateStream
     }
 
-    override final def runLoop: ZIO[Blocking with Clock, TamerError, Unit] = {
+    override final val runLoop: ZIO[Blocking with Clock, TamerError, Unit] = {
       def printSetup(logWriter: LogWriter[Task]): Task[Unit] = logWriter.info(s"initializing kafka loop with setup: \n${setup.repr}")
 
       (for {
@@ -176,8 +173,8 @@ object Kafka {
   }
   object Live {
     def getManaged[K, V, S](
-        config: Config.Kafka,
-        sourceConfiguration: SourceConfiguration[K, V, S],
+        config: KafkaConfig,
+        setup: Setup[K, V, S],
         stateTransitionFunction: (S, Queue[Chunk[(K, V)]]) => ZIO[Any, TamerError, S]
     ): ZManaged[Clock with Blocking, TamerError, Live[K, V, S]] = {
       val offsetRetrievalStrategy = OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest)
@@ -194,32 +191,32 @@ object Kafka {
       val stateKeySerde = Serde[StateKey](isKey = true)(AvroCodec.codec[StateKey])
       val stateConsumer = Consumer.make(cSettings).mapError(t => TamerError("Could not make state consumer", t))
       val stateProducer = Producer
-        .make(pSettings, stateKeySerde.serializer, sourceConfiguration.serde.stateSerde)
+        .make(pSettings, stateKeySerde.serializer, setup.serde.stateSerde)
         .mapError(t => TamerError("Could not make state producer", t))
       val valueProducer = Producer
-        .make(pSettings, sourceConfiguration.serde.keySerializer, sourceConfiguration.serde.valueSerializer)
+        .make(pSettings, setup.serde.keySerializer, setup.serde.valueSerializer)
         .mapError(t => TamerError("Could not make value producer", t))
 
       for {
         stateConsumerService <- stateConsumer
         stateProducerService <- stateProducer
         valueProducerService <- valueProducer
-      } yield new Live(config, sourceConfiguration, stateTransitionFunction, stateConsumerService, stateProducerService, valueProducerService)
+      } yield new Live(config, setup, stateTransitionFunction, stateConsumerService, stateProducerService, valueProducerService)
     }
 
     def getLayer[R, K, V, S](
-        sourceConfiguration: SourceConfiguration[K, V, S],
+        setup: Setup[K, V, S],
         stateTransitionFunction: (S, Queue[Chunk[(K, V)]]) => ZIO[R, TamerError, S]
-    ): ZLayer[R with Clock with Blocking with KafkaConfig, TamerError, Kafka] =
-      ZLayer.fromServiceManaged[Config.Kafka, R with Clock with Blocking, TamerError, Kafka.Service] { config =>
+    ): ZLayer[R with Clock with Blocking with Has[KafkaConfig], TamerError, Has[Kafka]] =
+      ZLayer.fromServiceManaged[KafkaConfig, R with Clock with Blocking, TamerError, Kafka] { config =>
         val provider: URManaged[R, (S, Queue[Chunk[(K, V)]]) => IO[TamerError, S]] =
           ZIO.environment[R].map(r => Function.untupled(stateTransitionFunction.tupled.andThen(_.provide(r)))).toManaged_
-        provider.flatMap(providedStateTransitionFunction => Live.getManaged(config, sourceConfiguration, providedStateTransitionFunction))
+        provider.flatMap(providedStateTransitionFunction => Live.getManaged(config, setup, providedStateTransitionFunction))
       }
   }
 
   def live[R, K, V, S](
-      sourceConfiguration: SourceConfiguration[K, V, S],
+      setup: Setup[K, V, S],
       stateTransitionFunction: (S, Queue[Chunk[(K, V)]]) => ZIO[R, TamerError, S]
-  ): ZLayer[R with KafkaConfig with Clock with Blocking, TamerError, Kafka] = Live.getLayer(sourceConfiguration, stateTransitionFunction)
+  ): ZLayer[R with Has[KafkaConfig] with Clock with Blocking, TamerError, Has[Kafka]] = Live.getLayer(setup, stateTransitionFunction)
 }

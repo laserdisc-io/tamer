@@ -8,14 +8,14 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.avro.Schema
 import zio._
 
-object Registry {
-  trait Service {
-    def getOrRegisterId(subject: String, schema: Schema): Task[Int]
-    def verifySchema(id: Int, schema: Schema): Task[Unit]
-  }
+trait Registry {
+  def getOrRegisterId(subject: String, schema: Schema): Task[Int]
+  def verifySchema(id: Int, schema: Schema): Task[Unit]
+}
 
-  val live: URLayer[Has[SchemaRegistryClient], Registry] = ZLayer.fromService { client =>
-    new Service {
+object Registry {
+  val live: URLayer[Has[SchemaRegistryClient], Has[Registry]] = ZLayer.fromService { client =>
+    new Registry {
       private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.registry")
 
       override final def getOrRegisterId(subject: String, schema: Schema): Task[Int] =

@@ -2,7 +2,7 @@ package tamer
 
 import com.sksamuel.avro4s._
 import org.apache.avro.Schema
-import tamer.registry.{Registry, Topic}
+import tamer.registry._
 import zio.kafka.serde.{Deserializer, Serializer}
 import zio.{RIO, Task}
 
@@ -24,11 +24,11 @@ sealed trait Serde[A] extends Any {
 
   def schema: Schema
 
-  def deserializer: Deserializer[Registry with Topic, A]
+  def deserializer: Deserializer[RegistryInfo, A]
 
-  def serializer: Serializer[Registry with Topic, A]
+  def serializer: Serializer[RegistryInfo, A]
 
-  final def serde: ZSerde[Registry with Topic, A] = ZSerde(deserializer)(serializer)
+  final def serde: ZSerde[RegistryInfo, A] = ZSerde(deserializer)(serializer)
 }
 
 object Serde {
@@ -41,7 +41,7 @@ object Serde {
   final class RecordSerde[A: Decoder: Encoder](override final val isKey: Boolean, override final val schema: Schema) extends Serde[A] {
     private[this] def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
 
-    override final val deserializer: Deserializer[Registry with Topic, A] = Deserializer.byteArray.mapM { ba =>
+    override final val deserializer: Deserializer[RegistryInfo, A] = Deserializer.byteArray.mapM { ba =>
       val buffer = ByteBuffer.wrap(ba)
       if (buffer.get() != Magic) RIO.fail(TamerError("Deserialization failed: unknown magic byte!"))
       else {
@@ -57,7 +57,7 @@ object Serde {
         } yield res
       }
     }
-    override final val serializer: Serializer[Registry with Topic, A] = Serializer.byteArray.contramapM { a =>
+    override final val serializer: Serializer[RegistryInfo, A] = Serializer.byteArray.contramapM { a =>
       for {
         t  <- registry.topic
         id <- registry.getOrRegisterId(subject(t), schema)

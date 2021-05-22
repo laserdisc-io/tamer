@@ -1,9 +1,7 @@
-package tamer.kafka
+package tamer
+package kafka
 
-import tamer.config.KafkaConfig
-import tamer.kafka.KafkaTestUtils._
-import tamer.kafka.embedded.KafkaTest
-import tamer.{SourceConfiguration, TamerError}
+import tamer.kafka.TestUtils._
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.console.Console
@@ -17,11 +15,11 @@ import zio.{Chunk, Has, Queue, Ref, UIO, ZEnv, ZIO, ZLayer}
 object KafkaSpec extends DefaultRunnableSpec {
   type OutputR = Ref[Vector[Int]]
 
-  val kafkaLayer: ZLayer[Has[OutputR] with Console with KafkaConfig with Clock with Blocking, TamerError, Kafka] =
-    Kafka.live(SourceConfiguration(SourceConfiguration.SourceSerde[Key, Value, State](), State(0), 0), stateTransitionFunction)
+  val kafkaLayer: ZLayer[Has[OutputR] with Console with Has[KafkaConfig] with Clock with Blocking, TamerError, Has[Kafka]] =
+    Kafka.live(Setup(Setup.Serdes[Key, Value, State], State(0), 0), stateTransitionFunction)
 
-  val embeddedKafkaLayer: ZLayer[Has[OutputR] with ZEnv, Throwable, Kafka] = {
-    val kafkaConfigLayer = KafkaTest.embeddedKafkaTest >>> KafkaTest.embeddedKafkaConfig
+  val embeddedKafkaLayer: ZLayer[Has[OutputR] with ZEnv, Throwable, Has[Kafka]] = {
+    val kafkaConfigLayer = FakeKafka.embedded >>> FakeKafka.embeddedKafkaConfig
     kafkaConfigLayer ++ ZLayer.requires[ZEnv] ++ ZLayer.requires[Has[OutputR]] >>> kafkaLayer
   }
 
@@ -39,7 +37,7 @@ object KafkaSpec extends DefaultRunnableSpec {
 
   override def spec: ZSpec[TestEnvironment, Throwable] = {
     lazy val outputLayer = output.toLayer
-    val tamerKafkaLayer: ZLayer[ZEnv, Throwable, Kafka] =
+    val tamerKafkaLayer: ZLayer[ZEnv, Throwable, Has[Kafka]] =
       (ZLayer.requires[ZEnv] ++ outputLayer) >>> embeddedKafkaLayer
     suite("KafkaSpec")(
       testM("should successfully run the stateTransitionFunction 10 times") {
@@ -51,7 +49,7 @@ object KafkaSpec extends DefaultRunnableSpec {
       } @@ timeout(20.seconds)
     )
       .provideSomeLayerShared[TestEnvironment](
-        (KafkaTest.embeddedKafkaTest ++ tamerKafkaLayer ++ outputLayer)
+        (FakeKafka.embedded ++ tamerKafkaLayer ++ outputLayer)
           .mapError(TestFailure.fail)
       )
       .updateService[Clock.Service](_ => Clock.Service.live)
