@@ -101,7 +101,7 @@ val D = new {
     "org.scalactic"                    %% "scalactic"                      % V.scalatest     % Test,
     "org.scalatest"                    %% "scalatest"                      % V.scalatest     % Test,
     "io.github.embeddedkafka"          %% "embedded-kafka"                 % V.kafka         % Test,
-    "io.github.embeddedkafka"          %% "embedded-kafka-schema-registry" % V.confluent     % Test excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema"),
+    "io.github.embeddedkafka"          %% "embedded-kafka-schema-registry" % V.confluent     % Test excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema", "org.slf4j" % "slf4j-log4j12"),
     "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test
   )
 
