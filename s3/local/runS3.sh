@@ -16,4 +16,4 @@ export LOG_LEVEL=info
 SCRIPT_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit; pwd -P)
 cd "$SCRIPT_PATH"/../.. || exit
 
-sbt "example/runMain tamer.example.S3Simple" -jvm-debug 5005
+sbt "example/runMain tamer.s3.S3Simple" -jvm-debug 5005
