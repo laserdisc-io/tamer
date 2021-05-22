@@ -6,12 +6,14 @@ import tamer.kafka.KafkaConfig
 import tamer.rest.RESTTamer.Offset
 import zio._
 
+import scala.annotation.nowarn
+
 object RESTSimple extends App {
   val httpClientLayer  = HttpClientZioBackend.layer()
   val kafkaConfigLayer = KafkaConfig.fromEnvironment
   val fullLayer        = httpClientLayer ++ kafkaConfigLayer ++ LocalSecretCache.live
 
-  val pageDecoder: String => Task[DecodedPage[String, Offset]] =
+  @nowarn val pageDecoder: String => Task[DecodedPage[String, Offset]] =
     DecodedPage.fromString { body =>
       Task(body.split(",").toList.filterNot(_.isBlank))
     }
