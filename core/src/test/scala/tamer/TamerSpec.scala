@@ -34,7 +34,7 @@ object KafkaSpec extends DefaultRunnableSpec {
 
   override final val spec = {
     lazy val outputLayer = output.toLayer
-    val tamerLayer  = (ZLayer.requires[ZEnv] ++ outputLayer) >>> embeddedKafkaTamerLayer
+    val tamerLayer       = (ZLayer.requires[ZEnv] ++ outputLayer) >>> embeddedKafkaTamerLayer
 
     suite("TamerSpec")(
       testM("should successfully run the stateTransitionFunction 10 times") {

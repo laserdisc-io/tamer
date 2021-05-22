@@ -19,6 +19,7 @@ val V = new {
   val scalacheck     = "1.15.4"
   val scalatest      = "3.2.9"
   val silencer       = "1.7.4"
+  val slf4j          = "1.7.30"
   val sttp           = "3.3.4"
   val uzhttp         = "0.2.7"
   val zio            = "1.0.8"
@@ -97,9 +98,8 @@ val D = new {
   )
 
   val tests = Seq(
-    "org.scalacheck"                   %% "scalacheck"                     % V.scalacheck    % Test,
-    "org.scalactic"                    %% "scalactic"                      % V.scalatest     % Test,
-    "org.scalatest"                    %% "scalatest"                      % V.scalatest     % Test,
+    "org.slf4j"                         % "jul-to-slf4j"                   % V.slf4j         % Test,
+    "org.slf4j"                         % "log4j-over-slf4j"               % V.slf4j         % Test,
     "io.github.embeddedkafka"          %% "embedded-kafka"                 % V.kafka         % Test,
     "io.github.embeddedkafka"          %% "embedded-kafka-schema-registry" % V.confluent     % Test excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema", "org.slf4j" % "slf4j-log4j12"),
     "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test

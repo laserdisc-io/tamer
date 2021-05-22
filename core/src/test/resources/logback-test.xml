@@ -9,6 +9,15 @@
         </encoder>
     </appender>
 
+    <contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator">
+        <!-- reset all previous level configurations of all j.u.l. loggers -->
+        <resetJUL>true</resetJUL>
+    </contextListener>
+
+    <logger name="io.confluent" level="OFF"/>
+    <logger name="org.glassfish.jersey" level="OFF"/>
+    <logger name="org.hibernate.validator" level="OFF"/>
+
     <root level="ERROR">
         <appender-ref ref="STDOUT"/>
     </root>
