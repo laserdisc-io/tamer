@@ -3,6 +3,7 @@ val scala_213 = "2.13.6"
 
 val V = new {
   val avro4s         = "4.0.9"
+  val awsSdk         = "2.16.68"
   val cats           = "2.6.1"
   val circe          = "0.13.0"
   val ciris          = "1.2.1"
@@ -16,9 +17,6 @@ val V = new {
   val postgres       = "42.2.20"
   val refined        = "0.9.25"
   val `scala-compat` = "2.4.4"
-  val scalacheck     = "1.15.4"
-  val scalatest      = "3.2.9"
-  val silencer       = "1.7.4"
   val slf4j          = "1.7.30"
   val sttp           = "3.3.4"
   val uzhttp         = "0.2.7"
@@ -27,96 +25,6 @@ val V = new {
   val `zio-kafka`    = "0.14.0"
   val `zio-oci-os`   = "0.2.1"
   val `zio-s3`       = "0.3.4"
-}
-
-val D = new {
-  val cats = Seq(
-    "org.typelevel" %% "cats-core" % V.cats
-  )
-
-  val circe = Seq(
-    "io.circe" %% "circe-core"    % V.circe,
-    "io.circe" %% "circe-generic" % V.circe,
-    "io.circe" %% "circe-parser"  % V.circe
-  )
-
-  val compat = Seq(
-    "org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`
-  )
-
-  val config = Seq(
-    "is.cir" %% "ciris"         % V.ciris,
-    "is.cir" %% "ciris-refined" % V.ciris
-  )
-
-  val doobie = Seq(
-    "org.tpolecat" %% "doobie-core"   % V.doobie,
-    "org.tpolecat" %% "doobie-hikari" % V.doobie
-  )
-
-  val kafka = Seq(
-    "org.apache.kafka" % "kafka-clients" % V.kafka
-  )
-
-  val avro = Seq(
-    "io.confluent" % "kafka-avro-serializer" % V.confluent
-  )
-
-  val logs = Seq(
-    "ch.qos.logback" % "logback-classic" % V.logback,
-    "io.laserdisc"  %% "log-effect-fs2"  % V.`log-effect`,
-    "io.laserdisc"  %% "log-effect-zio"  % V.`log-effect`
-  )
-
-  val ociObjectStorage = Seq(
-    "com.oracle.oci.sdk" % "oci-java-sdk-objectstorage" % V.ociSdk,
-    "io.laserdisc"      %% "zio-oci-objectstorage"      % V.`zio-oci-os`
-  )
-
-  val postgres = Seq(
-    "org.postgresql" % "postgresql" % V.postgres
-  )
-
-  val refined = Seq(
-    "eu.timepit" %% "refined" % V.refined
-  )
-
-  val s3 = Seq(
-    "dev.zio" %% "zio-s3" % V.`zio-s3`
-  )
-
-  val serialization = Seq(
-    "com.sksamuel.avro4s" %% "avro4s-core" % V.avro4s
-  )
-
-  val silencer = Seq(
-    "com.github.ghik" %% "silencer-lib" % V.silencer % Provided cross CrossVersion.full
-  )
-
-  val sttp = Seq(
-    "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp
-  )
-
-  val tests = Seq(
-    "org.slf4j"                         % "jul-to-slf4j"                   % V.slf4j         % Test,
-    "org.slf4j"                         % "log4j-over-slf4j"               % V.slf4j         % Test,
-    "io.github.embeddedkafka"          %% "embedded-kafka"                 % V.kafka         % Test,
-    "io.github.embeddedkafka"          %% "embedded-kafka-schema-registry" % V.confluent     % Test excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema", "org.slf4j" % "slf4j-log4j12"),
-    "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test
-  )
-
-  val uzhttp = Seq(
-    "org.polynote" %% "uzhttp" % V.uzhttp
-  )
-
-  val zio = Seq(
-    "dev.zio" %% "zio"              % V.zio,
-    "dev.zio" %% "zio-interop-cats" % V.`zio-interop`,
-    "dev.zio" %% "zio-kafka"        % V.`zio-kafka`,
-    "dev.zio" %% "zio-streams"      % V.zio,
-    "dev.zio" %% "zio-test"         % V.zio,
-    "dev.zio" %% "zio-test-sbt"     % V.zio
-  )
 }
 
 val flags = Seq(
@@ -164,16 +72,26 @@ def versionDependent(scalaVersion: String) =
       )
   }
 
-lazy val commonSettings = Seq(
+lazy val baseSettings = Seq(
   organization := "io.laserdisc",
   scalaVersion := scala_213,
   crossScalaVersions := Seq(scala_212, scala_213),
   homepage := Some(url("https://github.com/laserdisc-io/tamer")),
   licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
   developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
-  scalacOptions ++= versionDependent(scalaVersion.value),
+  scalacOptions ++= versionDependent(scalaVersion.value)
+)
+
+lazy val commonSettings = baseSettings ++ Seq(
   resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/", "jitpack" at "https://jitpack.io"),
+  libraryDependencies ++= Seq(
+    "dev.zio" %% "zio"          % V.zio,
+    "dev.zio" %% "zio-test"     % V.zio % Test,
+    "dev.zio" %% "zio-test-sbt" % V.zio % Test
+  ),
   testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
+  Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
+  Test / console / scalacOptions := (Compile / console / scalacOptions).value,
   Test / fork := true
 )
 
@@ -182,13 +100,24 @@ lazy val core = project
   .settings(commonSettings)
   .settings(
     name := "tamer-core",
-    libraryDependencies ++= (D.cats ++ D.config ++ D.kafka ++ D.logs ++ D.refined ++ D.serialization ++ D.silencer ++ D.tests ++ D.zio)
-      .map(_.withSources)
-      .map(_.withJavadoc),
-    libraryDependencies ++= D.avro,
-    addCompilerPlugin("com.github.ghik" %% "silencer-plugin" % V.silencer cross CrossVersion.full),
-    Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
-    Test / console / scalacOptions := (Compile / console / scalacOptions).value
+    libraryDependencies ++= Seq(
+      "com.sksamuel.avro4s"              %% "avro4s-core"                    % V.avro4s,
+      "dev.zio"                          %% "zio-interop-cats"               % V.`zio-interop`,
+      "dev.zio"                          %% "zio-kafka"                      % V.`zio-kafka`,
+      "dev.zio"                          %% "zio-streams"                    % V.zio,
+      "eu.timepit"                       %% "refined"                        % V.refined,
+      "io.confluent"                      % "kafka-avro-serializer"          % V.confluent,
+      "io.laserdisc"                     %% "log-effect-zio"                 % V.`log-effect`,
+      "is.cir"                           %% "ciris"                          % V.ciris,
+      "is.cir"                           %% "ciris-refined"                  % V.ciris,
+      "org.apache.kafka"                  % "kafka-clients"                  % V.kafka,
+      "ch.qos.logback"                    % "logback-classic"                % V.logback       % Test,
+      "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test,
+      "io.github.embeddedkafka"          %% "embedded-kafka"                 % V.kafka         % Test,
+      "io.github.embeddedkafka"          %% "embedded-kafka-schema-registry" % V.confluent     % Test excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema", "org.slf4j" % "slf4j-log4j12"),
+      "org.slf4j"                         % "jul-to-slf4j"                   % V.slf4j         % Test,
+      "org.slf4j"                         % "log4j-over-slf4j"               % V.slf4j         % Test
+    )
   )
 
 lazy val db = project
@@ -197,7 +126,10 @@ lazy val db = project
   .settings(commonSettings)
   .settings(
     name := "tamer-db",
-    libraryDependencies ++= D.doobie
+    libraryDependencies ++= Seq(
+      "org.tpolecat" %% "doobie-core"   % V.doobie,
+      "org.tpolecat" %% "doobie-hikari" % V.doobie
+    )
   )
 
 lazy val ociObjectStorage = project
@@ -206,7 +138,10 @@ lazy val ociObjectStorage = project
   .settings(commonSettings)
   .settings(
     name := "tamer-oci-objectstorage",
-    libraryDependencies ++= D.ociObjectStorage
+    libraryDependencies ++= Seq(
+      "com.oracle.oci.sdk" % "oci-java-sdk-objectstorage" % V.ociSdk,
+      "io.laserdisc"      %% "zio-oci-objectstorage"      % V.`zio-oci-os`
+    )
   )
 
 lazy val s3 = project
@@ -215,7 +150,10 @@ lazy val s3 = project
   .settings(commonSettings)
   .settings(
     name := "tamer-s3",
-    libraryDependencies ++= D.s3
+    libraryDependencies ++= Seq(
+      "dev.zio"               %% "zio-s3" % V.`zio-s3`,
+      "software.amazon.awssdk" % "s3"     % V.awsSdk
+    )
   )
 
 lazy val rest = project
@@ -224,10 +162,13 @@ lazy val rest = project
   .settings(commonSettings)
   .settings(
     name := "tamer-rest",
-    libraryDependencies ++= D.sttp,
-    libraryDependencies ++= D.uzhttp.map(_ % Test),
-    libraryDependencies ++= D.circe.map(_ % Test),
-    libraryDependencies ++= D.tests
+    libraryDependencies ++= Seq(
+      "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp,
+      "io.circe"                      %% "circe-core"             % V.circe  % Test,
+      "io.circe"                      %% "circe-generic"          % V.circe  % Test,
+      "io.circe"                      %% "circe-parser"           % V.circe  % Test,
+      "org.polynote"                  %% "uzhttp"                 % V.uzhttp % Test
+    )
   )
 
 lazy val example = project
@@ -236,14 +177,19 @@ lazy val example = project
   .dependsOn(core, db, ociObjectStorage, rest, s3)
   .settings(commonSettings)
   .settings(
-    libraryDependencies ++= D.postgres ++ D.uzhttp ++ D.compat,
+    libraryDependencies ++= Seq(
+      "ch.qos.logback"          % "logback-classic"         % V.logback,
+      "org.polynote"           %% "uzhttp"                  % V.uzhttp,
+      "org.postgresql"          % "postgresql"              % V.postgres,
+      "org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`
+    ),
     publish / skip := true
   )
 
 lazy val tamer = project
   .in(file("."))
   .aggregate(core, example, db, ociObjectStorage, rest, s3)
-  .settings(commonSettings)
+  .settings(baseSettings)
   .settings(
     publish / skip := true,
     addCommandAlias("fmtCheck", "scalafmtCheckAll; scalafmtSbtCheck"),
