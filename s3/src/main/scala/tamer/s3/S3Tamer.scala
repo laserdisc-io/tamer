@@ -7,25 +7,25 @@ import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
 import zio.s3.{ListObjectOptions, S3}
-import zio.{Chunk, Has, Queue, Ref, Schedule, Task, ZIO}
+import zio.{Chunk, Has, Queue, Ref, Schedule, Task, UIO, ZIO}
 
 import java.time.Duration
 import scala.math.Ordering.Implicits.infixOrderingOps
 
 class S3Tamer[R <: S3 with Blocking with Clock with Has[KafkaConfig], K, V, S](setup: S3Setup[R, K, V, S])
-    extends AbstractStatefulTamer[R, K, V, S, Keys](setup.generic) {
+    extends AbstractTamer[R, K, V, S](setup.generic) {
 
   private final val logTask: Task[LogWriter[Task]] = log4sFromName.provide("tamer.s3")
 
-  override protected def createInitialSourceState: Keys = List.empty
+  private final val initialSourceState: UIO[KeysR] = Ref.make(List.empty)
 
-  override protected def createSchedule: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(
+  private final val createSchedule: Schedule[Any, Any, (Duration, Long)] = Schedule.exponential(
     setup.pollingTimings.minimumIntervalForBucketFetch
   ) || Schedule.spaced(
     setup.pollingTimings.maximumIntervalForBucketFetch
   )
 
-  override protected def updatedSourceState(currentState: Ref[Keys], token: Queue[Unit]): ZIO[R, Throwable, SourceStateChanged] =
+  private final def updatedSourceState(currentState: Ref[Keys], token: Queue[Unit]): ZIO[R, Throwable, SourceStateChanged] =
     updateListOfKeys(
       currentState,
       setup.bucketName,
@@ -34,7 +34,7 @@ class S3Tamer[R <: S3 with Blocking with Clock with Has[KafkaConfig], K, V, S](s
       token
     )
 
-  private def updateListOfKeys(
+  private final def updateListOfKeys(
       keysR: KeysR,
       bucketName: String,
       prefix: String,
@@ -99,6 +99,21 @@ class S3Tamer[R <: S3 with Blocking with Clock with Has[KafkaConfig], K, V, S](s
         )
         .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
     } yield nextState).mapError(e => TamerError("Error while doing iterationTimeBased", e))
+
+  override protected final def next(currentState: S, q: Queue[Chunk[(K, V)]]): ZIO[R, TamerError, S] =
+    for {
+      sourceState <- initialSourceState
+      cappedExponentialBackoff = createSchedule
+      sourceStateChangedToken <- Queue.dropping[Unit](requestedCapacity = 1)
+      newSourceState = updatedSourceState(sourceState, sourceStateChangedToken)
+      _ <- newSourceState
+        .scheduleFrom(SourceStateChanged(true))(
+          Schedule.once andThen cappedExponentialBackoff.untilInput(_ == SourceStateChanged(true))
+        )
+        .forever
+        .fork
+      newState <- iteration(sourceState, sourceStateChangedToken)(currentState, q)
+    } yield newState
 }
 
 object S3Tamer {
