@@ -93,9 +93,6 @@ services:
     environment:
       - SCHEMA_REGISTRY_HOST_NAME=schema-registry
       - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=kafka:29092
-    volumes:
-      - ./data/:/data
-      - ./schema/:/schema
     command:
       - /bin/bash
       - -c

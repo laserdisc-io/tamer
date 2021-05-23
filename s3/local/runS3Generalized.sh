@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+trap 'trap - SIGTERM && kill 0' SIGINT SIGTERM EXIT
+
+export LOG_LEVEL=INFO
 export AWS_ACCESS_KEY_ID=minio
 export AWS_SECRET_ACCESS_KEY=miniosecret
 

@@ -2,6 +2,7 @@
 
 trap 'trap - SIGTERM && kill 0' SIGINT SIGTERM EXIT
 
+export LOG_LEVEL=INFO;
 export KAFKA_BROKERS=localhost:9092;
 export KAFKA_SCHEMA_REGISTRY_URL=http://localhost:8081;
 export KAFKA_CLOSE_TIMEOUT=10s;
