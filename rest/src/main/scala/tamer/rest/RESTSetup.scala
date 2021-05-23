@@ -1,7 +1,6 @@
 package tamer
 package rest
 
-import com.sksamuel.avro4s.Codec
 import sttp.capabilities.zio.ZioStreams
 import sttp.capabilities.{Effect, WebSockets}
 import sttp.client3.Request

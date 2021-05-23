@@ -18,8 +18,6 @@ object RESTSimple extends App {
       Task(body.split(",").toList.filterNot(_.isBlank))
     }
 
-  implicit val stringCodec = AvroCodec.codec[String]
-
   private val program = RESTTamer.withPagination(
     baseUrl = "http://localhost:9095/finite-pagination",
     pageDecoder = pageDecoder,

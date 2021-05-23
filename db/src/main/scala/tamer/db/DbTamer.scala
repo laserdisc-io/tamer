@@ -1,7 +1,6 @@
 package tamer
 package db
 
-import com.sksamuel.avro4s.Codec
 import doobie.Query0
 import doobie.implicits.toDoobieStreamOps
 import doobie.util.transactor.Transactor

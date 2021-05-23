@@ -22,17 +22,12 @@ object Fixtures {
   var allowLogin: Boolean = true
 
   case class Key(time: Long)
-  object Key {
-    implicit val codec = AvroCodec.codec[Key]
-  }
   case class Value(time: Long, uuid: UUID)
   object Value {
-    implicit val codec      = AvroCodec.codec[Value]
     implicit val circeCodec = deriveCodec[Value]
   }
   case class State(count: Int)
   object State {
-    implicit val codec                     = AvroCodec.codec[State]
     implicit val hashable: Hashable[State] = _.count
   }
 

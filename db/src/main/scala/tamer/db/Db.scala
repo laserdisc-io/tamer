@@ -20,9 +20,6 @@ case class ChunkWithMetadata[V](chunk: Chunk[V], pulledAt: Instant = Instant.now
 case class ValueWithMetadata[V](value: V, pulledAt: Instant = Instant.now())
 
 case class TimeSegment(from: Instant, to: Instant)
-
 object TimeSegment {
-  implicit final val codec = AvroCodec.codec[TimeSegment]
-
   implicit final val hashable: Hashable[TimeSegment] = s => (byteswap64(s.from.getEpochSecond) + byteswap64(s.to.getEpochSecond)).intValue
 }

@@ -19,8 +19,6 @@ object RESTDynamicData extends App {
       Task(body.split(",").toList.filterNot(_.isBlank))
     }
 
-  implicit val stringCodec = AvroCodec.codec[String]
-
   private def program(now: Instant) = RESTTamer.withPaginationPeriodic(
     baseUrl = "http://localhost:9095/dynamic-pagination",
     pageDecoder = pageDecoder,

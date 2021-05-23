@@ -1,10 +1,9 @@
 package tamer
 
-import com.sksamuel.avro4s.Codec
 import zio.kafka.serde.Serializer
 
 case class Setup[-K, -V, S](
-    serde: Setup.Serdes[K, V, S],
+    serdes: Setup.Serdes[K, V, S],
     defaultState: S,
     tamerStateKafkaRecordKey: Int,
     repr: String = "no repr string implemented, if you want a neat description of the source configuration please implement it"
@@ -19,7 +18,7 @@ object Setup {
 
   object Serdes {
     def apply[K: Codec, V: Codec, S: Codec]: Serdes[K, V, S] =
-      new Serdes(Serde[K](isKey = true).serializer, Serde[V]().serializer, Serde[S]().serde) {}
+      new Serdes(Serde.key[K].serializer, Serde.value[V].serializer, Serde.value[S].serde) {}
   }
 
 }

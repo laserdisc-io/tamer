@@ -1,7 +1,6 @@
 package tamer
 package oci.objectstorage
 
-import com.sksamuel.avro4s.Codec
 import zio.URIO
 import zio.stream.ZTransducer
 

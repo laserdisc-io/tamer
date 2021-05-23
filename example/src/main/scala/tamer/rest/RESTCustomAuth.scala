@@ -14,17 +14,8 @@ object RESTCustomAuth extends App {
   val kafkaConfigLayer = KafkaConfig.fromEnvironment
   val fullLayer        = httpClientLayer ++ kafkaConfigLayer ++ LocalSecretCache.live
 
-  case class MyData(i: Int)
-
-  object MyData {
-    implicit val codec = AvroCodec.codec[MyData]
-  }
-
   case class MyKey(i: Int)
-
-  object MyKey {
-    implicit val codec = AvroCodec.codec[MyKey]
-  }
+  case class MyData(i: Int)
 
   val dataRegex: Regex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] = DecodedPage.fromString {

@@ -1,7 +1,6 @@
 package tamer
 package s3
 
-import com.sksamuel.avro4s.Codec
 import eu.timepit.refined.auto._
 import eu.timepit.refined.types.numeric.PosInt
 import zio.{Has, ZIO}

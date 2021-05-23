@@ -24,10 +24,10 @@ object KafkaSpec extends DefaultRunnableSpec {
 
   def stateTransitionFunction(s: State, q: Queue[Chunk[(Key, Value)]]): ZIO[Has[OutputR] with Console, TamerError, State] =
     ZIO.service[OutputR].flatMap { variable =>
-      val cursor = s.i + 1
+      val cursor = s.state + 1
       if (cursor <= 10)
         variable.update(_ ++ Vector(cursor)) *>
-          q.offer(Chunk((Key(cursor), Value(cursor)))).as(s.copy(i = cursor))
+          q.offer(Chunk((Key(cursor), Value(cursor)))).as(s.copy(state = cursor))
       else
         ZIO.never *> UIO(State(9999))
     }

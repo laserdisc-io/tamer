@@ -39,9 +39,6 @@ object S3Generalized extends App {
       Some(s"$prefix$lastProcessedNumber")
   }
 
-  implicit final val longCodec   = AvroCodec.codec[Long]
-  implicit final val stringCodec = AvroCodec.codec[String]
-
   private val myS3Setup: S3Setup[S3 with Blocking with Clock with Has[KafkaConfig], Long, String, Long] =
     S3Setup(
       bucketName = internals.bucketName,

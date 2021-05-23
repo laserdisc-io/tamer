@@ -17,9 +17,6 @@ import zio.kafka.producer.{Producer, ProducerSettings}
 import zio.stream.ZStream
 
 final case class StateKey(stateKey: String, groupId: String)
-object StateKey {
-  implicit final val codec = AvroCodec.codec[StateKey]
-}
 
 trait Tamer {
   def runLoop: ZIO[Blocking with Clock, TamerError, Unit]
@@ -96,7 +93,7 @@ object Tamer {
         _          <- log.info(s"Got state: $state")
       } yield state
 
-      val stateKeySerde = Serde[StateKey](isKey = true)(AvroCodec.codec[StateKey])
+      val stateKeySerde = Serde.value[StateKey] //(AvroCodec.codec[StateKey])
       val initializeAssignedPartitions: ZIO[Blocking with Clock, Throwable, Unit] = subscribeToExistingState.flatMap {
         case PreexistingState => log.info(s"consumer group ${config.state.groupId} resuming consumption from '${config.state.topic}'")
         case EmptyState =>
@@ -111,7 +108,7 @@ object Tamer {
       }
 
       val interlockingStateStream: ZStream[Blocking with Clock, Throwable, Offset] = stateConsumerService
-        .plainStream(stateKeySerde.deserializer, setup.serde.stateSerde)
+        .plainStream(stateKeySerde.deserializer, setup.serdes.stateSerde)
         .provideSomeLayer[Blocking with Clock](layer)
         .mapM {
           case CommittableRecord(record, offset) if record.key == stateKey =>
@@ -186,13 +183,13 @@ object Tamer {
         .withProperties(config.properties)
         .withCloseTimeout(config.closeTimeout.zio)
 
-      val stateKeySerde = Serde[StateKey](isKey = true)(AvroCodec.codec[StateKey])
+      val stateKeySerde = Serde.key[StateKey] //(AvroCodec.codec[StateKey])
       val stateConsumer = Consumer.make(cSettings).mapError(t => TamerError("Could not make state consumer", t))
       val stateProducer = Producer
-        .make(pSettings, stateKeySerde.serializer, setup.serde.stateSerde)
+        .make(pSettings, stateKeySerde.serializer, setup.serdes.stateSerde)
         .mapError(t => TamerError("Could not make state producer", t))
       val valueProducer = Producer
-        .make(pSettings, setup.serde.keySerializer, setup.serde.valueSerializer)
+        .make(pSettings, setup.serdes.keySerializer, setup.serdes.valueSerializer)
         .mapError(t => TamerError("Could not make value producer", t))
 
       for {

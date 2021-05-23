@@ -1,7 +1,6 @@
 package tamer
 package rest
 
-import com.sksamuel.avro4s.Codec
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import sttp.client3.httpclient.zio.{SttpClient, send}
@@ -44,7 +43,6 @@ object RESTTamer {
     def nextIndex(index: Int): Offset         = this.copy(nextIndex = index)
   }
   object Offset {
-    implicit val codec                      = AvroCodec.codec[Offset]
     implicit val hashable: Hashable[Offset] = s => s.offset * s.nextIndex
   }
 
@@ -52,7 +50,6 @@ object RESTTamer {
     def incrementedBy(increment: Int): PeriodicOffset = this.copy(offset = offset + increment)
   }
   object PeriodicOffset {
-    implicit val codec                              = AvroCodec.codec[PeriodicOffset]
     implicit val hashable: Hashable[PeriodicOffset] = s => s.offset * (s.periodStart.getEpochSecond + s.periodStart.getNano.longValue).toInt
   }
 

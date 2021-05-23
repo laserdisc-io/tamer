@@ -10,11 +10,6 @@ import zio.stream.Transducer
 
 object OciObjectStorageSimple extends App {
   case class ObjectsCursor(startAfter: Option[String], current: Option[String])
-  object ObjectsCursor {
-    implicit val codec = AvroCodec.codec[ObjectsCursor]
-  }
-
-  implicit final val stringCodec = AvroCodec.codec[String]
 
   val initialState = ObjectsCursor(None, None)
 
