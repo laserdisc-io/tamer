@@ -7,9 +7,9 @@
 
 Tamer is a domesticated Kafka source connector.
 
-It puts the developer completely in control of how data is ingested and what state is preserved (in a compacted Kafka topic).
+It puts the user of this library in complete control of how data is ingested and what state is preserved (in a compacted Kafka topic).
 As an example, it allows for a JDBC source to pull a window of data (e.g. 5 minutes), starting from some time in the past, as fast as possible.
-At every "pull", the developer can decide what to do next (e.g. should the window be increased/decreased? Should the pull slow down?).
+At every "pull", the user can decide what to do next (e.g. should the window be increased/decreased? Should the pull slow down?).
 
 Tamer currently supports 4 possible source types:
 - any SQL data store Doobie can handle (e.g. Postgres, MySQL, etc)
@@ -42,10 +42,10 @@ This code covers getting data from a synthetic Postgres database.
 
 Make sure you have docker installed before proceeding.
 
-From the `db/local` folder launch `docker-compose up` (you can enter `docker-compose down` if you want to start from scratch). After that you should be able to access the Kafka gui from [http://localhost:8000](http://localhost:8000).
+From the `db/local` folder launch `docker compose up` (you can enter `docker compose down` if you want to start from scratch). After that you should be able to access the Kafka gui from [http://localhost:8000](http://localhost:8000).
 
-Start the `runDb.sh` program which contains some example environment variables.
-If tamer works you should see messages appearing in the Kafka gui.
+Start the `runDatabaseSimple.sh` program which contains some example environment variables.
+If Tamer works you should see messages appearing in the Kafka gui.
 
 ### S3 module
 
@@ -54,10 +54,10 @@ This code covers getting data from a synthetic S3 bucket.
 
 Make sure you have docker installed before proceeding.
 
-From the `s3/local` folder launch `docker-compose up` (you can enter `docker-compose down` if you want to start from scratch). After that you should be able to access the Kafka gui from [http://localhost:8000](http://localhost:8000).
+From the `s3/local` folder launch `docker compose up` (you can enter `docker compose down` if you want to start from scratch). After that you should be able to access the Kafka gui from [http://localhost:8000](http://localhost:8000).
 
-Start the `runS3.sh` program which contains some example environment variables.
-If tamer works you should see messages appearing in the Kafka gui.
+Start the `runS3Simple.sh` program which contains some example environment variables.
+If Tamer works you should see messages appearing in the Kafka gui.
 
 ## License
 
