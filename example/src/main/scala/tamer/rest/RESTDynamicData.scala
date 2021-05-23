@@ -7,7 +7,7 @@ import zio._
 import java.time.Instant
 import scala.annotation.nowarn
 
-object RestDynamicData extends App {
+object RESTDynamicData extends App {
   import RESTTamer.PeriodicOffset
 
   val httpClientLayer  = HttpClientZioBackend.layer()
