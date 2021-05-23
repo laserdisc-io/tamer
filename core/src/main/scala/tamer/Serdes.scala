@@ -3,11 +3,10 @@ package tamer
 import com.sksamuel.avro4s._
 import org.apache.avro.Schema
 import zio.kafka.serde.{Deserializer, Serializer}
-import zio.{RIO, Task, URIO}
+import zio.{Has, RIO, Task, URIO}
 
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
-import zio.Has
 
 object AvroCodec {
   def codec[V](implicit e: Encoder[V], d: Decoder[V], s: SchemaFor[V]): Codec[V] = new Codec[V] {

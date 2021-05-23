@@ -3,7 +3,6 @@ package s3
 
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import tamer.TamerError
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
