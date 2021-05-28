@@ -1,6 +1,6 @@
 import sbt.addCommandAlias
 
-lazy val scala_212 = "2.12.13"
+lazy val scala_212 = "2.12.14"
 lazy val scala_213 = "2.13.6"
 
 lazy val V = new {
