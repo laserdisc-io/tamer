@@ -68,46 +68,86 @@ object Tamer {
         layer: ULayer[RegistryInfo],
         log: LogWriter[Task]
     ): ZStream[Blocking with Clock, Throwable, Offset] = {
-      sealed trait ExistingState
-      case object PreexistingState extends ExistingState
-      case object EmptyState       extends ExistingState
+
+      final case class TopicPartitionOffset(topic: String, partition: Int, offset: Long)
+
+      // There are at least 3 possible decisions:
+      //
+      // 1. Set(partition offsets) == Set(0)                                       => initialize
+      // 2. Set(partition offsets) &~ Set(committed partition offset) != Set.empty => resume
+      // 3. Set(partition offsets) &~ Set(committed partition offset) == Set.empty => fail
+      //
+      // Notes:
+      // Point 2 can also mean that the committed offsets are lagging behind more than 1.
+      // This should not happen based on the assumption that a state will not be pushed
+      // until the last batch has been put in the queue. Unfortunately, there's no such
+      // guarantee currently, as there is no synchronization between the fiber that sends
+      // the chunks of values to Kafka and the one that sends the new state to Kafka.
+      // This should be addressed by https://github.com/laserdisc-io/tamer/issues/43
+      // Ideally, we should use transactions for this but
+      // a. zio-kafka does not support them yet (https://github.com/zio/zio-kafka/issues/33)
+      // b. more importantly, they would not be able to span our strongly typed producers,
+      //    so they would be "limited" to ensuring no state is visible to our consumer until
+      //    the previous state offset has been committed.
+      //
+      // Point 3 is also totally arbitrary. If the consumer is current but there are (or have
+      // been, depending how the state topic is configured) states in the topic the consumer
+      // would stay put forever. So the decision here is to fail.
+      sealed trait Decision  extends Product with Serializable
+      case object Initialize extends Decision
+      case object Resume     extends Decision
+      case object Fail       extends Decision
+
       val stateKey = StateKey(setup.tamerStateKafkaRecordKey.toHexString, config.state.groupId)
-      def waitNonemptyAssignment(consumerService: Consumer.Service) = consumerService.assignment
+      def waitNonEmptyAssignment(consumerService: Consumer.Service) = consumerService.assignment
         .withFilter(_.nonEmpty)
-        .tapError { _ =>
-          log.info(s"Still no assignment on ${config.state.groupId}, there are no partitions to process")
-        }
+        .tapError(_ => log.debug(s"still no assignment on ${config.state.groupId}, there are no partitions to process"))
         .retry(tenTimes)
       val stateTopicSub               = Subscription.topics(config.state.topic)
       def mkRecord(k: StateKey, v: S) = new ProducerRecord(config.state.topic, k, v)
-      def containsExistingState(partitionSet: Set[TopicPartition]) =
-        stateConsumerService.endOffsets(partitionSet).map(_.values.exists(_ > 0L)).map(if (_) PreexistingState else EmptyState)
+      def decide(partitionSet: Set[TopicPartition]) = {
+        val partitionOffsets = stateConsumerService.endOffsets(partitionSet).map {
+          _.map { case (tp, o) => TopicPartitionOffset(tp.topic(), tp.partition(), o) }.toSet
+        }
+        val committedPartitionOffsets = stateConsumerService.committed(partitionSet).map {
+          _.map {
+            case (tp, Some(o)) => Some(TopicPartitionOffset(tp.topic(), tp.partition(), o.offset()))
+            case _             => None
+          }.flatten.toSet
+        }
+        partitionOffsets.zip(committedPartitionOffsets).map {
+          case (po, _) if po.map(_.offset).forall(_ == 0L) => Initialize
+          case (po, cpo) if po == cpo                      => Resume
+          case _                                           => Fail
+        }
+      }
 
-      val subscribeToExistingState = for {
-        _          <- log.info(s"Will subscribe to $stateTopicSub")
+      val subscribeAndDecide = for {
+        _          <- log.debug(s"subscribing to $stateTopicSub")
         _          <- stateConsumerService.subscribe(stateTopicSub)
-        _          <- log.info(s"Awaiting assignment")
-        assignment <- waitNonemptyAssignment(stateConsumerService)
-        _          <- log.info(s"Got assignment: $assignment")
-        state      <- containsExistingState(assignment)
-        _          <- log.info(s"Got state: $state")
-      } yield state
+        _          <- log.debug("awaiting assignment")
+        assignment <- waitNonEmptyAssignment(stateConsumerService)
+        _          <- log.debug(s"received assignment $assignment")
+        decision   <- decide(assignment)
+        _          <- log.debug(s"decided to $decision")
+      } yield decision
 
       val stateKeySerde = Serde.value[StateKey]
-      val initializeAssignedPartitions: ZIO[Blocking with Clock, Throwable, Unit] = subscribeToExistingState.flatMap {
-        case PreexistingState => log.info(s"consumer group ${config.state.groupId} resuming consumption from '${config.state.topic}'")
-        case EmptyState =>
-          log.info(
-            s"consumer group ${config.state.groupId} never consumed from ${config.state.topic}, setting offset to earliest"
-          ) *> // TODO: check if the above statement is true: the assignment might be an empty partition from an otherwise nonempty topic?
+      val maybeInitializeAssignedPartitions: ZIO[Blocking with Clock, Throwable, Unit] = subscribeAndDecide.flatMap {
+        case Initialize =>
+          log.info(s"consumer group ${config.state.groupId} never consumed from ${config.state.topic}") *>
             stateProducerService
               .produceAsync(mkRecord(stateKey, setup.defaultState))
               .provideSomeLayer[Blocking](layer)
               .flatten
               .flatMap(recordMetadata => log.info(s"pushed initial state ${setup.defaultState} to $recordMetadata"))
+        case Resume => log.info(s"consumer group ${config.state.groupId} resuming consumption from ${config.state.topic}")
+        case Fail =>
+          log.error(s"consumer group ${config.state.groupId} is already at the end of ${config.state.topic}, manual intervention required") *>
+            ZIO.fail(TamerError(s"Consumer group ${config.state.groupId} stuck at end of stream"))
       }
 
-      val interlockingStateStream: ZStream[Blocking with Clock, Throwable, Offset] = stateConsumerService
+      val stateStream: ZStream[Blocking with Clock, Throwable, Offset] = stateConsumerService
         .plainStream(stateKeySerde.deserializer, setup.serdes.stateSerde)
         .provideSomeLayer[Blocking with Clock](layer)
         .mapM {
@@ -130,7 +170,7 @@ object Tamer {
             ) *> UIO(offset)
         }
 
-      ZStream.fromEffect(initializeAssignedPartitions).drain ++ interlockingStateStream
+      ZStream.fromEffect(maybeInitializeAssignedPartitions).drain ++ stateStream
     }
 
     override final val runLoop: ZIO[Blocking with Clock, TamerError, Unit] = {
