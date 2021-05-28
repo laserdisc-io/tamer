@@ -75,7 +75,7 @@ object Tamer {
       def waitNonemptyAssignment(consumerService: Consumer.Service) = consumerService.assignment
         .withFilter(_.nonEmpty)
         .tapError { _ =>
-          log.info(s"Still no assignment on $consumerService, there are no partitions to process")
+          log.info(s"Still no assignment on ${config.state.groupId}, there are no partitions to process")
         }
         .retry(tenTimes)
       val stateTopicSub               = Subscription.topics(config.state.topic)
@@ -84,9 +84,9 @@ object Tamer {
         stateConsumerService.endOffsets(partitionSet).map(_.values.exists(_ > 0L)).map(if (_) PreexistingState else EmptyState)
 
       val subscribeToExistingState = for {
-        _          <- log.info(s"Will subscribe to $stateTopicSub using $stateConsumerService")
+        _          <- log.info(s"Will subscribe to $stateTopicSub")
         _          <- stateConsumerService.subscribe(stateTopicSub)
-        _          <- log.info(s"Awaiting assignment on $stateConsumerService")
+        _          <- log.info(s"Awaiting assignment")
         assignment <- waitNonemptyAssignment(stateConsumerService)
         _          <- log.info(s"Got assignment: $assignment")
         state      <- containsExistingState(assignment)
