@@ -1,6 +1,6 @@
 import sbt.addCommandAlias
 
-lazy val scala_212 = "2.12.14"
+lazy val scala_212 = "2.12.13"
 lazy val scala_213 = "2.13.6"
 
 lazy val V = new {
@@ -137,7 +137,7 @@ lazy val flags = Seq(
   "-Ywarn-numeric-widen",
   "-Ywarn-value-discard",
   "-Xfatal-warnings",
-  "-Ywarn-unused",
+  //"-Ywarn-unused", The unused evidences problem is currently worked on in another PR, this will be reactivated there
   "-opt-warnings",
   "-Xlint:constant",
   "-Ywarn-extra-implicit"
