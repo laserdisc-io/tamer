@@ -93,7 +93,7 @@ object Tamer {
         _          <- log.info(s"Got state: $state")
       } yield state
 
-      val stateKeySerde = Serde.value[StateKey] //(AvroCodec.codec[StateKey])
+      val stateKeySerde = Serde.value[StateKey]
       val initializeAssignedPartitions: ZIO[Blocking with Clock, Throwable, Unit] = subscribeToExistingState.flatMap {
         case PreexistingState => log.info(s"consumer group ${config.state.groupId} resuming consumption from '${config.state.topic}'")
         case EmptyState =>
@@ -183,7 +183,7 @@ object Tamer {
         .withProperties(config.properties)
         .withCloseTimeout(config.closeTimeout.zio)
 
-      val stateKeySerde = Serde.key[StateKey] //(AvroCodec.codec[StateKey])
+      val stateKeySerde = Serde.key[StateKey]
       val stateConsumer = Consumer.make(cSettings).mapError(t => TamerError("Could not make state consumer", t))
       val stateProducer = Producer
         .make(pSettings, stateKeySerde.serializer, setup.serdes.stateSerde)
