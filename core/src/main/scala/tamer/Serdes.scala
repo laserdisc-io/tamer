@@ -1,77 +1,85 @@
 package tamer
 
 import com.sksamuel.avro4s._
-import org.apache.avro.Schema
-import tamer.registry.{Registry, Topic}
+import io.confluent.kafka.schemaregistry.ParsedSchema
+import io.confluent.kafka.schemaregistry.avro.AvroSchema
 import zio.kafka.serde.{Deserializer, Serializer}
-import zio.{RIO, Task}
+import zio.{Has, RIO, Task, URIO}
 
-import java.io.ByteArrayOutputStream
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream, OutputStream}
 import java.nio.ByteBuffer
 
-object AvroCodec {
-  def codec[V](implicit e: Encoder[V], d: Decoder[V], s: SchemaFor[V]): Codec[V] = new Codec[V] {
-    override def decode(value: Any): V = d.decode(value)
+sealed trait Codec[A] { // we need this since avro4s Codec _is_ both an Encoder and a Decoder
+  def decode: InputStream => Either[Throwable, A]
+  def encode: (A, OutputStream) => Unit
+  def schema: ParsedSchema
+}
 
-    override def encode(value: V): AnyRef = e.encode(value)
+object Codec {
+  final def apply[A](implicit A: Codec[A]): Codec[A] = A
 
-    override def schemaFor: SchemaFor[V] = s
+  implicit final def avro4s[A: Decoder: Encoder: SchemaFor]: Codec[A] = new Codec[A] {
+    private[this] final val _avroSchema                            = SchemaFor[A].schema
+    private[this] final val _avroDecoder                           = AvroInputStream.binary[A](Decoder[A])
+    private[this] final val _avroEncoder                           = AvroOutputStream.binary[A](Encoder[A])
+    override final val decode: InputStream => Either[Throwable, A] = _avroDecoder.from(_).build(_avroSchema).tryIterator.next().toEither
+    override final val encode: (A, OutputStream) => Unit = (a, os) => {
+      val ser = _avroEncoder.to(os).build()
+      ser.write(a)
+      ser.close()
+    }
+    override final val schema: ParsedSchema = new AvroSchema(_avroSchema)
   }
 }
 
 sealed trait Serde[A] extends Any {
   def isKey: Boolean
-
-  def schema: Schema
-
-  def deserializer: Deserializer[Registry with Topic, A]
-
-  def serializer: Serializer[Registry with Topic, A]
-
-  final def serde: ZSerde[Registry with Topic, A] = ZSerde(deserializer)(serializer)
+  def schema: ParsedSchema
+  def deserializer: Deserializer[RegistryInfo, A]
+  def serializer: Serializer[RegistryInfo, A]
+  final def serde: ZSerde[RegistryInfo, A] = ZSerde(deserializer)(serializer)
 }
 
 object Serde {
   private[this] final val Magic: Byte = 0x0
   private[this] final val intByteSize = 4
 
-  final def apply[A: Codec](isKey: Boolean = false) =
-    new RecordSerde[A](isKey, implicitly[Codec[A]].codec.schema)
+  final def key[A: Codec]   = new DelegatingSerde[A](isKey = true, Codec[A])
+  final def value[A: Codec] = new DelegatingSerde[A](isKey = false, Codec[A])
 
-  final class RecordSerde[A: Decoder: Encoder](override final val isKey: Boolean, override final val schema: Schema) extends Serde[A] {
+  final class DelegatingSerde[A](override final val isKey: Boolean, codec: Codec[A]) extends Serde[A] {
     private[this] def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
 
-    override final val deserializer: Deserializer[Registry with Topic, A] = Deserializer.byteArray.mapM { ba =>
+    override final val schema: ParsedSchema = codec.schema
+
+    override final val deserializer: Deserializer[RegistryInfo, A] = Deserializer.byteArray.mapM { ba =>
       val buffer = ByteBuffer.wrap(ba)
       if (buffer.get() != Magic) RIO.fail(TamerError("Deserialization failed: unknown magic byte!"))
       else {
         val id = buffer.getInt()
         for {
-          _ <- registry.verifySchema(id, schema)
-          res <- RIO.fromTry {
+          _ <- RIO.accessM[Has[Registry]](_.get.verifySchema(id, schema))
+          res <- RIO.fromEither {
             val length  = buffer.limit() - 1 - intByteSize
             val payload = new Array[Byte](length)
             buffer.get(payload, 0, length)
-            AvroInputStream.binary[A].from(payload).build(schema).tryIterator.next()
+            codec.decode(new ByteArrayInputStream(payload))
           }
         } yield res
       }
     }
-    override final val serializer: Serializer[Registry with Topic, A] = Serializer.byteArray.contramapM { a =>
+    override final val serializer: Serializer[RegistryInfo, A] = Serializer.byteArray.contramapM { a =>
       for {
-        t  <- registry.topic
-        id <- registry.getOrRegisterId(subject(t), schema)
+        t  <- URIO.service[TopicName]
+        id <- RIO.accessM[Has[Registry]](_.get.getOrRegisterId(subject(t), schema))
         arr <- Task {
           val baos = new ByteArrayOutputStream
           baos.write(Magic.toInt)
           baos.write(ByteBuffer.allocate(intByteSize).putInt(id).array())
-          val ser = AvroOutputStream.binary[A].to(baos).build()
-          ser.write(a)
-          ser.close()
+          codec.encode(a, baos)
           baos.toByteArray
         }
       } yield arr
     }
   }
-
 }

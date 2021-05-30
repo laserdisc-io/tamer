@@ -7,11 +7,16 @@
 
 Tamer is a domesticated Kafka source connector.
 
-It puts the developer completely in control of how data is ingested and what state is preserved (in a compacted Kafka topic).
-As an example, it allows for a JDBC source to pull a window of data (say, 5 minutes), starting from some time in the past, as fast as possible.
-At every "pull", the developer can decide what to do next (e.g. should the window be increased/decreased? Should the pull slow down?).
+It puts the user of this library in complete control of how data is ingested and what state is preserved (in a compacted Kafka topic).
+As an example, it allows for a JDBC source to pull a window of data (e.g. 5 minutes), starting from some time in the past, as fast as possible.
+At every "pull", the user can decide what to do next (e.g. should the window be increased/decreased? Should the pull slow down?).
 
-Tamer currently supports two possible source types: any SQL data store Doobie can handle (e.g. Postgres, MySQL, etc) and cloud storages that "speak" the AWS S3 protocol.
+Tamer currently supports 4 possible source types:
+- any SQL data store Doobie can handle (e.g. Postgres, MySQL, etc)
+- any cloud storage that is AWS S3 compatible
+- OCI Object Storage
+- any type of REST API, with AuthN, pagination and HATEOAS support
+
 Some sensible defaults are provided out of the box but many customisations are possible.
 
 ## Usage
@@ -20,52 +25,43 @@ Add one of Tamer's modules as a dependency to your project:
 
 ```
 // check the current version on Maven Central (or use the badge above)
-libraryDependencies += "io.laserdisc" %% "tamer-doobie" % version
-```
-or
-```
-// check the current version on Maven Central (or use the badge above)
-libraryDependencies += "io.laserdisc" %% "tamer-s3" % version
+libraryDependencies += "io.laserdisc" %% "tamer-db"                % version
+libraryDependencies += "io.laserdisc" %% "tamer-oci-objectstorage" % version
+libraryDependencies += "io.laserdisc" %% "tamer-rest"              % version
+libraryDependencies += "io.laserdisc" %% "tamer-s3"                % version
 ```
 
-See [here](example/src/main/scala/tamer/example/DatabaseSimple.scala) for a sample application that makes use of Tamer's Doobie module for ingesting data from a JDBC datasource.
+See [here](example/src/main/scala/tamer/db/DatabaseSimple.scala) for a sample application that makes use of Tamer's Db module for ingesting data from a JDBC datasource.
 
 ## End to end testing
 
 ### Database module
 
-Basic manual testing is available for the code in the example module `tamer.example.DatabaseSimple`
-(and/or `tamer.example.DatabaseGeneralized`).
+Basic manual testing is available for the code in the example module `tamer.db.DatabaseSimple` (and/or `tamer.db.DatabaseGeneralized`).
 This code covers getting data from a synthetic Postgres database.
 
 Make sure you have docker installed before proceeding.
 
-From the `doobie/local` folder launch `docker-compose up` (you can enter `docker-compose down`
-if you want to start from scratch). After that you should be able to access the kafka
-gui from [http://localhost:8000](http://localhost:8000).
+From the `db/local` folder launch `docker compose up` (you can enter `docker compose down` if you want to start from scratch). After that you should be able to access the Kafka gui from [http://localhost:8000](http://localhost:8000).
 
-Start the `runDb.sh` program which contains some example environment variables.
-If tamer works you should see messages appearing in the kafka gui.
+Start the `runDatabaseSimple.sh` program which contains some example environment variables.
+If Tamer works you should see messages appearing in the Kafka gui.
 
 ### S3 module
 
-Basic manual testing is available for the code in the example module `tamer.example.S3Simple`.
+Basic manual testing is available for the code in the example module `tamer.s3.S3Simple`.
 This code covers getting data from a synthetic S3 bucket.
 
 Make sure you have docker installed before proceeding.
 
-From the `s3/local` folder launch `docker-compose up` (you can enter `docker-compose down`
-if you want to start from scratch). After that you should be able to access the kafka
-gui from [http://localhost:8000](http://localhost:8000).
+From the `s3/local` folder launch `docker compose up` (you can enter `docker compose down` if you want to start from scratch). After that you should be able to access the Kafka gui from [http://localhost:8000](http://localhost:8000).
 
-Start the `runS3.sh` program which contains some example environment variables.
-If tamer works you should see messages appearing in the kafka gui.
+Start the `runS3Simple.sh` program which contains some example environment variables.
+If Tamer works you should see messages appearing in the Kafka gui.
 
 ## License
 
-Tamer is licensed under the **[MIT License](LICENSE)** (the "License"); you may not use this software except in
-compliance with the License.
+Tamer is licensed under the **[MIT License](LICENSE)** (the "License"); you may not use this software except in compliance with the License.
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an
-"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and limitations under the License.

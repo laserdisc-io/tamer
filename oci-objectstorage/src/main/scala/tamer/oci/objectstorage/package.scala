@@ -1,3 +1,4 @@
-package tamer.oci
+package tamer
+package oci
 
 package object objectstorage {}
