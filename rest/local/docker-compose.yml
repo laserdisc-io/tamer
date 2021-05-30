@@ -4,7 +4,7 @@ services:
 
   zookeeper:
     container_name: local-zookeeper
-    image: confluentinc/cp-zookeeper:6.0.0
+    image: confluentinc/cp-zookeeper:6.1.1
     ports:
       - 2181:2181
     hostname: zookeeper
@@ -15,7 +15,7 @@ services:
 
   kafka:
     container_name: local-kafka
-    image: confluentinc/cp-kafka:6.0.0
+    image: confluentinc/cp-kafka:6.1.1
     depends_on:
       - zookeeper
     ports:
@@ -34,7 +34,7 @@ services:
 
   kafka-rest:
     container_name: local-kafka-rest
-    image: confluentinc/cp-kafka-rest:6.0.0
+    image: confluentinc/cp-kafka-rest:6.1.1
     depends_on:
       - kafka
       - schema-registry
@@ -65,7 +65,7 @@ services:
 
   schema-registry:
     container_name: local-schema-registry
-    image: confluentinc/cp-schema-registry:6.0.0
+    image: confluentinc/cp-schema-registry:6.1.1
     depends_on:
       - kafka
     ports:
@@ -76,9 +76,6 @@ services:
     environment:
       - SCHEMA_REGISTRY_HOST_NAME=schema-registry
       - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=kafka:29092
-    volumes:
-      - ./data/:/data
-      - ./schema/:/schema
     command:
       - /bin/bash
       - -c

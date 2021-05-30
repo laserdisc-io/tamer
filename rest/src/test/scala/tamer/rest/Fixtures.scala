@@ -1,18 +1,18 @@
-package tamer.rest
+package tamer
+package rest
 
 import io.circe.generic.semiauto.deriveCodec
 import sttp.client3.UriContext
-import tamer.{AvroCodec, HashableState}
 import uzhttp.HTTPError.{Forbidden, NotFound}
 import uzhttp.Request.Method.POST
 import uzhttp.server.Server
 import uzhttp.{Request, Response}
+import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.random.Random
 import zio.stream.ZTransducer
 import zio.test._
-import zio.{Task, _}
 
 import java.net.InetSocketAddress
 import java.util.UUID
@@ -22,20 +22,13 @@ object Fixtures {
   var allowLogin: Boolean = true
 
   case class Key(time: Long)
-  object Key {
-    implicit val codec = AvroCodec.codec[Key]
-  }
   case class Value(time: Long, uuid: UUID)
   object Value {
-    implicit val codec      = AvroCodec.codec[Value]
     implicit val circeCodec = deriveCodec[Value]
   }
   case class State(count: Int)
   object State {
-    implicit val codec = AvroCodec.codec[State]
-    implicit val hash = new HashableState[State] {
-      override def stateHash(s: State): Int = s.count
-    }
+    implicit val hashable: Hashable[State] = _.count
   }
 
   case class ServerLog(lastRequestTimestamp: Option[Long])
@@ -72,9 +65,10 @@ object Fixtures {
               IO.fail(Forbidden("No access"))
         } yield out
       case r if r.uri.getPath == "auth-token" =>
-        for {
-          out <- if (allowLogin && r.headers.get("Authorization").contains("Bearer valid-token")) randomJson(r) else IO.fail(Forbidden("No access"))
-        } yield out
+        if (allowLogin && r.headers.get("Authorization").contains("Bearer valid-token"))
+          randomJson(r)
+        else
+          IO.fail(Forbidden("No access"))
       case _ => IO.fail(NotFound("No such resource"))
     }
   }
