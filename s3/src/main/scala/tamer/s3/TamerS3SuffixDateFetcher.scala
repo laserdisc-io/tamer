@@ -1,25 +1,21 @@
-package tamer.s3
+package tamer
+package s3
 
-import com.sksamuel.avro4s.{Codec, SchemaFor}
 import eu.timepit.refined.auto._
 import eu.timepit.refined.types.numeric.PosInt
-import tamer.TamerError
-import tamer.config.KafkaConfig
-import zio.ZIO
+import zio.{Has, ZIO}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.durationInt
+import zio.s3.S3
 import zio.stream.{Transducer, ZTransducer}
 
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-class TamerS3SuffixDateFetcher[R <: Blocking with Clock with zio.s3.S3 with KafkaConfig]() {
+class TamerS3SuffixDateFetcher[R <: Blocking with Clock with S3 with Has[KafkaConfig]] {
 
-  def fetchAccordingToSuffixDate[
-      K: Codec: SchemaFor,
-      V: Codec: SchemaFor
-  ](
+  def fetchAccordingToSuffixDate[K: Codec, V: Codec](
       bucketName: String,
       prefix: String,
       afterwards: LastProcessedInstant,
@@ -27,13 +23,13 @@ class TamerS3SuffixDateFetcher[R <: Blocking with Clock with zio.s3.S3 with Kafk
   ): ZIO[R, TamerError, Unit] = {
 
     val setup =
-      S3Configuration.mkTimeBased[R, K, V](
+      S3Setup.mkTimeBased[R, K, V](
         bucketName,
         prefix,
         afterwards,
         context
       )
-    TamerS3Job(setup).fetch()
+    S3Tamer(setup).run
   }
 
 }
@@ -47,7 +43,7 @@ object TamerS3SuffixDateFetcher {
       transducer: ZTransducer[R, TamerError, Byte, V] = defaultTransducer,
       parallelism: PosInt = 1,
       dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
-      pollingTimings: S3Configuration.S3PollingTimings = S3Configuration.S3PollingTimings(
+      pollingTimings: S3Setup.S3PollingTimings = S3Setup.S3PollingTimings(
         minimumIntervalForBucketFetch = 5.minutes,
         maximumIntervalForBucketFetch = 5.minutes
       )

@@ -1,8 +1,8 @@
 package tamer
 
-import zio._
+import zio.Ref
 
 package object s3 {
-  type KeysR = Ref[List[String]]
+  type KeysR = Ref[Keys]
   type Keys  = List[String]
 }
