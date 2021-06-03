@@ -9,7 +9,7 @@ import zio.{Has, RIO, Task, URIO}
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream, OutputStream}
 import java.nio.ByteBuffer
 
-sealed trait Codec[A] { // we need this since avro4s Codec _is_ both an Encoder and a Decoder
+sealed trait Codec[A] {
   def decode: InputStream => Either[Throwable, A]
   def encode: (A, OutputStream) => Unit
   def schema: ParsedSchema
@@ -60,7 +60,7 @@ object Serde {
         for {
           _ <- RIO.accessM[Has[Registry]](_.get.verifySchema(id, schema))
           res <- RIO.fromEither {
-            val length  = buffer.limit() - 1 - intByteSize
+            val length  = buffer.limit() - (intByteSize + 1)
             val payload = new Array[Byte](length)
             buffer.get(payload, 0, length)
             codec.decode(new ByteArrayInputStream(payload))
@@ -74,8 +74,7 @@ object Serde {
         id <- RIO.accessM[Has[Registry]](_.get.getOrRegisterId(subject(t), schema))
         arr <- Task {
           val baos = new ByteArrayOutputStream
-          baos.write(Magic.toInt)
-          baos.write(ByteBuffer.allocate(intByteSize).putInt(id).array())
+          baos.write(ByteBuffer.allocate(intByteSize + 1).put(Magic).putInt(id).array())
           codec.encode(a, baos)
           baos.toByteArray
         }
