@@ -245,6 +245,7 @@ class RESTTamer[-R <: ZEnv with SttpClient with Has[KafkaConfig] with LocalSecre
           case Some(_) => UIO.unit // secret is already present do nothing
           case None    => auth.setSecret(tokenCacheRef)
         }
+        maybeToken    <- tokenCacheRef.get
         firstResponse <- authenticateAndSendHelper(maybeToken)
         response <- firstResponse.code match {
           case Forbidden | Unauthorized | NotFound =>
