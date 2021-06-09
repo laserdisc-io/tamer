@@ -67,7 +67,8 @@ object RESTTamer {
       increment: Int = 1,
       fixedPageElementCount: Option[Int] = None,
       authenticationMethod: Option[Authentication[R]] = None,
-      readRequestTimeout: zio.duration.Duration = 30.seconds
+      readRequestTimeout: zio.duration.Duration = 30.seconds,
+      initialOffset: Offset = Offset(0, 0)
   )(deriveKafkaRecordKey: (Offset, V) => K): RESTTamer[R, K, V, Offset] = {
     val queryBuilder: QueryBuilder[R, Offset] = new QueryBuilder[R, Offset] {
 
@@ -100,7 +101,7 @@ object RESTTamer {
 
     @nowarn
     val transitions: RESTSetup.State[R, K, V, Offset] =
-      new RESTSetup.State(Offset(0, 0))(deriveKafkaRecordKey)(nextPageOrNextIndexIfPageNotComplete, filterPage)
+      new RESTSetup.State(initialOffset)(deriveKafkaRecordKey)(nextPageOrNextIndexIfPageNotComplete, filterPage)
 
     val setup = new RESTSetup(queryBuilder = queryBuilder, pageDecoder = pageDecoder)(transitions = transitions)
 
@@ -152,7 +153,8 @@ object RESTTamer {
       authenticationMethod: Option[Authentication[R]] = None,
       minPeriod: zio.duration.Duration = 5.minutes,
       maxPeriod: zio.duration.Duration = 1.hour,
-      readRequestTimeout: zio.duration.Duration = 30.seconds
+      readRequestTimeout: zio.duration.Duration = 30.seconds,
+      startingOffset: Int = 0
   )(deriveKafkaRecordKey: (PeriodicOffset, V) => K): RESTTamer[R, K, V, PeriodicOffset] = {
     val queryBuilder: QueryBuilder[R with Clock, PeriodicOffset] = new QueryBuilder[R, PeriodicOffset] {
 
@@ -177,10 +179,10 @@ object RESTTamer {
               now.isAfter(periodicOffset.periodStart.plus(maxPeriod)) ||
               (decodedPage.data.isEmpty && now.isAfter(periodicOffset.periodStart.plus(minPeriod)))
             ) {
-              UIO(PeriodicOffset(offset = 0, periodStart = now))
+              UIO(PeriodicOffset(offset = startingOffset, periodStart = now))
             } else if (decodedPage.data.isEmpty) {
               val nextPeriodStart: Instant = periodicOffset.periodStart.plus(minPeriod)
-              UIO(PeriodicOffset(offset = 0, periodStart = nextPeriodStart))
+              UIO(PeriodicOffset(offset = startingOffset, periodStart = nextPeriodStart))
             } else {
               UIO(periodicOffset.incrementedBy(increment))
             }
@@ -188,7 +190,7 @@ object RESTTamer {
       }
 
     val transitions =
-      new RESTSetup.State[R with Clock, K, V, PeriodicOffset](PeriodicOffset(0, periodStart))(deriveKafkaRecordKey)(getNextState)
+      new RESTSetup.State[R with Clock, K, V, PeriodicOffset](PeriodicOffset(startingOffset, periodStart))(deriveKafkaRecordKey)(getNextState)
 
     val setup = new RESTSetup(queryBuilder = queryBuilder, pageDecoder = pageDecoder)(transitions = transitions)
 
@@ -243,6 +245,7 @@ class RESTTamer[-R <: ZEnv with SttpClient with Has[KafkaConfig] with LocalSecre
           case Some(_) => UIO.unit // secret is already present do nothing
           case None    => auth.setSecret(tokenCacheRef)
         }
+        maybeToken    <- tokenCacheRef.get
         firstResponse <- authenticateAndSendHelper(maybeToken)
         response <- firstResponse.code match {
           case Forbidden | Unauthorized | NotFound =>
