@@ -2,26 +2,23 @@ package tamer
 package db
 
 import cats.syntax.all._
-import ciris.refined.refTypeConfigDecoder
 import ciris.{ConfigException, env}
-import eu.timepit.refined.types.numeric.PosInt
-import eu.timepit.refined.types.string.NonEmptyString
-import zio.interop.catz.{taskConcurrentInstance, zioContextShift}
+import zio.interop.catz._
 import zio.{Has, Layer, Task}
 
-final case class ConnectionConfig(driver: NonEmptyString, uri: UriString, username: NonEmptyString, password: Password)
-final case class QueryConfig(fetchChunkSize: PosInt)
+final case class ConnectionConfig(driver: String, uri: String, username: String, password: String)
+final case class QueryConfig(fetchChunkSize: Int)
 final case class DbConfig(connection: ConnectionConfig, query: QueryConfig)
 
 object DbConfig {
   private[this] final val _configValue = {
     val dbConfigValue = (
-      env("DATABASE_DRIVER").as[NonEmptyString],
-      env("DATABASE_URL").as[UriString],
-      env("DATABASE_USERNAME").as[NonEmptyString],
-      env("DATABASE_PASSWORD").as[Password].redacted
+      env("DATABASE_DRIVER").as[String],
+      env("DATABASE_URL").as[String],
+      env("DATABASE_USERNAME").as[String],
+      env("DATABASE_PASSWORD").as[String].redacted
     ).mapN(ConnectionConfig)
-    val queryConfigValue = env("QUERY_FETCH_CHUNK_SIZE").as[PosInt].map(QueryConfig)
+    val queryConfigValue = env("QUERY_FETCH_CHUNK_SIZE").as[Int].map(QueryConfig)
 
     (dbConfigValue, queryConfigValue).mapN(DbConfig.apply)
   }

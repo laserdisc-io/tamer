@@ -52,8 +52,11 @@ object Tamer {
 
   case class Live[K, V, S](
       config: KafkaConfig,
-      setup: Setup[K, V, S],
-      stateTransitionFunction: (S, Queue[Chunk[(K, V)]]) => ZIO[Any, TamerError, S],
+      serdes: Setup.Serdes[K, V, S],
+      defaultState: S,
+      stateHash: Int,
+      iteration: (S, Queue[Chunk[(K, V)]]) => Task[S],
+      repr: String,
       stateConsumerService: Consumer.Service,
       stateProducerService: Producer.Service[RegistryInfo, StateKey, S],
       valueProducerService: Producer.Service[RegistryInfo, K, V]
@@ -98,7 +101,7 @@ object Tamer {
       case object Resume     extends Decision
       case object Fail       extends Decision
 
-      val stateKey = StateKey(setup.tamerStateKafkaRecordKey.toHexString, config.state.groupId)
+      val stateKey = StateKey(stateHash.toHexString, config.state.groupId)
       def waitNonEmptyAssignment(consumerService: Consumer.Service) = consumerService.assignment
         .withFilter(_.nonEmpty)
         .tapError(_ => log.debug(s"still no assignment on ${config.state.groupId}, there are no partitions to process"))
@@ -137,10 +140,10 @@ object Tamer {
         case Initialize =>
           log.info(s"consumer group ${config.state.groupId} never consumed from ${config.state.topic}") *>
             stateProducerService
-              .produceAsync(mkRecord(stateKey, setup.defaultState))
+              .produceAsync(mkRecord(stateKey, defaultState))
               .provideSomeLayer[Blocking](layer)
               .flatten
-              .flatMap(recordMetadata => log.info(s"pushed initial state ${setup.defaultState} to $recordMetadata"))
+              .flatMap(recordMetadata => log.info(s"pushed initial state $defaultState to $recordMetadata"))
         case Resume => log.info(s"consumer group ${config.state.groupId} resuming consumption from ${config.state.topic}")
         case Fail =>
           log.error(s"consumer group ${config.state.groupId} is already at the end of ${config.state.topic}, manual intervention required") *>
@@ -148,14 +151,14 @@ object Tamer {
       }
 
       val stateStream: ZStream[Blocking with Clock, Throwable, Offset] = stateConsumerService
-        .plainStream(stateKeySerde.deserializer, setup.serdes.stateSerde)
+        .plainStream(stateKeySerde.deserializer, serdes.stateSerde)
         .provideSomeLayer[Blocking with Clock](layer)
         .mapM {
           case CommittableRecord(record, offset) if record.key == stateKey =>
             log.debug(
               s"consumer group ${config.state.groupId} consumed state ${record.value} from ${offset.topicPartition}@${offset.offset}"
             ) *>
-              stateTransitionFunction(record.value, dataQueue)
+              iteration(record.value, dataQueue)
                 .flatMap { newState =>
                   stateProducerService
                     .produceAsync(mkRecord(stateKey, newState))
@@ -174,7 +177,7 @@ object Tamer {
     }
 
     override final val runLoop: ZIO[Blocking with Clock, TamerError, Unit] = {
-      def printSetup(logWriter: LogWriter[Task]): Task[Unit] = logWriter.info(s"initializing kafka loop with setup: \n${setup.repr}")
+      def printSetup(logWriter: LogWriter[Task]): Task[Unit] = logWriter.info(s"initializing kafka loop with setup: \n$repr")
 
       (for {
         log                  <- logTask
@@ -209,8 +212,11 @@ object Tamer {
   object Live {
     def getManaged[K, V, S](
         config: KafkaConfig,
-        setup: Setup[K, V, S],
-        stateTransitionFunction: (S, Queue[Chunk[(K, V)]]) => ZIO[Any, TamerError, S]
+        serdes: Setup.Serdes[K, V, S],
+        defaultState: S,
+        stateKey: Int,
+        iteration: (S, Queue[Chunk[(K, V)]]) => Task[S],
+        repr: String
     ): ZManaged[Clock with Blocking, TamerError, Live[K, V, S]] = {
       val offsetRetrievalStrategy = OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest)
       val cSettings = ConsumerSettings(config.brokers)
@@ -226,32 +232,26 @@ object Tamer {
       val stateKeySerde = Serde.key[StateKey]
       val stateConsumer = Consumer.make(cSettings).mapError(t => TamerError("Could not make state consumer", t))
       val stateProducer = Producer
-        .make(pSettings, stateKeySerde.serializer, setup.serdes.stateSerde)
+        .make(pSettings, stateKeySerde.serializer, serdes.stateSerde)
         .mapError(t => TamerError("Could not make state producer", t))
       val valueProducer = Producer
-        .make(pSettings, setup.serdes.keySerializer, setup.serdes.valueSerializer)
+        .make(pSettings, serdes.keySerializer, serdes.valueSerializer)
         .mapError(t => TamerError("Could not make value producer", t))
 
       for {
         stateConsumerService <- stateConsumer
         stateProducerService <- stateProducer
         valueProducerService <- valueProducer
-      } yield new Live(config, setup, stateTransitionFunction, stateConsumerService, stateProducerService, valueProducerService)
+      } yield new Live(config, serdes, defaultState, stateKey, iteration, repr, stateConsumerService, stateProducerService, valueProducerService)
     }
 
-    def getLayer[R, K, V, S](
-        setup: Setup[K, V, S],
-        stateTransitionFunction: (S, Queue[Chunk[(K, V)]]) => ZIO[R, TamerError, S]
-    ): ZLayer[R with Clock with Blocking with Has[KafkaConfig], TamerError, Has[Tamer]] =
+    def getLayer[R, K, V, S](setup: Setup[R, K, V, S]): ZLayer[R with Clock with Blocking with Has[KafkaConfig], TamerError, Has[Tamer]] =
       ZLayer.fromServiceManaged[KafkaConfig, R with Clock with Blocking, TamerError, Tamer] { config =>
-        val provider: URManaged[R, (S, Queue[Chunk[(K, V)]]) => IO[TamerError, S]] =
-          ZIO.environment[R].map(r => Function.untupled(stateTransitionFunction.tupled.andThen(_.provide(r)))).toManaged_
-        provider.flatMap(providedStateTransitionFunction => Live.getManaged(config, setup, providedStateTransitionFunction))
+        val iteration = ZIO.environment[R].map(r => Function.untupled((setup.iteration _).tupled.andThen(_.provide(r)))).toManaged_
+        iteration.flatMap(Live.getManaged(config, setup.serdes, setup.defaultState, setup.stateKey, _, setup.repr))
       }
   }
 
-  def live[R, K, V, S](
-      setup: Setup[K, V, S],
-      stateTransitionFunction: (S, Queue[Chunk[(K, V)]]) => ZIO[R, TamerError, S]
-  ): ZLayer[R with Has[KafkaConfig] with Clock with Blocking, TamerError, Has[Tamer]] = Live.getLayer(setup, stateTransitionFunction)
+  def live[R, K, V, S](setup: Setup[R, K, V, S]): ZLayer[R with Has[KafkaConfig] with Clock with Blocking, TamerError, Has[Tamer]] =
+    Live.getLayer(setup)
 }

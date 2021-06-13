@@ -2,7 +2,7 @@ import eu.timepit.refined.api.Refined
 import eu.timepit.refined.boolean.{And, Or}
 import eu.timepit.refined.collection.{Forall, NonEmpty}
 import eu.timepit.refined.string.{IPv4, Uri, Url}
-import zio.{Has, URIO, ZIO}
+import zio.{Has, Layer, URIO, ZIO}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration.Duration
@@ -21,7 +21,13 @@ package object tamer {
   final type ZSerde[-R, T] = zio.kafka.serde.Serde[R, T]
   final val ZSerde = zio.kafka.serde.Serde
 
+  implicit final class HashableOps[A](private val _underlying: A) extends AnyVal {
+    final def hash(implicit A: Hashable[A]): Int = A.hash(_underlying)
+  }
+
   implicit final class ScalaFiniteDurationToZIO(private val _underlying: FiniteDuration) extends AnyVal {
     final def zio: Duration = Duration.fromScala(_underlying)
   }
+
+  final val kafkaConfigFromEnvironment: Layer[TamerError, Has[KafkaConfig]] = KafkaConfig.fromEnvironment
 }

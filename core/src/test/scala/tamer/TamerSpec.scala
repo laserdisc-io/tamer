@@ -13,7 +13,23 @@ object KafkaSpec extends DefaultRunnableSpec {
   import TestUtils._
   type OutputR = Ref[Vector[Int]]
 
-  val baseTamerLayer = Tamer.live(Setup(Setup.Serdes[Key, Value, State], State(0), 0), stateTransitionFunction)
+  val baseTamerLayer = Tamer.live {
+    new Setup[Has[OutputR] with Console, Key, Value, State] {
+      override final val serdes       = Setup.Serdes[Key, Value, State]
+      override final val defaultState = State(0)
+      override final val stateKey     = 0
+      override final val recordKey    = (s: State, _: Value) => Key(s.state + 1)
+      override final def iteration(s: State, q: Queue[Chunk[(Key, Value)]]): ZIO[Has[OutputR] with Console, TamerError, State] =
+        ZIO.service[OutputR].flatMap { variable =>
+          val cursor = s.state + 1
+          if (cursor <= 10)
+            variable.update(_ ++ Vector(cursor)) *>
+              q.offer(Chunk((Key(cursor), Value(cursor)))).as(s.copy(state = cursor))
+          else
+            ZIO.never *> UIO(State(9999))
+        }
+    }
+  }
 
   val embeddedKafkaTamerLayer = {
     val kafkaConfigLayer = FakeKafka.embedded >>> FakeKafka.embeddedKafkaConfig
@@ -21,16 +37,6 @@ object KafkaSpec extends DefaultRunnableSpec {
   }
 
   val output = Ref.make(Vector.empty[Int])
-
-  def stateTransitionFunction(s: State, q: Queue[Chunk[(Key, Value)]]): ZIO[Has[OutputR] with Console, TamerError, State] =
-    ZIO.service[OutputR].flatMap { variable =>
-      val cursor = s.state + 1
-      if (cursor <= 10)
-        variable.update(_ ++ Vector(cursor)) *>
-          q.offer(Chunk((Key(cursor), Value(cursor)))).as(s.copy(state = cursor))
-      else
-        ZIO.never *> UIO(State(9999))
-    }
 
   override final val spec = {
     lazy val outputLayer = output.toLayer
