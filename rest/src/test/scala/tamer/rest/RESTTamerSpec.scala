@@ -11,20 +11,19 @@ import zio.test.environment.TestEnvironment
 
 import scala.annotation.unused
 
-object RESTTamerSpec extends DefaultRunnableSpec {
-  import Fixtures._
+object RESTTamerSpec extends DefaultRunnableSpec with UzHttpServerSupport {
   import sttp.client3._
   import sttp.client3.httpclient.zio._
 
-  class JobFixtures(port: Int) {
-    private val qb: QueryBuilder[Any, State] = new QueryBuilder[Any, State] {
+  final case class Fixtures(port: Int) {
+    private[this] val qb = new QueryBuilder[Any, State] {
       override val queryId: Int = 0
 
       override def query(state: State): Request[Either[String, String], Any] =
         basicRequest.get(uri"http://localhost:$port/random").readTimeout(20.seconds.asScala)
     }
 
-    val decoder: String => Task[DecodedPage[Value, State]] = DecodedPage.fromString { v =>
+    private[this] val decoder: String => Task[DecodedPage[Value, State]] = DecodedPage.fromString { v =>
       ZIO.fromEither(io.circe.parser.decode[Value](v)).map(List(_)).catchAll(e => ZIO.fail(new RuntimeException(s"Decoder failed!\n$e")))
     }
 
@@ -47,19 +46,13 @@ object RESTTamerSpec extends DefaultRunnableSpec {
     out      <- assertM(Task.succeed(respBody))(containsString("uuid"))
   } yield out
 
-  private def testRestFlow(port: Int, serverLog: Ref[ServerLog]) = {
-    val f = new JobFixtures(port)
-
-    for {
-      log <- log4sFromName.provide("test-rest-flow")
-      _   <- f.rest.fork
-      _ <- (log.info("awaiting a request to our test server") *> ZIO.sleep(500.millis)).repeatUntilM(_ =>
-        serverLog.get.map(_.lastRequestTimestamp.isDefined)
-      )
-      output <- ZIO.service[Ref[KafkaLog]]
-      _      <- (log.info("Awaiting state change") *> ZIO.sleep(500.millis)).repeatUntilM(_ => output.get.map(_.count > 0))
-    } yield assertCompletes
-  }
+  private def testRestFlow(port: Int, sl: Ref[ServerLog]) = for {
+    log    <- log4sFromName.provide("test-rest-flow")
+    _      <- Fixtures(port).rest.fork
+    _      <- (log.info("awaiting a request to our test server") *> ZIO.sleep(500.millis)).repeatUntilM(_ => sl.get.map(_.lastRequest.isDefined))
+    output <- ZIO.service[Ref[KafkaLog]]
+    _      <- (log.info("Awaiting state change") *> ZIO.sleep(500.millis)).repeatUntilM(_ => output.get.map(_.count > 0))
+  } yield assertCompletes
 
   override final val spec = suite("RESTTamerSpec")(
     testM("Should run a test with provisioned uzHttp")(withServer(testUzHttpStartup)),
