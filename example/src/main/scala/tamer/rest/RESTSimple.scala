@@ -17,8 +17,7 @@ object RESTSimple extends App {
       pageDecoder = pageDecoder,
       fixedPageElementCount = Some(3)
     )((_, data) => data)
-    .runLive
-    .provideCustomLayer(restLive() ++ kafkaConfigFromEnvironment)
+    .runWith(restLive() ++ kafkaConfigFromEnvironment)
 
   override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
 }

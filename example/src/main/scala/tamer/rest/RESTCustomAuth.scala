@@ -41,8 +41,7 @@ object RESTCustomAuth extends App {
       increment = 2,
       authenticationMethod = Some(authentication)
     )((_, data) => MyKey(data.i))
-    .runLive
-    .provideCustomLayer(restLive() ++ kafkaConfigFromEnvironment)
+    .runWith(restLive() ++ kafkaConfigFromEnvironment)
 
   override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
 }

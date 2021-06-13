@@ -16,8 +16,7 @@ object S3Simple extends App {
       from = Instant.parse("2020-12-03T10:15:30.00Z"),
       dateTimeFormatter = ZonedDateTimeFormatter.fromPattern("yyyy-MM-dd HH:mm:ss", ZoneId.of("Europe/Rome"))
     )
-    .runLive
-    .provideCustomLayer(liveM(AF_SOUTH_1, s3.providers.default, Some(new URI("http://localhost:9000"))) ++ kafkaConfigFromEnvironment)
+    .runWith(liveM(AF_SOUTH_1, s3.providers.default, Some(new URI("http://localhost:9000"))) ++ kafkaConfigFromEnvironment)
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
 }

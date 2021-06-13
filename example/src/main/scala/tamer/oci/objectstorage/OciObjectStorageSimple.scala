@@ -26,7 +26,7 @@ object OciObjectStorageSimple extends App {
       case (ObjectsCursor(s, Some(_)), None)     => UIO(ObjectsCursor(s, None))
       case (ObjectsCursor(s, None), None)        => ZIO.sleep(1.minute) *> UIO(ObjectsCursor(s, None))
     }
-  ).runLive.provideCustomLayer(objectStorageLayer(US_PHOENIX_1, ObjectStorageAuth.fromConfigFileDefaultProfile) ++ kafkaConfigFromEnvironment)
+  ).runWith(objectStorageLayer(US_PHOENIX_1, ObjectStorageAuth.fromConfigFileDefaultProfile) ++ kafkaConfigFromEnvironment)
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
 }

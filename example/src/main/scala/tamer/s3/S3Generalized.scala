@@ -54,7 +54,7 @@ object S3Generalized extends App {
     selectObjectForState = (l: Long, _: Keys) => internals.selectObjectForInstant(l),
     minimumIntervalForBucketFetch = 1.second,
     maximumIntervalForBucketFetch = 1.minute
-  ).runLive.provideCustomLayer(liveM(AF_SOUTH_1, s3.providers.default, Some(new URI("http://localhost:9000"))) ++ myKafkaConfigLayer)
+  ).runWith(liveM(AF_SOUTH_1, s3.providers.default, Some(new URI("http://localhost:9000"))) ++ myKafkaConfigLayer)
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
 }

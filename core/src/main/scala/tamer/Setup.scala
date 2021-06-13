@@ -13,7 +13,11 @@ abstract class Setup[-R, K, V, S] {
   val repr: String = "no repr string implemented, if you want a neat description of the source configuration please implement it"
   def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R, S]
 
-  final def runLive: ZIO[R with Has[KafkaConfig] with Blocking with Clock, TamerError, Unit] = runLoop.provideSomeLayer(Tamer.live(this))
+  final val run: ZIO[R with Has[KafkaConfig] with Blocking with Clock, TamerError, Unit] = runLoop.provideSomeLayer(Tamer.live(this))
+  final def runWith[E >: TamerError, R1 <: Has[_]](layer: ZLayer[ZEnv, E, R1])(
+      implicit ev: ZEnv with R1 <:< R with Has[KafkaConfig] with Blocking with Clock,
+      tagged: Tag[R1]
+  ): ZIO[ZEnv, E, Unit] = run.provideCustomLayer(layer)
 }
 
 object Setup {

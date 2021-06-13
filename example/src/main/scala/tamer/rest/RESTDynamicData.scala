@@ -18,8 +18,7 @@ object RESTDynamicData extends App {
       pageDecoder = pageDecoder,
       periodStart = now
     )((_, data) => data)
-    .runLive
-    .provideCustomLayer(restLive() ++ kafkaConfigFromEnvironment)
+    .runWith(restLive() ++ kafkaConfigFromEnvironment)
 
   override def run(args: List[String]): URIO[ZEnv, ExitCode] = clock.instant.flatMap(program(_).exitCode)
 }

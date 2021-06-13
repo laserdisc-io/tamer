@@ -11,7 +11,7 @@ import zio.test.environment.TestEnvironment
 
 import scala.annotation.unused
 
-object RESTTamerSpec extends DefaultRunnableSpec with UzHttpServerSupport {
+object RESTSetupSpec extends DefaultRunnableSpec with UzHttpServerSupport {
   import sttp.client3._
   import sttp.client3.httpclient.zio._
 
@@ -34,7 +34,7 @@ object RESTTamerSpec extends DefaultRunnableSpec with UzHttpServerSupport {
       (_: State, v: Value) => Key(v.time),
       (_: DecodedPage[Value, State], s: State) =>
         URIO.service[Ref[KafkaLog]].flatMap(_.update(l => l.copy(l.count + 1))) *> URIO(s.copy(count = s.count + 1))
-    ).runLive
+    ).run
   }
 
   case class KafkaLog(count: Int)
@@ -54,7 +54,7 @@ object RESTTamerSpec extends DefaultRunnableSpec with UzHttpServerSupport {
     _      <- (log.info("Awaiting state change") *> ZIO.sleep(500.millis)).repeatUntilM(_ => output.get.map(_.count > 0))
   } yield assertCompletes
 
-  override final val spec = suite("RESTTamerSpec")(
+  override final val spec = suite("RESTSetupSpec")(
     testM("Should run a test with provisioned uzHttp")(withServer(testUzHttpStartup)),
     testM("Should support e2e rest flow")(withServer(testRestFlow)) @@ timeout(30.seconds)
   ).provideSomeLayerShared[ZEnv with TestEnvironment] {
