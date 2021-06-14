@@ -43,18 +43,15 @@ object KafkaSpec extends DefaultRunnableSpec {
     val tamerLayer       = (ZLayer.requires[ZEnv] ++ outputLayer) >>> embeddedKafkaTamerLayer
 
     suite("TamerSpec")(
-      testM("should successfully run the stateTransitionFunction 10 times") {
-        (for {
+      testM("should successfully run the iteration function 10 times") {
+        for {
           outputVector <- ZIO.service[OutputR]
           _            <- runLoop.timeout(7.seconds)
           result       <- outputVector.get
-        } yield assert(result)(equalTo(Vector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))))
+        } yield assert(result)(equalTo(Vector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)))
       } @@ timeout(20.seconds)
-    )
-      .provideSomeLayerShared[TestEnvironment](
-        (FakeKafka.embedded ++ tamerLayer ++ outputLayer)
-          .mapError(TestFailure.fail)
-      )
-      .updateService[Clock.Service](_ => Clock.Service.live)
+    ).provideSomeLayerShared[TestEnvironment](
+      (FakeKafka.embedded ++ tamerLayer ++ outputLayer).mapError(TestFailure.fail)
+    ).updateService[Clock.Service](_ => Clock.Service.live)
   }
 }
