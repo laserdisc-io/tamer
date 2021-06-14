@@ -1,15 +1,12 @@
 package tamer
 package s3
 
-import eu.timepit.refined.api.RefType
-import eu.timepit.refined.auto._
+import java.net.URI
+
 import software.amazon.awssdk.regions.Region.AF_SOUTH_1
 import zio._
 import zio.duration._
 import zio.s3._
-
-import java.net.URI
-import scala.concurrent.duration.FiniteDuration
 
 object S3Generalized extends App {
   object internals {
@@ -34,16 +31,12 @@ object S3Generalized extends App {
       Some(s"$prefix$lastProcessedNumber")
   }
 
-  val myKafkaConfigLayer = ZIO
-    .fromEither {
-      val kafkaSink  = SinkConfig("sink-topic")
-      val kafkaState = StateConfig("state-topic", "groupid", "clientid")
-      RefType.applyRef[HostList](List("localhost:9092")).map { hostList =>
-        KafkaConfig(hostList, "http://localhost:8081", 10.seconds.asScala.asInstanceOf[FiniteDuration], 50, kafkaSink, kafkaState)
-      }
-    }
-    .mapError(TamerError(_))
-    .toLayer
+  val myKafkaConfigLayer = ZLayer.succeed {
+    val kafkaSink  = SinkConfig("sink-topic")
+    val kafkaState = StateConfig("state-topic", "groupid", "clientid")
+    val tenSeconds = scala.concurrent.duration.FiniteDuration(10, scala.concurrent.duration.SECONDS)
+    KafkaConfig(List("localhost:9092"), "http://localhost:8081", tenSeconds, 50, kafkaSink, kafkaState)
+  }
 
   val program = S3Setup(
     bucketName = internals.bucketName,

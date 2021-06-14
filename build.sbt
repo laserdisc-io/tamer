@@ -15,7 +15,6 @@ val V = new {
   val `log-effect`   = "0.15.0"
   val ociSdk         = "1.37.2"
   val postgres       = "42.2.21"
-  val refined        = "0.9.26"
   val `scala-compat` = "2.4.4"
   val slf4j          = "1.7.30"
   val sttp           = "3.3.6"
@@ -105,11 +104,9 @@ lazy val core = project
       "dev.zio"                          %% "zio-interop-cats"               % V.`zio-interop`,
       "dev.zio"                          %% "zio-kafka"                      % V.`zio-kafka`,
       "dev.zio"                          %% "zio-streams"                    % V.zio,
-      "eu.timepit"                       %% "refined"                        % V.refined,
       "io.confluent"                      % "kafka-avro-serializer"          % V.confluent,
       "io.laserdisc"                     %% "log-effect-zio"                 % V.`log-effect`,
       "is.cir"                           %% "ciris"                          % V.ciris,
-      "is.cir"                           %% "ciris-refined"                  % V.ciris,
       "org.apache.kafka"                  % "kafka-clients"                  % V.kafka,
       "ch.qos.logback"                    % "logback-classic"                % V.logback       % Test,
       "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test,

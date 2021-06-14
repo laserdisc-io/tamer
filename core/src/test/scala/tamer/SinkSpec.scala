@@ -1,6 +1,5 @@
 package tamer
 
-import eu.timepit.refined.auto._
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.{Metric, MetricName, TopicPartition}

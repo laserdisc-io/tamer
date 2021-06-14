@@ -39,8 +39,8 @@ object KafkaSpec extends DefaultRunnableSpec {
   val output = Ref.make(Vector.empty[Int])
 
   override final val spec = {
-    lazy val outputLayer = output.toLayer
-    val tamerLayer       = (ZLayer.requires[ZEnv] ++ outputLayer) >>> embeddedKafkaTamerLayer
+    val outputLayer = output.toLayer
+    val tamerLayer  = (ZLayer.requires[ZEnv] ++ outputLayer) >>> embeddedKafkaTamerLayer
 
     suite("TamerSpec")(
       testM("should successfully run the iteration function 10 times") {

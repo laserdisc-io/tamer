@@ -2,22 +2,18 @@ package tamer
 
 import cats.implicits._
 import ciris._
-import ciris.refined._
-import eu.timepit.refined.auto._
-import eu.timepit.refined.types.numeric.PosInt
-import eu.timepit.refined.types.string.NonEmptyString
 import zio._
 import zio.interop.catz._
 
 import scala.concurrent.duration.FiniteDuration
 
-final case class SinkConfig(topic: NonEmptyString)
-final case class StateConfig(topic: NonEmptyString, groupId: NonEmptyString, clientId: NonEmptyString)
+final case class SinkConfig(topic: String)
+final case class StateConfig(topic: String, groupId: String, clientId: String)
 final case class KafkaConfig(
-    brokers: HostList,
-    schemaRegistryUrl: UrlString,
+    brokers: List[String],
+    schemaRegistryUrl: String,
     closeTimeout: FiniteDuration,
-    bufferSize: PosInt,
+    bufferSize: Int,
     sink: SinkConfig,
     state: StateConfig,
     properties: Map[String, AnyRef]
@@ -25,10 +21,10 @@ final case class KafkaConfig(
 
 object KafkaConfig {
   def apply(
-      brokers: HostList,
-      schemaRegistryUrl: UrlString,
+      brokers: List[String],
+      schemaRegistryUrl: String,
       closeTimeout: FiniteDuration,
-      bufferSize: PosInt,
+      bufferSize: Int,
       sink: SinkConfig,
       state: StateConfig
   ): KafkaConfig = new KafkaConfig(
@@ -41,25 +37,25 @@ object KafkaConfig {
     properties = Map.empty
   )
 
-  private[this] implicit final val hostListConfigDecoder: ConfigDecoder[String, HostList] =
-    ConfigDecoder.identity[String].map(_.split(",").toList.map(_.trim)).mapEither(ConfigDecoder[List[String], HostList].decode)
+  private[this] implicit final val hostListConfigDecoder: ConfigDecoder[String, List[String]] =
+    ConfigDecoder.identity[String].map(_.split(",").toList.map(_.trim))
 
-  private[this] val kafkaSinkConfigValue = env("KAFKA_SINK_TOPIC").as[NonEmptyString].map(SinkConfig)
+  private[this] val kafkaSinkConfigValue = env("KAFKA_SINK_TOPIC").as[String].map(SinkConfig)
   private[this] val kafkaStateConfigValue = (
-    env("KAFKA_STATE_TOPIC").as[NonEmptyString],
-    env("KAFKA_STATE_GROUP_ID").as[NonEmptyString],
-    env("KAFKA_STATE_CLIENT_ID").as[NonEmptyString]
+    env("KAFKA_STATE_TOPIC").as[String],
+    env("KAFKA_STATE_GROUP_ID").as[String],
+    env("KAFKA_STATE_CLIENT_ID").as[String]
   ).parMapN(StateConfig)
   private[this] val kafkaConfigValue = (
-    env("KAFKA_BROKERS").as[HostList],
-    env("KAFKA_SCHEMA_REGISTRY_URL").as[UrlString],
+    env("KAFKA_BROKERS").as[List[String]],
+    env("KAFKA_SCHEMA_REGISTRY_URL").as[String],
     env("KAFKA_CLOSE_TIMEOUT").as[FiniteDuration],
-    env("KAFKA_BUFFER_SIZE").as[PosInt],
+    env("KAFKA_BUFFER_SIZE").as[Int],
     kafkaSinkConfigValue,
     kafkaStateConfigValue
   ).parMapN(KafkaConfig.apply)
 
-  lazy val fromEnvironment: Layer[TamerError, Has[KafkaConfig]] = ZLayer.fromEffect {
+  final val fromEnvironment: Layer[TamerError, Has[KafkaConfig]] = ZLayer.fromEffect {
     kafkaConfigValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce))
   }
 }

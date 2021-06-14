@@ -23,7 +23,7 @@ object DbConfig {
     (dbConfigValue, queryConfigValue).mapN(DbConfig.apply)
   }
 
-  final lazy val fromEnvironment: Layer[TamerError, Has[ConnectionConfig] with Has[QueryConfig]] =
+  final val fromEnvironment: Layer[TamerError, Has[ConnectionConfig] with Has[QueryConfig]] =
     _configValue
       .load[Task]
       .refineToOrDie[ConfigException]

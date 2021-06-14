@@ -1,7 +1,5 @@
 package tamer
 
-import eu.timepit.refined.auto._
-import eu.timepit.refined.types.string.NonEmptyString
 import io.confluent.kafka.schemaregistry.client.{CachedSchemaRegistryClient, SchemaRegistryClient}
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
@@ -50,8 +48,8 @@ object Tamer {
       .onError(e => log.warn(s"could not push to topic $topic: ${e.prettyPrint}").orDie)
 
   private[tamer] final def source[K, V, S](
-      topic: NonEmptyString,
-      groupId: NonEmptyString,
+      topic: String,
+      groupId: String,
       hash: Int,
       serde: ZSerde[RegistryInfo, S],
       default: S,
@@ -63,7 +61,8 @@ object Tamer {
       log: LogWriter[Task]
   ) = {
 
-    val key = StateKey(hash.toHexString, groupId)
+    val key          = StateKey(hash.toHexString, groupId)
+    val subscription = Subscription.topics(topic)
 
     // There are at least 3 possible decisions:
     //
@@ -100,8 +99,7 @@ object Tamer {
       .withFilter(_.nonEmpty)
       .tapError(_ => log.debug(s"still no assignment on $groupId, there are no partitions to process"))
       .retry(tenTimes)
-    val subscription = Subscription.topics(topic)
-    def decide(partitionSet: Set[TopicPartition]) = {
+    val decide = (partitionSet: Set[TopicPartition]) => {
       val partitionOffsets = consumer.endOffsets(partitionSet).map {
         _.map { case (tp, o) => TopicPartitionOffset(tp.topic(), tp.partition(), o) }.toSet
       }
@@ -174,6 +172,7 @@ object Tamer {
       stateProducer: Producer.Service[RegistryInfo, StateKey, S],
       valueProducer: Producer.Service[RegistryInfo, K, V]
   ) extends Tamer {
+
     private[this] final val logTask = log4sFromName.provide("tamer.kafka")
 
     private[this] final val SinkConfig(sinkTopic)                    = config.sink
@@ -228,6 +227,7 @@ object Tamer {
   }
 
   object Live {
+
     private[tamer] final def getManaged[K, V, S](
         config: KafkaConfig,
         serdes: Setup.Serdes[K, V, S],
