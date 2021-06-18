@@ -1,9 +1,6 @@
 import zio.{Has, Layer, URIO, ZIO}
 import zio.blocking.Blocking
 import zio.clock.Clock
-import zio.duration.Duration
-
-import scala.concurrent.duration.FiniteDuration
 
 package object tamer {
   final type RegistryInfo = Has[Registry] with Has[TopicName]
@@ -17,10 +14,6 @@ package object tamer {
 
   implicit final class HashableOps[A](private val _underlying: A) extends AnyVal {
     final def hash(implicit A: Hashable[A]): Int = A.hash(_underlying)
-  }
-
-  implicit final class ScalaFiniteDurationToZIO(private val _underlying: FiniteDuration) extends AnyVal {
-    final def zio: Duration = Duration.fromScala(_underlying)
   }
 
   final val kafkaConfigFromEnvironment: Layer[TamerError, Has[KafkaConfig]] = KafkaConfig.fromEnvironment

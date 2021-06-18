@@ -3,16 +3,15 @@ package tamer
 import cats.implicits._
 import ciris._
 import zio._
+import zio.duration._
 import zio.interop.catz._
-
-import scala.concurrent.duration.FiniteDuration
 
 final case class SinkConfig(topic: String)
 final case class StateConfig(topic: String, groupId: String, clientId: String)
 final case class KafkaConfig(
     brokers: List[String],
     schemaRegistryUrl: String,
-    closeTimeout: FiniteDuration,
+    closeTimeout: Duration,
     bufferSize: Int,
     sink: SinkConfig,
     state: StateConfig,
@@ -23,7 +22,7 @@ object KafkaConfig {
   def apply(
       brokers: List[String],
       schemaRegistryUrl: String,
-      closeTimeout: FiniteDuration,
+      closeTimeout: Duration,
       bufferSize: Int,
       sink: SinkConfig,
       state: StateConfig
@@ -37,6 +36,8 @@ object KafkaConfig {
     properties = Map.empty
   )
 
+  private[this] implicit final val durationConfigDecoder: ConfigDecoder[String, Duration] =
+    ConfigDecoder.stringFiniteDurationConfigDecoder.map(Duration.fromScala)
   private[this] implicit final val hostListConfigDecoder: ConfigDecoder[String, List[String]] =
     ConfigDecoder.identity[String].map(_.split(",").toList.map(_.trim))
 
@@ -49,7 +50,7 @@ object KafkaConfig {
   private[this] val kafkaConfigValue = (
     env("KAFKA_BROKERS").as[List[String]],
     env("KAFKA_SCHEMA_REGISTRY_URL").as[String],
-    env("KAFKA_CLOSE_TIMEOUT").as[FiniteDuration],
+    env("KAFKA_CLOSE_TIMEOUT").as[Duration],
     env("KAFKA_BUFFER_SIZE").as[Int],
     kafkaSinkConfigValue,
     kafkaStateConfigValue

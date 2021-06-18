@@ -246,11 +246,11 @@ object Tamer {
         .withProperties(properties)
         .withGroupId(groupId)
         .withClientId(clientId)
-        .withCloseTimeout(closeTimeout.zio)
+        .withCloseTimeout(closeTimeout)
         .withOffsetRetrieval(OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest))
       val producerSettings = ProducerSettings(brokers)
         .withProperties(properties)
-        .withCloseTimeout(closeTimeout.zio)
+        .withCloseTimeout(closeTimeout)
 
       val stateConsumer = Consumer.make(consumerSettings).mapError(TamerError("Could not make state consumer", _))
       val stateProducer = Producer

@@ -2,9 +2,8 @@ package tamer
 
 import net.manub.embeddedkafka.schemaregistry.{EmbeddedKWithSR, EmbeddedKafka, EmbeddedKafkaConfig}
 import zio._
+import zio.duration._
 import zio.random.Random
-
-import scala.concurrent.duration._
 
 trait FakeKafka {
   def bootstrapServers: List[String]
