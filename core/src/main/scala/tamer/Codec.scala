@@ -2,9 +2,7 @@ package tamer
 
 import java.io.{InputStream, OutputStream}
 
-import com.sksamuel.avro4s._
 import io.confluent.kafka.schemaregistry.ParsedSchema
-import io.confluent.kafka.schemaregistry.avro.AvroSchema
 
 sealed trait Codec[A] {
   def decode: InputStream => Either[Throwable, A]
@@ -15,16 +13,21 @@ sealed trait Codec[A] {
 object Codec {
   final def apply[A](implicit A: Codec[A]): Codec[A] = A
 
-  implicit final def avro4s[A: Decoder: Encoder: SchemaFor]: Codec[A] = new Codec[A] {
-    private[this] final val _avroSchema                            = SchemaFor[A].schema
-    private[this] final val _avroDecoder                           = AvroInputStream.binary[A](Decoder[A])
-    private[this] final val _avroEncoder                           = AvroOutputStream.binary[A](Encoder[A])
-    override final val decode: InputStream => Either[Throwable, A] = _avroDecoder.from(_).build(_avroSchema).tryIterator.next().toEither
+  implicit final def avro4s[A](
+      implicit decoderA: com.sksamuel.avro4s.Decoder[A],
+      encoderA: com.sksamuel.avro4s.Encoder[A],
+      schemaForA: com.sksamuel.avro4s.SchemaFor[A]
+  ): Codec[A] = new Codec[A] {
+    private[this] final val _avroDecoderBuilder = com.sksamuel.avro4s.AvroInputStream.binary(decoderA)
+    private[this] final val _avroEncoderBuilder = com.sksamuel.avro4s.AvroOutputStream.binary(encoderA)
+    private[this] final val _avroSchema         = schemaForA.schema
+
+    override final val decode: InputStream => Either[Throwable, A] = _avroDecoderBuilder.from(_).build(_avroSchema).tryIterator.next().toEither
     override final val encode: (A, OutputStream) => Unit = (a, os) => {
-      val ser = _avroEncoder.to(os).build()
+      val ser = _avroEncoderBuilder.to(os).build()
       ser.write(a)
       ser.close()
     }
-    override final val schema: ParsedSchema = new AvroSchema(_avroSchema)
+    override final val schema: ParsedSchema = new io.confluent.kafka.schemaregistry.avro.AvroSchema(_avroSchema)
   }
 }

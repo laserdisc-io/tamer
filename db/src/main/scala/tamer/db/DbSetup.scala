@@ -78,6 +78,8 @@ object DbSetup {
       from: Instant = Instant.now,
       tumblingStep: Duration = 5.minutes,
       lag: Duration = 0.seconds
+  )(
+      implicit ev: Codec[Window]
   ): DbSetup[K, V, Window] = {
     def stateFold(currentWindow: Window, queryResult: QueryResult[V]): UIO[Window] =
       if (queryResult.results.isEmpty) {

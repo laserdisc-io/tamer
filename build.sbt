@@ -100,11 +100,11 @@ lazy val core = project
   .settings(
     name := "tamer-core",
     libraryDependencies ++= Seq(
-      "com.sksamuel.avro4s"              %% "avro4s-core"                    % V.avro4s,
+      "com.sksamuel.avro4s"              %% "avro4s-core"                    % V.avro4s        % Optional,
       "dev.zio"                          %% "zio-interop-cats"               % V.`zio-interop`,
       "dev.zio"                          %% "zio-kafka"                      % V.`zio-kafka`,
       "dev.zio"                          %% "zio-streams"                    % V.zio,
-      "io.confluent"                      % "kafka-avro-serializer"          % V.confluent,
+      "io.confluent"                      % "kafka-schema-registry-client"   % V.confluent,
       "io.laserdisc"                     %% "log-effect-zio"                 % V.`log-effect`,
       "is.cir"                           %% "ciris"                          % V.ciris,
       "org.apache.kafka"                  % "kafka-clients"                  % V.kafka,
@@ -161,6 +161,7 @@ lazy val rest = project
     name := "tamer-rest",
     libraryDependencies ++= Seq(
       "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp,
+      "com.sksamuel.avro4s"           %% "avro4s-core"            % V.avro4s % Test,
       "io.circe"                      %% "circe-core"             % V.circe  % Test,
       "io.circe"                      %% "circe-generic"          % V.circe  % Test,
       "io.circe"                      %% "circe-parser"           % V.circe  % Test,
@@ -176,6 +177,7 @@ lazy val example = project
   .settings(
     libraryDependencies ++= Seq(
       "ch.qos.logback"          % "logback-classic"         % V.logback,
+      "com.sksamuel.avro4s"    %% "avro4s-core"             % V.avro4s,
       "org.polynote"           %% "uzhttp"                  % V.uzhttp,
       "org.postgresql"          % "postgresql"              % V.postgres,
       "org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`

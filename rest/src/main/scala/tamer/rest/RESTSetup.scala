@@ -139,7 +139,9 @@ object RESTSetup {
       authenticationMethod: Option[Authentication[R]] = None,
       readRequestTimeout: Duration = 30.seconds,
       initialOffset: Offset = Offset(0, 0)
-  )(recordKey: (Offset, V) => K): RESTSetup[R with Clock with SttpClient with LocalSecretCache, K, V, Offset] = {
+  )(recordKey: (Offset, V) => K)(
+      implicit ev: Codec[Offset]
+  ): RESTSetup[R with Clock with SttpClient with LocalSecretCache, K, V, Offset] = {
     val queryBuilder: QueryBuilder[R, Offset] = new QueryBuilder[R, Offset] {
 
       /** Used for hashing purposes
@@ -223,7 +225,9 @@ object RESTSetup {
       readRequestTimeout: Duration = 30.seconds,
       startingOffset: Int = 0,
       filterPage: (DecodedPage[V, PeriodicOffset], PeriodicOffset) => List[V] = (dp: DecodedPage[V, PeriodicOffset], _: PeriodicOffset) => dp.data
-  )(recordKey: (PeriodicOffset, V) => K): RESTSetup[R with Clock with SttpClient with LocalSecretCache, K, V, PeriodicOffset] = {
+  )(recordKey: (PeriodicOffset, V) => K)(
+      implicit ev: Codec[PeriodicOffset]
+  ): RESTSetup[R with Clock with SttpClient with LocalSecretCache, K, V, PeriodicOffset] = {
     val queryBuilder = new QueryBuilder[R, PeriodicOffset] {
 
       /** Used for hashing purposes

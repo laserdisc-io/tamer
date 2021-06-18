@@ -30,7 +30,7 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
 
   private[this] sealed trait EphemeralChange extends Product with Serializable
   private[this] final object EphemeralChange {
-    final case object Detected extends EphemeralChange
+    final case object Detected    extends EphemeralChange
     final case object NotDetected extends EphemeralChange
 
     def apply(b: Boolean): EphemeralChange = if (b) Detected else NotDetected
@@ -179,6 +179,8 @@ object S3Setup {
       dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
       minimumIntervalForBucketFetch: Duration = 5.minutes,
       maximumIntervalForBucketFetch: Duration = 5.minutes
+  )(
+      implicit ev: Codec[Instant]
   ): S3Setup[R, K, V, Instant] =
     new S3Setup[R, K, V, Instant](
       bucketName,

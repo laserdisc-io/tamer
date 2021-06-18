@@ -1,6 +1,7 @@
 package tamer
 package rest
 
+import io.circe.parser
 import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
 import zio.duration._
@@ -24,7 +25,7 @@ object RESTSetupSpec extends DefaultRunnableSpec with UzHttpServerSupport {
     }
 
     private[this] val decoder: String => Task[DecodedPage[Value, State]] = DecodedPage.fromString { v =>
-      ZIO.fromEither(io.circe.parser.decode[Value](v)).map(List(_)).catchAll(e => ZIO.fail(new RuntimeException(s"Decoder failed!\n$e")))
+      ZIO.fromEither(parser.decode[Value](v)).map(List(_)).catchAll(e => ZIO.fail(new RuntimeException(s"Decoder failed!\n$e")))
     }
 
     val rest = RESTSetup(
