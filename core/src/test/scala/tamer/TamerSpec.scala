@@ -16,7 +16,7 @@ object KafkaSpec extends DefaultRunnableSpec {
   val baseTamerLayer = Tamer.live {
     new Setup[Has[OutputR] with Console, Key, Value, State] {
       override final val serdes       = Setup.Serdes[Key, Value, State]
-      override final val defaultState = State(0)
+      override final val initialState = State(0)
       override final val stateKey     = 0
       override final val recordKey    = (s: State, _: Value) => Key(s.state + 1)
       override final def iteration(s: State, q: Queue[Chunk[(Key, Value)]]): ZIO[Has[OutputR] with Console, TamerError, State] =

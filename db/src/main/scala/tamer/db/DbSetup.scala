@@ -14,23 +14,23 @@ import zio.interop.catz._
 
 sealed abstract case class DbSetup[K, V, S: Hashable](
     serdes: Setup.Serdes[K, V, S],
-    defaultState: S,
+    initialState: S,
     query: S => Query0[V],
     recordKey: (S, V) => K,
     stateFold: (S, QueryResult[V]) => UIO[S]
 ) extends Setup[Has[Transactor[Task]] with Has[QueryConfig], K, V, S] {
 
-  private[this] final val sql     = query(defaultState).sql
+  private[this] final val sql     = query(initialState).sql
   private[this] final val queryId = sql.hash
-  private[this] final val stateId = defaultState.hash
+  private[this] final val stateId = initialState.hash
 
   override final val stateKey = queryId + stateId
   override final val repr: String =
     s"""query:             $sql
        |query id:          $queryId
-       |default state:     $defaultState
-       |default state id:  $stateId
-       |default state key: $stateKey
+       |initial state:     $initialState
+       |initial state id:  $stateId
+       |initial state key: $stateKey
        |""".stripMargin
 
   import compat._
@@ -63,13 +63,13 @@ sealed abstract case class DbSetup[K, V, S: Hashable](
 
 object DbSetup {
   final def apply[K: Codec, V: Codec, S: Codec: Hashable](
-      defaultState: S
+      initialState: S
   )(
       query: S => Query0[V]
   )(
       recordKey: (S, V) => K,
       stateFold: (S, QueryResult[V]) => UIO[S]
-  ): DbSetup[K, V, S] = new DbSetup(Setup.Serdes[K, V, S], defaultState, query, recordKey, stateFold) {}
+  ): DbSetup[K, V, S] = new DbSetup(Setup.Serdes[K, V, S], initialState, query, recordKey, stateFold) {}
 
   final def tumbling[K: Codec, V <: Timestamped: Ordering: Codec](
       query: Window => Query0[V]

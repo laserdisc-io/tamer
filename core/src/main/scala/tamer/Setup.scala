@@ -7,7 +7,7 @@ import zio.kafka.serde.Serializer
 
 abstract class Setup[-R, K, V, S] {
   val serdes: Setup.Serdes[K, V, S]
-  val defaultState: S
+  val initialState: S
   val stateKey: Int
   val recordKey: (S, V) => K
   val repr: String = "no repr string implemented, if you want a neat description of the source configuration please implement it"

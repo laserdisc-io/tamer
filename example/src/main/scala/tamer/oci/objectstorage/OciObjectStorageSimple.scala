@@ -17,7 +17,7 @@ object OciObjectStorageSimple extends App {
   val program: ZIO[ZEnv, TamerError, Unit] = ObjectStorageSetup(
     "namespace",
     "bucketName",
-    defaultState = ObjectsCursor(None, None),
+    initialState = ObjectsCursor(None, None),
     objectNameBuilder
   )(
     (oc, _: String) => oc,

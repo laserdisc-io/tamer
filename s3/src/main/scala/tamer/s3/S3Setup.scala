@@ -21,7 +21,7 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     minimumIntervalForBucketFetch: Duration,
     maximumIntervalForBucketFetch: Duration,
     serdes: Setup.Serdes[K, V, S],
-    defaultState: S,
+    initialState: S,
     recordKey: (S, V) => K,
     selectObjectForState: (S, Keys) => Option[String],
     stateFold: (KeysR, S, Queue[Unit]) => UIO[S],
@@ -36,7 +36,7 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     def apply(b: Boolean): EphemeralChange = if (b) Detected else NotDetected
   }
 
-  override final val stateKey = bucketName.hash + prefix.hash + defaultState.hash
+  override final val stateKey = bucketName.hash + prefix.hash + initialState.hash
   override final val repr =
     s"""bucket:      $bucketName
        |prefix:      $prefix

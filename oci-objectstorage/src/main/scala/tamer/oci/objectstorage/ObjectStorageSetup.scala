@@ -20,7 +20,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
     objectNameFinder: String => Boolean,
     objectNameBuilder: ObjectNameBuilder[S],
     serdes: Setup.Serdes[K, V, S],
-    defaultState: S,
+    initialState: S,
     recordKey: (S, V) => K,
     stateFold: (S, Option[String]) => URIO[R, S],
     transducer: ZTransducer[R, Throwable, Byte, V]
@@ -59,7 +59,7 @@ object ObjectStorageSetup {
   def apply[R, K: Codec, V: Codec, S: Codec](
       namespace: String,
       bucketName: String,
-      defaultState: S,
+      initialState: S,
       objectNameBuilder: ObjectNameBuilder[S]
   )(
       recordKey: (S, V) => K,
@@ -74,7 +74,7 @@ object ObjectStorageSetup {
     objectNameFinder,
     objectNameBuilder,
     Setup.Serdes[K, V, S],
-    defaultState,
+    initialState,
     recordKey,
     stateFold,
     transducer

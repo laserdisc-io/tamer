@@ -35,18 +35,18 @@ sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
     queryBuilder: QueryBuilder[R, S],
     pageDecoder: String => RIO[R, DecodedPage[V, S]],
     serdes: Setup.Serdes[K, V, S],
-    defaultState: S,
+    initialState: S,
     recordKey: (S, V) => K,
     filterPage: (DecodedPage[V, S], S) => List[V],
     stateFold: (DecodedPage[V, S], S) => URIO[R, S]
 ) extends Setup[R with SttpClient with LocalSecretCache, K, V, S] {
-  override final val stateKey = queryBuilder.queryId + defaultState.hash
+  override final val stateKey = queryBuilder.queryId + initialState.hash
   override final val repr =
-    s"""query:             ${queryBuilder.query(defaultState)}
+    s"""query:             ${queryBuilder.query(initialState)}
        |query id:          ${queryBuilder.queryId}
-       |default state:     $defaultState
-       |default state id:  ${defaultState.hash}
-       |default state key: $stateKey
+       |initial state:     $initialState
+       |initial state id:  ${initialState.hash}
+       |initial state key: $stateKey
        |""".stripMargin
 
   protected final val logTask = log4sFromName.provide("tamer.rest")
