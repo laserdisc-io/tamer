@@ -15,10 +15,15 @@ trait Authentication[-R] {
 
   def refreshSecret(secretRef: Ref[Option[String]]): RIO[R, Unit] = setSecret(secretRef)
 }
-
 object Authentication {
   def basic[R](username: String, password: String): Authentication[R] =
     (request: SttpRequest, _: Option[String]) => request.auth.basic(username, password)
+}
+
+final case class DecodedPage[V, S](data: List[V], nextState: Option[S])
+object DecodedPage {
+  def fromString[R, V, S](decoder: String => RIO[R, List[V]]): String => RIO[R, DecodedPage[V, S]] =
+    decoder.andThen(_.map(DecodedPage(_, None)))
 }
 
 object EphemeralSecretCache {

@@ -37,7 +37,7 @@ object RESTCustomAuth extends App {
     .paginated(
       baseUrl = "http://localhost:9095",
       pageDecoder = pageDecoder,
-      authenticationMethod = Some(authentication)
+      authentication = Some(authentication)
     )(
       recordKey = (_, data) => MyKey(data.i),
       offsetParameterName = "offset",

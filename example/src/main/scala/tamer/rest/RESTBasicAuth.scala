@@ -18,7 +18,7 @@ object RESTBasicAuth extends App {
     .paginated(
       baseUrl = "http://localhost:9095/basic-auth",
       pageDecoder = pageDecoder,
-      authenticationMethod = Some(Authentication.basic("user", "pass"))
+      authentication = Some(Authentication.basic("user", "pass"))
     )(
       recordKey = (_, data) => MyKey(data.i),
       offsetParameterName = "offset",
