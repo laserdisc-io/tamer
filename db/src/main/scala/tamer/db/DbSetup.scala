@@ -15,8 +15,8 @@ import zio.interop.catz._
 sealed abstract case class DbSetup[K, V, S: Hashable](
     serdes: Setup.Serdes[K, V, S],
     initialState: S,
-    query: S => Query0[V],
     recordKey: (S, V) => K,
+    query: S => Query0[V],
     stateFold: (S, QueryResult[V]) => UIO[S]
 ) extends Setup[Has[Transactor[Task]] with Has[QueryConfig], K, V, S] {
 
@@ -69,7 +69,7 @@ object DbSetup {
   )(
       recordKey: (S, V) => K,
       stateFold: (S, QueryResult[V]) => UIO[S]
-  ): DbSetup[K, V, S] = new DbSetup(Setup.Serdes[K, V, S], initialState, query, recordKey, stateFold) {}
+  ): DbSetup[K, V, S] = new DbSetup(Setup.Serdes[K, V, S], initialState, recordKey, query, stateFold) {}
 
   final def tumbling[K: Codec, V <: Timestamped: Ordering: Codec](
       query: Window => Query0[V]

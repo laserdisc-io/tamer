@@ -15,14 +15,14 @@ import zio.stream.ZTransducer
 import scala.math.Ordering.Implicits.infixOrderingOps
 
 sealed abstract case class S3Setup[R, K, V, S: Hashable](
+    serdes: Setup.Serdes[K, V, S],
+    initialState: S,
+    recordKey: (S, V) => K,
     bucketName: String,
     prefix: String,
     parallelism: Int,
     minimumIntervalForBucketFetch: Duration,
     maximumIntervalForBucketFetch: Duration,
-    serdes: Setup.Serdes[K, V, S],
-    initialState: S,
-    recordKey: (S, V) => K,
     selectObjectForState: (S, Keys) => Option[String],
     stateFold: (KeysR, S, Queue[Unit]) => UIO[S],
     transducer: ZTransducer[R, Throwable, Byte, V]
@@ -50,16 +50,16 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
   private final val fetchSchedule = Schedule.exponential(minimumIntervalForBucketFetch) || Schedule.spaced(maximumIntervalForBucketFetch)
 
   private final def updatedSourceState(keysR: KeysR, keysChangedToken: Queue[Unit]) = {
-    val paginationMaxKeys         = 1000L
-    val paginationMaxPages        = 1000L
-    val defaultTimeoutBucketFetch = 60.seconds
+    val paginationMaxKeys         = 1000L      //FIXME magic
+    val paginationMaxPages        = 1000L      //FIXME magic
+    val defaultTimeoutBucketFetch = 60.seconds //FIXME magic
     val timeoutForFetchAllKeys =
       if (minimumIntervalForBucketFetch < defaultTimeoutBucketFetch) minimumIntervalForBucketFetch
       else defaultTimeoutBucketFetch
 
     def warnAboutSpuriousKeys(log: LogWriter[Task], keyList: List[String]) = {
       val witness = keyList.find(!_.startsWith(prefix)).getOrElse("")
-      log.warn(s"""Server returned '$witness' (and maybe more files) which don't match prefix "$prefix"""")
+      log.warn(s"""server returned '$witness' (and maybe more files) which don't match prefix "$prefix"""")
     }
 
     for {
@@ -70,21 +70,21 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
       keyList                <- UIO(allObjListings.flatMap(_.objectSummaries.map(_.key)).sorted)
       cleanKeyList           <- UIO(keyList.filter(_.startsWith(prefix)))
       _                      <- ZIO.when(keyList.size != cleanKeyList.size)(warnAboutSpuriousKeys(log, keyList))
-      _                      <- log.debug(s"Current key list has ${cleanKeyList.length} elements")
-      _                      <- log.debug(s"The first and last elements are ${cleanKeyList.headOption} and ${cleanKeyList.lastOption}")
+      _                      <- log.debug(s"current key list has ${cleanKeyList.length} elements")
+      _                      <- log.debug(s"the first and last elements are ${cleanKeyList.headOption} and ${cleanKeyList.lastOption}")
       previousListOfKeys     <- keysR.getAndSet(cleanKeyList)
       detectedKeyListChanged <- UIO(cleanKeyList != previousListOfKeys)
-      _                      <- ZIO.when(detectedKeyListChanged)(log.debug("Detected change in key list") *> keysChangedToken.offer(()))
+      _                      <- ZIO.when(detectedKeyListChanged)(log.debug("detected change in key list") *> keysChangedToken.offer(()))
     } yield EphemeralChange(detectedKeyListChanged)
   }
 
   protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: S, queue: Queue[Chunk[(K, V)]]) = for {
     log       <- logTask
     nextState <- stateFold(keysR, currentState, keysChangedToken)
-    _         <- log.debug(s"Next state computed to be $nextState")
+    _         <- log.debug(s"next state computed to be $nextState")
     keys      <- keysR.get
     optKey    <- UIO(selectObjectForState(nextState, keys))
-    _ <- log.debug(s"Will ask for key $optKey") *> optKey
+    _ <- log.debug(s"will ask for key $optKey") *> optKey
       .map(getObject(bucketName, _).transduce(transducer).map(value => recordKey(nextState, value) -> value).foreachChunk(queue.offer))
       .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
   } yield nextState
@@ -106,23 +106,24 @@ object S3Setup {
   def apply[R, K: Codec, V: Codec, S: Codec: Hashable](
       bucketName: String,
       prefix: String,
-      defaultState: S,
+      minimumIntervalForBucketFetch: Duration,
+      maximumIntervalForBucketFetch: Duration,
+      initialState: S
+  )(
       recordKey: (S, V) => K,
       selectObjectForState: (S, Keys) => Option[String],
       stateFold: (KeysR, S, Queue[Unit]) => UIO[S],
       parallelism: Int = 1,
-      minimumIntervalForBucketFetch: Duration,
-      maximumIntervalForBucketFetch: Duration,
       transducer: ZTransducer[R, Throwable, Byte, V] = defaultTransducer
-  ): S3Setup[R with Clock, K, V, S] = new S3Setup[R with Clock, K, V, S](
+  ): S3Setup[R, K, V, S] = new S3Setup(
+    Setup.Serdes[K, V, S],
+    initialState,
+    recordKey,
     bucketName,
     prefix,
     parallelism,
     minimumIntervalForBucketFetch,
     maximumIntervalForBucketFetch,
-    Setup.Serdes[K, V, S],
-    defaultState,
-    recordKey,
     selectObjectForState,
     stateFold,
     transducer
@@ -138,32 +139,16 @@ object S3Setup {
   private[s3] final def parseInstantFromKey(key: String, prefix: String, formatter: ZonedDateTimeFormatter): Instant =
     Instant.from(formatter.parse(suffixWithoutFileExtension(key, prefix, formatter)))
 
-  private final def getNextInstant(
-      keysR: KeysR,
-      from: Instant,
-      prefix: String,
-      formatter: ZonedDateTimeFormatter
-  ): ZIO[Any, Nothing, Option[Instant]] = keysR.get.map { keys =>
-    val sortedFileDates = keys
-      .map(key => parseInstantFromKey(key, prefix, formatter))
-      .filter(_ > from)
-      .sorted
-
-    sortedFileDates.headOption
-  }
+  private final def getNextInstant(keysR: KeysR, from: Instant, prefix: String, formatter: ZonedDateTimeFormatter): UIO[Option[Instant]] =
+    keysR.get.map(_.map(parseInstantFromKey(_, prefix, formatter)).filter(_ > from).sorted.headOption)
 
   private[s3] final def getNextState(prefix: String, formatter: ZonedDateTimeFormatter)(
       keysR: KeysR,
       from: Instant,
       keysChangedToken: Queue[Unit]
-  ): UIO[Instant] = {
-    val retryAfterWaitingForKeyListChange =
-      keysChangedToken.take *> getNextState(prefix, formatter)(keysR, from, keysChangedToken)
-    getNextInstant(keysR, from, prefix, formatter)
-      .flatMap {
-        case Some(newInstant) if newInstant > from => UIO(newInstant)
-        case _                                     => retryAfterWaitingForKeyListChange
-      }
+  ): UIO[Instant] = getNextInstant(keysR, from, prefix, formatter).flatMap {
+    case Some(newInstant) if newInstant > from => UIO(newInstant)
+    case _                                     => keysChangedToken.take *> getNextState(prefix, formatter)(keysR, from, keysChangedToken)
   }
 
   private final def selectObjectForInstant(formatter: ZonedDateTimeFormatter)(from: Instant, keys: Keys): Option[String] =
@@ -181,18 +166,17 @@ object S3Setup {
       maximumIntervalForBucketFetch: Duration = 5.minutes
   )(
       implicit ev: Codec[Instant]
-  ): S3Setup[R, K, V, Instant] =
-    new S3Setup[R, K, V, Instant](
-      bucketName,
-      filePathPrefix,
-      parallelism,
-      minimumIntervalForBucketFetch,
-      maximumIntervalForBucketFetch,
-      Setup.Serdes[K, V, Instant],
-      from,
-      recordKey,
-      selectObjectForInstant(dateTimeFormatter) _,
-      getNextState(filePathPrefix, dateTimeFormatter) _,
-      transducer
-    ) {}
+  ): S3Setup[R, K, V, Instant] = new S3Setup(
+    Setup.Serdes[K, V, Instant],
+    from,
+    recordKey,
+    bucketName,
+    filePathPrefix,
+    parallelism,
+    minimumIntervalForBucketFetch,
+    maximumIntervalForBucketFetch,
+    selectObjectForInstant(dateTimeFormatter) _,
+    getNextState(filePathPrefix, dateTimeFormatter) _,
+    transducer
+  ) {}
 }

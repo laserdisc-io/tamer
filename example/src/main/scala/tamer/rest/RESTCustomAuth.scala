@@ -37,10 +37,12 @@ object RESTCustomAuth extends App {
     .paginated(
       baseUrl = "http://localhost:9095",
       pageDecoder = pageDecoder,
-      offsetParameterName = "offset",
-      increment = 2,
       authenticationMethod = Some(authentication)
-    )((_, data) => MyKey(data.i))
+    )(
+      recordKey = (_, data) => MyKey(data.i),
+      offsetParameterName = "offset",
+      increment = 2
+    )
     .runWith(restLive() ++ kafkaConfigFromEnvironment)
 
   override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode

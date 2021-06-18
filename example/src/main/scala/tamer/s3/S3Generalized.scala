@@ -40,12 +40,13 @@ object S3Generalized extends App {
   val program = S3Setup(
     bucketName = internals.bucketName,
     prefix = internals.prefix,
-    defaultState = 0L,
-    stateFold = internals.getNextState,
+    minimumIntervalForBucketFetch = 1.second,
+    maximumIntervalForBucketFetch = 1.minute,
+    initialState = 0L
+  )(
     recordKey = (l: Long, _: String) => l,
     selectObjectForState = (l: Long, _: Keys) => internals.selectObjectForInstant(l),
-    minimumIntervalForBucketFetch = 1.second,
-    maximumIntervalForBucketFetch = 1.minute
+    stateFold = internals.getNextState
   ).runWith(liveM(AF_SOUTH_1, s3.providers.default, Some(new URI("http://localhost:9000"))) ++ myKafkaConfigLayer)
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode

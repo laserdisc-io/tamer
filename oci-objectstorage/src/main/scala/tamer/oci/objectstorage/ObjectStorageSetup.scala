@@ -8,20 +8,16 @@ import zio.blocking.Blocking
 import zio.oci.objectstorage.{Limit, ListObjectsOptions, ObjectStorage, getObject, listObjects}
 import zio.stream.ZTransducer
 
-trait ObjectNameBuilder[-S] {
-  def startAfter(state: S): Option[String]
-  def objectName(state: S): Option[String]
-}
-
 sealed abstract case class ObjectStorageSetup[-R, K, V, S](
-    namespace: String,
-    bucketName: String,
-    prefix: Option[String],
-    objectNameFinder: String => Boolean,
-    objectNameBuilder: ObjectNameBuilder[S],
     serdes: Setup.Serdes[K, V, S],
     initialState: S,
     recordKey: (S, V) => K,
+    namespace: String,
+    bucketName: String,
+    prefix: Option[String],
+    objectName: S => Option[String],
+    startAfter: S => Option[String],
+    objectNameFinder: String => Boolean,
     stateFold: (S, Option[String]) => URIO[R, S],
     transducer: ZTransducer[R, Throwable, Byte, V]
 ) extends Setup[R with Blocking with ObjectStorage, K, V, S] {
@@ -35,7 +31,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
   private[this] final val logTask = log4sFromName.provide("tamer.oci.objectstorage")
 
   private[this] final def process(log: LogWriter[Task], currentState: S, queue: Queue[Chunk[(K, V)]]) =
-    objectNameBuilder.objectName(currentState) match {
+    objectName(currentState) match {
       case Some(name) =>
         log.info(s"getting object $name") *> getObject(namespace, bucketName, name)
           .transduce(transducer)
@@ -48,7 +44,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
   override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R with Blocking with ObjectStorage, S] = for {
     log        <- logTask
     _          <- log.debug(s"current state: $currentState")
-    options    <- UIO(ListObjectsOptions(prefix, None, objectNameBuilder.startAfter(currentState), Limit.Max))
+    options    <- UIO(ListObjectsOptions(prefix, None, startAfter(currentState), Limit.Max))
     nextObject <- listObjects(namespace, bucketName, options)
     _          <- process(log, currentState, queue)
     newState   <- stateFold(currentState, nextObject.objectSummaries.find(os => objectNameFinder(os.getName)).map(_.getName))
@@ -59,23 +55,25 @@ object ObjectStorageSetup {
   def apply[R, K: Codec, V: Codec, S: Codec](
       namespace: String,
       bucketName: String,
-      initialState: S,
-      objectNameBuilder: ObjectNameBuilder[S]
+      initialState: S
   )(
       recordKey: (S, V) => K,
       stateFold: (S, Option[String]) => URIO[R, S],
+      objectName: S => Option[String],
+      startAfter: S => Option[String],
       prefix: Option[String] = None,
       objectNameFinder: String => Boolean = _ => true,
       transducer: ZTransducer[R, Throwable, Byte, V] = ZTransducer.utf8Decode >>> ZTransducer.splitLines
-  ): ObjectStorageSetup[R, K, V, S] = new ObjectStorageSetup[R, K, V, S](
-    namespace,
-    bucketName,
-    prefix,
-    objectNameFinder,
-    objectNameBuilder,
+  ): ObjectStorageSetup[R, K, V, S] = new ObjectStorageSetup(
     Setup.Serdes[K, V, S],
     initialState,
     recordKey,
+    namespace,
+    bucketName,
+    prefix,
+    objectName,
+    startAfter,
+    objectNameFinder,
     stateFold,
     transducer
   ) {}

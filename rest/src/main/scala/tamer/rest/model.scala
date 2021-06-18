@@ -21,9 +21,8 @@ object Authentication {
     (request: SttpRequest, _: Option[String]) => request.auth.basic(username, password)
 }
 
-object LocalSecretCache {
-  val localSecretCacheM: UIO[Ref[Option[String]]] = Ref.make[Option[String]](None)
-  val live: ULayer[LocalSecretCache]              = ZLayer.fromEffect(localSecretCacheM)
+object EphemeralSecretCache {
+  val live: ULayer[Has[EphemeralSecretCache]] = Ref.make[Option[String]](None).toLayer
 }
 
 case class Offset(offset: Int, nextIndex: Int) {
