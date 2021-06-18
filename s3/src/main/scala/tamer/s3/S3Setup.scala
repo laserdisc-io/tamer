@@ -27,6 +27,15 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     stateFold: (KeysR, S, Queue[Unit]) => UIO[S],
     transducer: ZTransducer[R, Throwable, Byte, V]
 ) extends Setup[R with Clock with S3, K, V, S] {
+
+  private[this] sealed trait EphemeralChange extends Product with Serializable
+  private[this] final object EphemeralChange {
+    final case object Detected extends EphemeralChange
+    final case object NotDetected extends EphemeralChange
+
+    def apply(b: Boolean): EphemeralChange = if (b) Detected else NotDetected
+  }
+
   override final val stateKey = bucketName.hash + prefix.hash + defaultState.hash
   override final val repr =
     s"""bucket:      $bucketName
@@ -36,14 +45,11 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
 
   private final val logTask = log4sFromName.provide("tamer.s3")
 
-  private final val initialSourceState = Ref.make(List.empty[String])
+  private final val initialEphemeralState = Ref.make(List.empty[String])
 
   private final val fetchSchedule = Schedule.exponential(minimumIntervalForBucketFetch) || Schedule.spaced(maximumIntervalForBucketFetch)
 
-  private final def updatedSourceState(
-      keysR: KeysR,
-      keysChangedToken: Queue[Unit]
-  ): RIO[S3 with Clock, SourceStateChanged] = {
+  private final def updatedSourceState(keysR: KeysR, keysChangedToken: Queue[Unit]) = {
     val paginationMaxKeys         = 1000L
     val paginationMaxPages        = 1000L
     val defaultTimeoutBucketFetch = 60.seconds
@@ -69,7 +75,7 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
       previousListOfKeys     <- keysR.getAndSet(cleanKeyList)
       detectedKeyListChanged <- UIO(cleanKeyList != previousListOfKeys)
       _                      <- ZIO.when(detectedKeyListChanged)(log.debug("Detected change in key list") *> keysChangedToken.offer(()))
-    } yield if (detectedKeyListChanged) SourceStateChanged(true) else SourceStateChanged(false)
+    } yield EphemeralChange(detectedKeyListChanged)
   }
 
   protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: S, queue: Queue[Chunk[(K, V)]]) = for {
@@ -84,10 +90,10 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
   } yield nextState
 
   override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R with Clock with S3, S] = for {
-    sourceState <- initialSourceState
+    sourceState <- initialEphemeralState
     token       <- Queue.dropping[Unit](requestedCapacity = 1)
     _ <- updatedSourceState(sourceState, token)
-      .scheduleFrom(SourceStateChanged(true))(Schedule.once ++ fetchSchedule.untilInput(_ == SourceStateChanged(true)))
+      .scheduleFrom(EphemeralChange.Detected)(Schedule.once ++ fetchSchedule.untilInput(_ == EphemeralChange.Detected))
       .forever
       .fork
     newState <- process(sourceState, token, currentState, queue)
@@ -95,7 +101,6 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
 }
 
 object S3Setup {
-
   private[this] final val defaultTransducer = ZTransducer.utf8Decode >>> ZTransducer.splitLines
 
   def apply[R, K: Codec, V: Codec, S: Codec: Hashable](
