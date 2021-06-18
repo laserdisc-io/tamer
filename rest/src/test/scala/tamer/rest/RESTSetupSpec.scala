@@ -3,8 +3,12 @@ package rest
 
 import io.circe.parser
 import log.effect.zio.ZioLogWriter.log4sFromName
+import sttp.client3._
+import sttp.client3.httpclient.zio._
 import zio._
+import zio.clock.Clock
 import zio.duration._
+import zio.random.Random
 import zio.test.Assertion._
 import zio.test.TestAspect.timeout
 import zio.test.{assertM, _}
@@ -13,8 +17,10 @@ import zio.test.environment.TestEnvironment
 import scala.annotation.unused
 
 object RESTSetupSpec extends DefaultRunnableSpec with UzHttpServerSupport {
-  import sttp.client3._
-  import sttp.client3.httpclient.zio._
+  case class Log(count: Int)
+  object Log {
+    val layer: ULayer[Has[Ref[Log]]] = Ref.make(Log(0)).toLayer
+  }
 
   final case class Fixtures(port: Int) {
     private[this] val qb = new QueryBuilder[Any, State] {
@@ -34,11 +40,9 @@ object RESTSetupSpec extends DefaultRunnableSpec with UzHttpServerSupport {
       State(0),
       (_: State, v: Value) => Key(v.time),
       (_: DecodedPage[Value, State], s: State) =>
-        URIO.service[Ref[KafkaLog]].flatMap(_.update(l => l.copy(l.count + 1))) *> URIO(s.copy(count = s.count + 1))
+        URIO.service[Ref[Log]].flatMap(_.update(l => l.copy(l.count + 1))) *> URIO(s.copy(count = s.count + 1))
     ).run
   }
-
-  case class KafkaLog(count: Int)
 
   private def testUzHttpStartup(port: Int, @unused serverLog: Ref[ServerLog]) = for {
     cb       <- HttpClientZioBackend()
@@ -51,14 +55,15 @@ object RESTSetupSpec extends DefaultRunnableSpec with UzHttpServerSupport {
     log    <- log4sFromName.provide("test-rest-flow")
     _      <- Fixtures(port).rest.fork
     _      <- (log.info("awaiting a request to our test server") *> ZIO.sleep(500.millis)).repeatUntilM(_ => sl.get.map(_.lastRequest.isDefined))
-    output <- ZIO.service[Ref[KafkaLog]]
+    output <- ZIO.service[Ref[Log]]
     _      <- (log.info("Awaiting state change") *> ZIO.sleep(500.millis)).repeatUntilM(_ => output.get.map(_.count > 0))
   } yield assertCompletes
 
   override final val spec = suite("RESTSetupSpec")(
     testM("Should run a test with provisioned uzHttp")(withServer(testUzHttpStartup)),
     testM("Should support e2e rest flow")(withServer(testRestFlow)) @@ timeout(30.seconds)
-  ).provideSomeLayerShared[ZEnv with TestEnvironment] {
-    (Ref.make(KafkaLog(0)).toLayer ++ restLive() ++ (FakeKafka.embedded >>> FakeKafka.embeddedKafkaConfig)).mapError(TestFailure.die)
-  }.provideCustomLayer(ZEnv.live)
+  ).provideSomeLayerShared[TestEnvironment](
+    (Log.layer ++ restLive() ++ FakeKafka.embeddedKafkaConfigLayer).mapError(TestFailure.die)
+  ).updateService[Clock.Service](_ => Clock.Service.live)
+    .updateService[Random.Service](_ => Random.Service.live)
 }

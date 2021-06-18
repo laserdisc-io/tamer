@@ -2,6 +2,7 @@ package tamer
 
 import net.manub.embeddedkafka.schemaregistry.{EmbeddedKWithSR, EmbeddedKafka, EmbeddedKafkaConfig}
 import zio._
+import zio.random.Random
 
 import scala.concurrent.duration._
 
@@ -25,8 +26,8 @@ object FakeKafka {
     override def stop(): UIO[Unit]              = UIO.unit
   }
 
-  val embeddedKafkaConfig: ZLayer[Has[FakeKafka], Throwable, Has[KafkaConfig]] = (for {
-    randomString <- TestUtils.randomThing("test")
+  val kafkaConfigLayer: RLayer[Random with Has[FakeKafka], Has[KafkaConfig]] = (for {
+    randomString <- random.nextUUID.map(uuid => s"test-$uuid")
     fakeKafka    <- ZIO.service[FakeKafka]
   } yield KafkaConfig(
     brokers = fakeKafka.bootstrapServers,
@@ -37,12 +38,14 @@ object FakeKafka {
     state = StateConfig(s"sink.topic.tape.$randomString", s"embedded.groupid.$randomString", s"embedded.clientid.$randomString")
   )).toLayer
 
-  val embedded: TaskLayer[Has[FakeKafka]] = ZLayer.fromManaged {
+  val embeddedKafkaLayer: TaskLayer[Has[FakeKafka]] = ZLayer.fromManaged {
     implicit val embeddedKafkaConfig: EmbeddedKafkaConfig = EmbeddedKafkaConfig(
       customBrokerProperties = Map("group.min.session.timeout.ms" -> "500", "group.initial.rebalance.delay.ms" -> "0")
     )
     ZManaged.make(ZIO.effect(EmbeddedKafkaService(EmbeddedKafka.start())))(_.stop())
   }
 
-  val local: ULayer[Has[FakeKafka]] = ZLayer.succeed(DefaultLocal)
+  val embeddedKafkaConfigLayer: RLayer[Random, Has[KafkaConfig]] = embeddedKafkaLayer ++ ZLayer.requires[Random] >>> kafkaConfigLayer
+
+  val localKafkaLayer: ULayer[Has[FakeKafka]] = ZLayer.succeed(DefaultLocal)
 }

@@ -13,8 +13,6 @@ import zio.test.environment.TestClock
 import zio.test.{DefaultRunnableSpec, assert}
 
 object SinkSpec extends DefaultRunnableSpec {
-  import TestUtils._
-
   override final val spec = suite("SinkSpec")(
     testM("should correctly produce ") {
       val fakeValueProducer = Test.mk[Any, Key, Value]
