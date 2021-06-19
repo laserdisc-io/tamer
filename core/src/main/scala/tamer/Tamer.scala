@@ -31,6 +31,10 @@ object Tamer {
     case te: TamerError     => te
   }
 
+  private[this] implicit final class OffsetOps(private val _underlying: Offset) extends AnyVal {
+    def info: String = s"${_underlying.topicPartition}@${_underlying.offset}"
+  }
+
   private[this] final def mkRegistry(schemaRegistryClient: SchemaRegistryClient, topic: String): ULayer[RegistryInfo] =
     ZLayer.succeed(schemaRegistryClient) >>> Registry.live ++ ZLayer.succeed(topic)
 
@@ -45,11 +49,10 @@ object Tamer {
       .map { case (k, v) => new ProducerRecord(topic, k, v) }
       .mapChunksM { recordChunk =>
         producer
-          .produceChunkAsync(recordChunk)
+          .produceChunk(recordChunk)
           .provideSomeLayer[Blocking](registryLayer)
           .tapError(_ => log.debug(s"failed pushing ${recordChunk.size} messages to $topic"))
-          .retry(tenTimes)
-          .flatten <* log.info(s"pushed ${recordChunk.size} messages to $topic")
+          .retry(tenTimes) <* log.info(s"pushed ${recordChunk.size} messages to $topic")
       }
       .runDrain
       .onError(e => log.warn(s"could not push to topic $topic: ${e.prettyPrint}").orDie)
@@ -134,10 +137,9 @@ object Tamer {
       case Initialize =>
         log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
           stateProducer
-            .produceAsync(stateTopic, key, initialState)
+            .produce(stateTopic, key, initialState)
             .provideSomeLayer[Blocking](registryLayer)
-            .flatten
-            .flatMap(rmd => log.info(s"pushed initial state $initialState to $stateTopic-${rmd.partition()}@${rmd.offset()}"))
+            .flatMap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
       case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
       case Retry | Fail => // TODO: fix handling of retry case
         log.error(s"consumer group $stateGroupId is already at the end of $stateTopic, manual intervention required") *>
@@ -149,27 +151,24 @@ object Tamer {
       .provideSomeLayer[Blocking with Clock](registryLayer)
       .mapM {
         case CommittableRecord(record, offset) if record.key == key =>
-          log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.topicPartition}@${offset.offset}") *>
+          log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.info}") *>
             // we got a valid state to process, invoke the handler
             iterationFunction(record.value, kvChunkQueue)
               .flatMap { newState =>
                 // now the handler has concluded its job, we've a new state to save to Kafka
                 stateProducer
-                  .produceAsync(stateTopic, key, newState)
+                  .produce(stateTopic, key, newState)
                   .provideSomeLayer[Blocking](registryLayer)
-                  .flatten
                   .flatMap { rmd =>
                     log.debug(s"pushed state $newState to $rmd") *>
                       offset.commitOrRetry(tenTimes) <*
-                      log.debug(s"consumer group $stateGroupId committed offset ${offset.topicPartition}@${offset.offset}")
+                      log.debug(s"consumer group $stateGroupId committed offset ${offset.info}")
                   }
               }
         case CommittableRecord(record, offset) =>
-          log.debug(
-            s"consumer group $stateGroupId ignored state (wrong key: ${record.key} != $key) from ${offset.topicPartition}@${offset.offset}"
-          ) *>
+          log.debug(s"consumer group $stateGroupId ignored state (wrong key: ${record.key} != $key) from ${offset.info}") *>
             offset.commitOrRetry(tenTimes) <*
-            log.debug(s"consumer group $stateGroupId committed offset ${offset.topicPartition}@${offset.offset}")
+            log.debug(s"consumer group $stateGroupId committed offset ${offset.info}")
       }
 
     ZStream.fromEffect(initialize).drain ++ stateStream
