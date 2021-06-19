@@ -176,7 +176,7 @@ object RESTSetup {
           tokenCache: EphemeralSecretCache
       ): RIO[R with Clock with SttpClient, DecodedPage[V, Offset]] =
         fetchAndDecode(currentState, tokenCache, log).repeat(
-          Schedule.exponential(500.millis) *> Schedule.recurWhile(_.data.isEmpty)
+          Schedule.exponential(500.millis) *> Schedule.recurWhile(_.data.isEmpty) //FIXME this could never return and leaves tamer hanging
         )
 
       private final def fetchAndDecode(
