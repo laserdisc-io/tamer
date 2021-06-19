@@ -34,12 +34,19 @@ object Tamer {
   private[this] final def mkRegistry(schemaRegistryClient: SchemaRegistryClient, topic: String): ULayer[RegistryInfo] =
     ZLayer.succeed(schemaRegistryClient) >>> Registry.live ++ ZLayer.succeed(topic)
 
-  private[tamer] final def sink[R, K, V](kvStream: UStream[(K, V)], producer: Producer.Service[R, K, V], topic: String, log: LogWriter[Task]) =
+  private[tamer] final def sink[K, V](
+      kvStream: UStream[(K, V)],
+      producer: Producer.Service[RegistryInfo, K, V],
+      topic: String,
+      registryLayer: ULayer[RegistryInfo],
+      log: LogWriter[Task]
+  ) =
     kvStream
       .map { case (k, v) => new ProducerRecord(topic, k, v) }
       .mapChunksM { recordChunk =>
         producer
           .produceChunkAsync(recordChunk)
+          .provideSomeLayer[Blocking](registryLayer)
           .tapError(_ => log.debug(s"failed pushing ${recordChunk.size} messages to $topic"))
           .retry(tenTimes)
           .flatten <* log.info(s"pushed ${recordChunk.size} messages to $topic")
@@ -151,14 +158,18 @@ object Tamer {
                   .produceAsync(stateTopic, key, newState)
                   .provideSomeLayer[Blocking](registryLayer)
                   .flatten
-                  .flatMap(rmd => log.debug(s"pushed state $newState to $rmd"))
-                  .as(offset)
+                  .flatMap { rmd =>
+                    log.debug(s"pushed state $newState to $rmd") *>
+                      offset.commitOrRetry(tenTimes) <*
+                      log.debug(s"consumer group $stateGroupId committed offset ${offset.topicPartition}@${offset.offset}")
+                  }
               }
         case CommittableRecord(record, offset) =>
           log.debug(
             s"consumer group $stateGroupId ignored state (wrong key: ${record.key} != $key) from ${offset.topicPartition}@${offset.offset}"
           ) *>
-            UIO(offset)
+            offset.commitOrRetry(tenTimes) <*
+            log.debug(s"consumer group $stateGroupId committed offset ${offset.topicPartition}@${offset.offset}")
       }
 
     ZStream.fromEffect(initialize).drain ++ stateStream
@@ -181,10 +192,10 @@ object Tamer {
     private[this] final val SinkConfig(sinkTopic)                    = config.sink
     private[this] final val StateConfig(stateTopic, stateGroupId, _) = config.state
 
-    private[tamer] final def sinkStream(kvStream: UStream[(K, V)], log: LogWriter[Task]) =
-      ZStream.fromEffect(sink(kvStream, valueProducer, sinkTopic, log).fork <* log.info("running sink perpetually"))
+    private[tamer] final def sinkStream(kvStream: UStream[(K, V)], registryLayer: ULayer[RegistryInfo], log: LogWriter[Task]) =
+      ZStream.fromEffect(sink(kvStream, valueProducer, sinkTopic, registryLayer, log).fork <* log.info("running sink perpetually"))
 
-    private[tamer] final def sourceStream(schemaRegistryClient: SchemaRegistryClient, kvChunkQueue: Queue[Chunk[(K, V)]], log: LogWriter[Task]) =
+    private[tamer] final def sourceStream(kvChunkQueue: Queue[Chunk[(K, V)]], registryLayer: ULayer[RegistryInfo], log: LogWriter[Task]) =
       source(
         stateTopic,
         stateGroupId,
@@ -194,26 +205,26 @@ object Tamer {
         stateConsumer,
         stateProducer,
         kvChunkQueue,
-        mkRegistry(schemaRegistryClient, stateTopic),
+        registryLayer,
         iterationFunction,
         log
       )
 
-    private[tamer] final def drainSink(kvStream: UStream[(K, V)], log: LogWriter[Task]) =
+    private[tamer] final def drainSink(kvStream: UStream[(K, V)], registryLayer: ULayer[RegistryInfo], log: LogWriter[Task]) =
       log.info("sink interrupted").ignore *>
-        sink(kvStream, valueProducer, sinkTopic, log).run <*
+        sink(kvStream, valueProducer, sinkTopic, registryLayer, log).run <*
         log.info("sink queue drained").ignore
 
     private[tamer] final def runLoop(
-        schemaRegistryClient: SchemaRegistryClient,
         kvChunkQueue: Queue[Chunk[(K, V)]],
         kvStream: UStream[(K, V)],
+        stateRegistry: ULayer[RegistryInfo],
+        sinkRegistry: ULayer[RegistryInfo],
         log: LogWriter[Task]
-    ) = sinkStream(kvStream, log)
-      .flatMap(fiber => sourceStream(schemaRegistryClient, kvChunkQueue, log).ensuringFirst(fiber.interrupt *> drainSink(kvStream, log)))
-      .aggregateAsync(Consumer.offsetBatches)
-      .mapM(ob => ob.commit <* log.debug(s"consumer group $stateGroupId committed offset batch ${ob.offsets}"))
-      .provideSomeLayer[Blocking with Clock](mkRegistry(schemaRegistryClient, sinkTopic))
+    ) = for {
+      fiber <- sinkStream(kvStream, sinkRegistry, log)
+      _     <- sourceStream(kvChunkQueue, stateRegistry, log).ensuringFirst(fiber.interrupt *> drainSink(kvStream, sinkRegistry, log))
+    } yield ()
 
     override final val runLoop: ZIO[Blocking with Clock, TamerError, Unit] = {
       val logic = for {
@@ -222,7 +233,9 @@ object Tamer {
         schemaRegistryClient <- Task(new CachedSchemaRegistryClient(config.schemaRegistryUrl, 1000)) // FIXME magic number & manual wiring
         kvChunkQueue         <- Queue.bounded[Chunk[(K, V)]](config.bufferSize)
         kvStream             <- UIO(ZStream.fromChunkQueueWithShutdown(kvChunkQueue))
-        _                    <- runLoop(schemaRegistryClient, kvChunkQueue, kvStream, log).runDrain
+        stateRegistry        <- UIO(mkRegistry(schemaRegistryClient, stateTopic))
+        sinkRegistry         <- UIO(mkRegistry(schemaRegistryClient, sinkTopic))
+        _                    <- runLoop(kvChunkQueue, kvStream, stateRegistry, sinkRegistry, log).runDrain
       } yield ()
 
       logic.refineOrDie(tamerErrors)
