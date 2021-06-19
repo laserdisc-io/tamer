@@ -13,7 +13,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
     initialState: S,
     recordKey: (S, V) => K,
     namespace: String,
-    bucketName: String,
+    bucket: String,
     prefix: Option[String],
     objectName: S => Option[String],
     startAfter: S => Option[String],
@@ -21,11 +21,20 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
     stateFold: (S, Option[String]) => URIO[R, S],
     transducer: ZTransducer[R, Throwable, Byte, V]
 ) extends Setup[R with Blocking with ObjectStorage, K, V, S] {
-  override final val stateKey = namespace.hash + bucketName.hash + prefix.getOrElse("").hash
+
+  private[this] final val namespaceHash = namespace.hash
+  private[this] final val bucketHash    = bucket.hash
+  private[this] final val prefixHash    = prefix.getOrElse("").hash
+
+  override final val stateKey = namespaceHash + bucketHash + prefixHash
   override final val repr =
-    s"""namespace: $namespace
-       |bucket:    $bucketName
-       |prefix:    $prefix
+    s"""namespace:      $namespace
+       |namespace hash: $namespaceHash
+       |bucket:         $bucket
+       |bucket hash:    $bucketHash
+       |prefix:         $prefix
+       |prefix hash:    $prefixHash
+       |state key:      $stateKey
        |""".stripMargin
 
   private[this] final val logTask = log4sFromName.provide("tamer.oci.objectstorage")
@@ -33,7 +42,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
   private[this] final def process(log: LogWriter[Task], currentState: S, queue: Queue[Chunk[(K, V)]]) =
     objectName(currentState) match {
       case Some(name) =>
-        log.info(s"getting object $name") *> getObject(namespace, bucketName, name)
+        log.info(s"getting object $name") *> getObject(namespace, bucket, name)
           .transduce(transducer)
           .map(value => recordKey(currentState, value) -> value)
           .foreachChunk(queue.offer)
@@ -45,7 +54,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
     log        <- logTask
     _          <- log.debug(s"current state: $currentState")
     options    <- UIO(ListObjectsOptions(prefix, None, startAfter(currentState), Limit.Max))
-    nextObject <- listObjects(namespace, bucketName, options)
+    nextObject <- listObjects(namespace, bucket, options)
     _          <- process(log, currentState, queue)
     newState   <- stateFold(currentState, nextObject.objectSummaries.find(os => objectNameFinder(os.getName)).map(_.getName))
   } yield newState
@@ -54,7 +63,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
 object ObjectStorageSetup {
   def apply[R, K: Codec, V: Codec, S: Codec](
       namespace: String,
-      bucketName: String,
+      bucket: String,
       initialState: S
   )(
       recordKey: (S, V) => K,
@@ -69,7 +78,7 @@ object ObjectStorageSetup {
     initialState,
     recordKey,
     namespace,
-    bucketName,
+    bucket,
     prefix,
     objectName,
     startAfter,

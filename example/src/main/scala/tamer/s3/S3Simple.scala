@@ -11,8 +11,8 @@ import java.time.{Instant, ZoneId}
 object S3Simple extends App {
   val program: ZIO[ZEnv, RuntimeException, Unit] = S3Setup
     .timed(
-      bucketName = "myBucket",
-      filePathPrefix = "myFolder/myPrefix",
+      bucket = "myBucket",
+      prefix = "myFolder/myPrefix",
       from = Instant.parse("2020-12-03T10:15:30.00Z"),
       dateTimeFormatter = ZonedDateTimeFormatter.fromPattern("yyyy-MM-dd HH:mm:ss", ZoneId.of("Europe/Rome"))
     )

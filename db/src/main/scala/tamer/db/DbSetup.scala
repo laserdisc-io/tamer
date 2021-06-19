@@ -20,17 +20,17 @@ sealed abstract case class DbSetup[K, V, S: Hashable](
     stateFold: (S, QueryResult[V]) => UIO[S]
 ) extends Setup[Has[Transactor[Task]] with Has[QueryConfig], K, V, S] {
 
-  private[this] final val sql     = query(initialState).sql
-  private[this] final val queryId = sql.hash
-  private[this] final val stateId = initialState.hash
+  private[this] final val sql              = query(initialState).sql
+  private[this] final val queryHash        = sql.hash
+  private[this] final val initialStateHash = initialState.hash
 
-  override final val stateKey = queryId + stateId
+  override final val stateKey = queryHash + initialStateHash
   override final val repr: String =
-    s"""query:             $sql
-       |query id:          $queryId
-       |initial state:     $initialState
-       |initial state id:  $stateId
-       |initial state key: $stateKey
+    s"""query:              $sql
+       |query hash:         $queryHash
+       |initial state:      $initialState
+       |initial state hash: $initialStateHash
+       |state key:          $stateKey
        |""".stripMargin
 
   import compat._

@@ -23,7 +23,7 @@ object RESTSetupSpec extends DefaultRunnableSpec with UzHttpServerSupport {
   }
 
   final case class Fixtures(port: Int) {
-    private[this] def query(@unused state: State): Request[Either[String, String], Any] =
+    private[this] def queryFor(@unused state: State): Request[Either[String, String], Any] =
       basicRequest.get(uri"http://localhost:$port/random").readTimeout(20.seconds.asScala)
 
     private[this] val decoder: String => Task[DecodedPage[Value, State]] = DecodedPage.fromString { v =>
@@ -31,7 +31,7 @@ object RESTSetupSpec extends DefaultRunnableSpec with UzHttpServerSupport {
     }
 
     val rest = RESTSetup(State(0))(
-      query,
+      queryFor,
       decoder,
       (_: State, v: Value) => Key(v.time),
       (_: DecodedPage[Value, State], s: State) =>
@@ -51,7 +51,7 @@ object RESTSetupSpec extends DefaultRunnableSpec with UzHttpServerSupport {
     _      <- Fixtures(port).rest.fork
     _      <- (log.info("awaiting a request to our test server") *> ZIO.sleep(500.millis)).repeatUntilM(_ => sl.get.map(_.lastRequest.isDefined))
     output <- ZIO.service[Ref[Log]]
-    _      <- (log.info("Awaiting state change") *> ZIO.sleep(500.millis)).repeatUntilM(_ => output.get.map(_.count > 0))
+    _      <- (log.info("awaiting state change") *> ZIO.sleep(500.millis)).repeatUntilM(_ => output.get.map(_.count > 0))
   } yield assertCompletes
 
   override final val spec = suite("RESTSetupSpec")(

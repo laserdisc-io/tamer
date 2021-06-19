@@ -18,7 +18,7 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     serdes: Setup.Serdes[K, V, S],
     initialState: S,
     recordKey: (S, V) => K,
-    bucketName: String,
+    bucket: String,
     prefix: String,
     parallelism: Int,
     minimumIntervalForBucketFetch: Duration,
@@ -36,10 +36,16 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     def apply(b: Boolean): EphemeralChange = if (b) Detected else NotDetected
   }
 
-  override final val stateKey = bucketName.hash + prefix.hash + initialState.hash
+  private[this] final val bucketHash       = bucket.hash
+  private[this] final val prefixHash       = prefix.hash
+  private[this] final val initialStateHash = initialState.hash
+
+  override final val stateKey = bucketHash + prefixHash + initialStateHash
   override final val repr =
-    s"""bucket:      $bucketName
+    s"""bucket:      $bucket
+       |bucket hash: $bucketHash
        |prefix:      $prefix
+       |prefix hash: $prefixHash
        |parallelism: $parallelism
        |""".stripMargin
 
@@ -64,8 +70,8 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
 
     for {
       log                    <- logTask
-      _                      <- log.info(s"getting list of keys in bucket $bucketName with prefix $prefix")
-      initialObjListing      <- listObjects(bucketName, ListObjectOptions.from(prefix, paginationMaxKeys))
+      _                      <- log.info(s"getting list of keys in bucket $bucket with prefix $prefix")
+      initialObjListing      <- listObjects(bucket, ListObjectOptions.from(prefix, paginationMaxKeys))
       allObjListings         <- paginate(initialObjListing).take(paginationMaxPages).timeout(timeoutForFetchAllKeys).runCollect.map(_.toList)
       keyList                <- UIO(allObjListings.flatMap(_.objectSummaries.map(_.key)).sorted)
       cleanKeyList           <- UIO(keyList.filter(_.startsWith(prefix)))
@@ -85,7 +91,7 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     keys      <- keysR.get
     optKey    <- UIO(selectObjectForState(nextState, keys))
     _ <- log.debug(s"will ask for key $optKey") *> optKey
-      .map(getObject(bucketName, _).transduce(transducer).map(value => recordKey(nextState, value) -> value).foreachChunk(queue.offer))
+      .map(getObject(bucket, _).transduce(transducer).map(value => recordKey(nextState, value) -> value).foreachChunk(queue.offer))
       .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
   } yield nextState
 
@@ -104,7 +110,7 @@ object S3Setup {
   private[this] final val defaultTransducer = ZTransducer.utf8Decode >>> ZTransducer.splitLines
 
   def apply[R, K: Codec, V: Codec, S: Codec: Hashable](
-      bucketName: String,
+      bucket: String,
       prefix: String,
       minimumIntervalForBucketFetch: Duration,
       maximumIntervalForBucketFetch: Duration,
@@ -119,7 +125,7 @@ object S3Setup {
     Setup.Serdes[K, V, S],
     initialState,
     recordKey,
-    bucketName,
+    bucket,
     prefix,
     parallelism,
     minimumIntervalForBucketFetch,
@@ -155,8 +161,8 @@ object S3Setup {
     keys.find(_.contains(formatter.format(from)))
 
   final def timed[R, K: Codec, V: Codec](
-      bucketName: String,
-      filePathPrefix: String,
+      bucket: String,
+      prefix: String,
       from: Instant,
       recordKey: (Instant, V) => K = (l: Instant, _: V) => l,
       transducer: ZTransducer[R, Throwable, Byte, V] = defaultTransducer,
@@ -170,13 +176,13 @@ object S3Setup {
     Setup.Serdes[K, V, Instant],
     from,
     recordKey,
-    bucketName,
-    filePathPrefix,
+    bucket,
+    prefix,
     parallelism,
     minimumIntervalForBucketFetch,
     maximumIntervalForBucketFetch,
     selectObjectForInstant(dateTimeFormatter) _,
-    getNextState(filePathPrefix, dateTimeFormatter) _,
+    getNextState(prefix, dateTimeFormatter) _,
     transducer
   ) {}
 }

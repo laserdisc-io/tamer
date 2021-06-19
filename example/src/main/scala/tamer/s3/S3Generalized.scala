@@ -38,7 +38,7 @@ object S3Generalized extends App {
   }
 
   val program = S3Setup(
-    bucketName = internals.bucketName,
+    bucket = internals.bucketName,
     prefix = internals.prefix,
     minimumIntervalForBucketFetch = 1.second,
     maximumIntervalForBucketFetch = 1.minute,
