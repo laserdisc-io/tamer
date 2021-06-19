@@ -22,7 +22,13 @@ object Tamer {
   private[this] final case class StateKey(stateKey: String, groupId: String)
   private[this] final val stateKeySerde = Serde.key[StateKey]
 
-  private[this] final case class TopicPartitionOffset(topic: String, partition: Int, offset: Long)
+  private[this] object Lag {
+    final def unapply(pair: (Map[TopicPartition, Long], Map[TopicPartition, Long])): Some[Map[TopicPartition, Long]] =
+      Some((pair._1.keySet ++ pair._2.keySet).foldLeft(Map.empty[TopicPartition, Long]) {
+        case (acc, tp) if pair._1.contains(tp) => acc + (tp -> (pair._1(tp) - pair._2.getOrElse(tp, 0L)))
+        case (acc, _)                          => acc
+      })
+  }
 
   private[this] final val tenTimes = Schedule.recurs(10) && Schedule.exponential(100.milliseconds) //FIXME make configurable
 
@@ -76,12 +82,12 @@ object Tamer {
     val key          = StateKey(stateHash.toHexString, stateGroupId)
     val subscription = Subscription.topics(stateTopic)
 
-    // There are at least 3 possible decisions:
+    // There are at least 4 possible decisions:
     //
-    // 1. Set(partition offsets) == Set(0L)                                      => initialize
-    // 2. (Set(partition offsets) &~ Set(committed partition offset)).size == 1  => resume
-    // 3. (Set(partition offsets) &~ Set(committed partition offset)) == Set()   => retry
-    // 4. _                                                                      => fail
+    // 1. logEndOffsets.forAll(_ == 0L)               => initialize
+    // 2. lag(logEndOffsets, currentOffset).sum == 1L => resume
+    // 3. lag(logEndOffsets, currentOffset).sum == 0L => retry
+    // 4. _                                           => fail
     //
     // Notes:
     // Point 2 should be further refined, to ensure that the partition offset that is
@@ -113,20 +119,18 @@ object Tamer {
       .retry(tenTimes)
 
     val decide = (partitionSet: Set[TopicPartition]) => {
-      val partitionOffsets = stateConsumer.endOffsets(partitionSet).map {
-        _.map { case (tp, o) => TopicPartitionOffset(tp.topic(), tp.partition(), o) }.toSet
-      }
+      val partitionOffsets = stateConsumer.endOffsets(partitionSet)
       val committedPartitionOffsets = stateConsumer.committed(partitionSet).map {
         _.map {
-          case (tp, Some(o)) => Some(TopicPartitionOffset(tp.topic(), tp.partition(), o.offset()))
+          case (tp, Some(o)) => Some((tp, o.offset()))
           case _             => None
-        }.flatten.toSet
+        }.flatten.toMap
       }
       partitionOffsets.zip(committedPartitionOffsets).map {
-        case (po, _) if po.map(_.offset) == Set(0L) => Initialize
-        case (po, cpo) if (po diff cpo).size == 1   => Resume
-        case (po, cpo) if (po diff cpo) == Set()    => Retry
-        case _                                      => Fail
+        case (po, _) if po.values.forall(_ == 0L) => Initialize
+        case Lag(lags) if lags.values.sum == 1L   => Resume
+        case Lag(lags) if lags.values.sum == 0L   => Retry
+        case _                                    => Fail
       }
     }
 
