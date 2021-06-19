@@ -155,18 +155,19 @@ object Tamer {
         case CommittableRecord(record, offset) if record.key == key =>
           log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.info}") *>
             // we got a valid state to process, invoke the handler
-            iterationFunction(record.value, kvChunkQueue)
-              .flatMap { newState =>
-                // now the handler has concluded its job, we've a new state to save to Kafka
+            log.debug("invoking the iteration function") *> iterationFunction(record.value, kvChunkQueue).flatMap { newState =>
+              // now that te handler has concluded its job, we've got to commit the offset and push the new state to Kafka
+              // we should do these two operations within a transactional boundary as there is no guarantee whatsoever that
+              // both will successfully complete
+              // here we're chosing to commit first before pushing the new state so we should never lag more than 1 but
+              // we may repush the last batch when we resume (at least once semantics)
+              offset.commitOrRetry(tenTimes) <*
+                log.debug(s"consumer group $stateGroupId committed offset ${offset.info}") <*
                 stateProducer
                   .produce(stateTopic, key, newState)
                   .provideSomeLayer[Blocking](registryLayer)
-                  .flatMap { rmd =>
-                    log.debug(s"pushed state $newState to $rmd") *>
-                      offset.commitOrRetry(tenTimes) <*
-                      log.debug(s"consumer group $stateGroupId committed offset ${offset.info}")
-                  }
-              }
+                  .tap(rmd => log.debug(s"pushed state $newState to $rmd"))
+            }
         case CommittableRecord(record, offset) =>
           log.debug(s"consumer group $stateGroupId ignored state (wrong key: ${record.key} != $key) from ${offset.info}") *>
             offset.commitOrRetry(tenTimes) <*
@@ -211,10 +212,21 @@ object Tamer {
         log
       )
 
-    private[tamer] final def drainSink(kvStream: UStream[(K, V)], registryLayer: ULayer[RegistryInfo], log: LogWriter[Task]) =
-      log.info("sink interrupted").ignore *>
-        sink(kvStream, valueProducer, sinkTopic, registryLayer, log).run <*
-        log.info("sink queue drained").ignore
+    private[this] final def stopSource(log: LogWriter[Task]) =
+      log.info(s"stopping consuming of topic $stateTopic").ignore *>
+        stateConsumer.stopConsumption <*
+        log.info(s"consumer of topic $stateTopic stopped").ignore
+
+    private[tamer] final def drainSink(
+        fiber: Fiber[Throwable, Unit],
+        kvStream: UStream[(K, V)],
+        registryLayer: ULayer[RegistryInfo],
+        log: LogWriter[Task]
+    ) = log.info(s"stopping producing to $sinkTopic").ignore *>
+      fiber.interrupt *>
+      log.info(s"producer to topic $sinkTopic stopped, running final drain on sink queue").ignore *>
+      sink(kvStream, valueProducer, sinkTopic, registryLayer, log).run <*
+      log.info("sink queue drained").ignore
 
     private[tamer] final def runLoop(
         kvChunkQueue: Queue[Chunk[(K, V)]],
@@ -224,7 +236,7 @@ object Tamer {
         log: LogWriter[Task]
     ) = for {
       fiber <- sinkStream(kvStream, sinkRegistry, log)
-      _     <- sourceStream(kvChunkQueue, stateRegistry, log).ensuringFirst(fiber.interrupt *> drainSink(kvStream, sinkRegistry, log))
+      _     <- sourceStream(kvChunkQueue, stateRegistry, log).ensuringFirst(stopSource(log)).ensuring(drainSink(fiber, kvStream, sinkRegistry, log))
     } yield ()
 
     override final val runLoop: ZIO[Blocking with Clock, TamerError, Unit] = {
