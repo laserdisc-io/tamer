@@ -42,15 +42,15 @@ object SinkSpec extends DefaultRunnableSpec {
 }
 
 sealed class FakeProducer[R, K, V](val produced: Ref[Vector[ProducerRecord[K, V]]]) extends Service[R, K, V] {
-  override def produce(record: ProducerRecord[K, V]): RIO[R with Blocking, RecordMetadata]               = ???
-  override def produce(topic: String, key: K, value: V): RIO[R with Blocking, RecordMetadata]            = ???
-  override def produceAsync(record: ProducerRecord[K, V]): RIO[R with Blocking, Task[RecordMetadata]]    = ???
-  override def produceAsync(topic: String, key: K, value: V): RIO[R with Blocking, Task[RecordMetadata]] = ???
-  override def produceChunkAsync(records: Chunk[ProducerRecord[K, V]]): RIO[R with Blocking, Task[Chunk[RecordMetadata]]] =
-    produced.update(_ ++ records) *> UIO(UIO(Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0))))
-  override def produceChunk(records: Chunk[ProducerRecord[K, V]]): RIO[R with Blocking, Chunk[RecordMetadata]] = ???
-  override def flush: RIO[Blocking, Unit]                                                                      = ???
-  override def metrics: RIO[Blocking, Map[MetricName, Metric]]                                                 = ???
+  override def produce(record: ProducerRecord[K, V]): RIO[R with Blocking, RecordMetadata]                                = ???
+  override def produce(topic: String, key: K, value: V): RIO[R with Blocking, RecordMetadata]                             = ???
+  override def produceAsync(record: ProducerRecord[K, V]): RIO[R with Blocking, Task[RecordMetadata]]                     = ???
+  override def produceAsync(topic: String, key: K, value: V): RIO[R with Blocking, Task[RecordMetadata]]                  = ???
+  override def produceChunkAsync(records: Chunk[ProducerRecord[K, V]]): RIO[R with Blocking, Task[Chunk[RecordMetadata]]] = ???
+  override def produceChunk(records: Chunk[ProducerRecord[K, V]]): RIO[R with Blocking, Chunk[RecordMetadata]] =
+    produced.update(_ ++ records) *> UIO(Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0)))
+  override def flush: RIO[Blocking, Unit]                      = ???
+  override def metrics: RIO[Blocking, Map[MetricName, Metric]] = ???
 }
 object FakeProducer {
   def mk[R, K, V]: UIO[FakeProducer[R, K, V]] =
