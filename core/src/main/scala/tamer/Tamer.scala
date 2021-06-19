@@ -47,12 +47,14 @@ object Tamer {
   ) =
     kvStream
       .map { case (k, v) => new ProducerRecord(topic, k, v) }
-      .mapChunksM { recordChunk =>
-        producer
-          .produceChunk(recordChunk)
-          .provideSomeLayer[Blocking](registryLayer)
-          .tapError(_ => log.debug(s"failed pushing ${recordChunk.size} messages to $topic"))
-          .retry(tenTimes) <* log.info(s"pushed ${recordChunk.size} messages to $topic")
+      .mapChunksM {
+        case chunk if chunk.nonEmpty =>
+          producer
+            .produceChunk(chunk)
+            .provideSomeLayer[Blocking](registryLayer)
+            .tapError(_ => log.debug(s"failed pushing ${chunk.size} messages to $topic"))
+            .retry(tenTimes) <* log.info(s"pushed ${chunk.size} messages to $topic")
+        case emptyChunk => UIO(emptyChunk)
       }
       .runDrain
       .onError(e => log.warn(s"could not push to topic $topic: ${e.prettyPrint}").orDie)
