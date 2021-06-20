@@ -1,19 +1,13 @@
 package tamer
 package rest
 
-import sttp.client3.httpclient.zio.{HttpClientZioBackend, SttpClient, send}
+import sttp.client3.httpclient.zio.{SttpClient, send}
 import sttp.client3.{UriContext, basicRequest}
 import zio._
 
 import scala.util.matching.Regex
 
 object RESTCustomAuth extends App {
-  import RESTTamer.Offset
-
-  val httpClientLayer  = HttpClientZioBackend.layer()
-  val kafkaConfigLayer = KafkaConfig.fromEnvironment
-  val fullLayer        = httpClientLayer ++ kafkaConfigLayer ++ LocalSecretCache.live
-
   case class MyKey(i: Int)
   case class MyData(i: Int)
 
@@ -24,9 +18,7 @@ object RESTCustomAuth extends App {
   }
 
   val authentication: Authentication[SttpClient] = new Authentication[SttpClient] {
-
     override def addAuthentication(request: SttpRequest, bearerToken: Option[String]): SttpRequest = request.auth.bearer(bearerToken.getOrElse(""))
-
     override def setSecret(secretRef: Ref[Option[String]]): ZIO[SttpClient, TamerError, Unit] = {
       val fetchToken = send(basicRequest.get(uri"http://localhost:9095/auth").auth.basic("user", "pass"))
         .flatMap(_.body match {
@@ -41,13 +33,17 @@ object RESTCustomAuth extends App {
     }
   }
 
-  private val program = RESTTamer.withPagination(
-    baseUrl = "http://localhost:9095",
-    pageDecoder = pageDecoder,
-    offsetParameterName = "offset",
-    increment = 2,
-    authenticationMethod = Some(authentication)
-  )((_, data) => MyKey(data.i))
+  val program = RESTSetup
+    .paginated(
+      baseUrl = "http://localhost:9095",
+      pageDecoder = pageDecoder,
+      authentication = Some(authentication)
+    )(
+      recordKey = (_, data) => MyKey(data.i),
+      offsetParameterName = "offset",
+      increment = 2
+    )
+    .runWith(restLive() ++ kafkaConfigFromEnvironment)
 
-  override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.run.provideCustomLayer(fullLayer).exitCode
+  override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
 }

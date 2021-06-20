@@ -1,44 +1,89 @@
 package tamer
 package oci.objectstorage
 
-import zio.URIO
+import log.effect.LogWriter
+import log.effect.zio.ZioLogWriter.log4sFromName
+import zio._
+import zio.blocking.Blocking
+import zio.oci.objectstorage.{Limit, ListObjectsOptions, ObjectStorage, getObject, listObjects}
 import zio.stream.ZTransducer
 
-import scala.util.hashing.MurmurHash3.stringHash
+sealed abstract case class ObjectStorageSetup[-R, K, V, S](
+    serdes: Setup.Serdes[K, V, S],
+    initialState: S,
+    recordKey: (S, V) => K,
+    namespace: String,
+    bucket: String,
+    prefix: Option[String],
+    objectName: S => Option[String],
+    startAfter: S => Option[String],
+    objectNameFinder: String => Boolean,
+    stateFold: (S, Option[String]) => URIO[R, S],
+    transducer: ZTransducer[R, Throwable, Byte, V]
+) extends Setup[R with Blocking with ObjectStorage, K, V, S] {
 
-trait ObjectNameBuilder[-S] {
-  def startAfter(state: S): Option[String]
-  def objectName(state: S): Option[String]
+  private[this] final val namespaceHash = namespace.hash
+  private[this] final val bucketHash    = bucket.hash
+  private[this] final val prefixHash    = prefix.getOrElse("").hash
+
+  override final val stateKey = namespaceHash + bucketHash + prefixHash
+  override final val repr =
+    s"""namespace:      $namespace
+       |namespace hash: $namespaceHash
+       |bucket:         $bucket
+       |bucket hash:    $bucketHash
+       |prefix:         $prefix
+       |prefix hash:    $prefixHash
+       |state key:      $stateKey
+       |""".stripMargin
+
+  private[this] final val logTask = log4sFromName.provide("tamer.oci.objectstorage")
+
+  private[this] final def process(log: LogWriter[Task], currentState: S, queue: Queue[Chunk[(K, V)]]) =
+    objectName(currentState) match {
+      case Some(name) =>
+        log.info(s"getting object $name") *> getObject(namespace, bucket, name)
+          .transduce(transducer)
+          .map(value => recordKey(currentState, value) -> value)
+          .foreachChunk(queue.offer)
+      case None =>
+        log.debug("no state change")
+    }
+
+  override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R with Blocking with ObjectStorage, S] = for {
+    log        <- logTask
+    _          <- log.debug(s"current state: $currentState")
+    options    <- UIO(ListObjectsOptions(prefix, None, startAfter(currentState), Limit.Max))
+    nextObject <- listObjects(namespace, bucket, options)
+    _          <- process(log, currentState, queue)
+    newState   <- stateFold(currentState, nextObject.objectSummaries.find(os => objectNameFinder(os.getName)).map(_.getName))
+  } yield newState
 }
 
 object ObjectStorageSetup {
-  case class State[R, K, V, S](
-      initialState: S,
-      getNextState: (S, Option[String]) => URIO[R, S],
-      deriveKafkaRecordKey: (S, V) => K
-  )
-}
-
-final case class ObjectStorageSetup[R, K: Codec, V: Codec, S: Codec](
-    namespace: String,
-    bucketName: String,
-    prefix: Option[String],
-    objectNameFinder: String => Boolean,
-    objectNameBuilder: ObjectNameBuilder[S],
-    transitions: ObjectStorageSetup.State[R, K, V, S],
-    transducer: ZTransducer[R, TamerError, Byte, V]
-) {
-  private val repr: String =
-    s"""
-       |namespace: $namespace
-       |bucket:    $bucketName
-       |prefix:    $prefix
-       |""".stripMargin.stripLeading()
-
-  val generic: Setup[K, V, S] = Setup(
+  def apply[R, K: Codec, V: Codec, S: Codec](
+      namespace: String,
+      bucket: String,
+      initialState: S
+  )(
+      recordKey: (S, V) => K,
+      stateFold: (S, Option[String]) => URIO[R, S],
+      objectName: S => Option[String],
+      startAfter: S => Option[String],
+      prefix: Option[String] = None,
+      objectNameFinder: String => Boolean = _ => true,
+      transducer: ZTransducer[R, Throwable, Byte, V] = ZTransducer.utf8Decode >>> ZTransducer.splitLines
+  ): ObjectStorageSetup[R, K, V, S] = new ObjectStorageSetup(
     Setup.Serdes[K, V, S],
-    transitions.initialState,
-    stringHash(namespace) + stringHash(bucketName) + stringHash(prefix.getOrElse("")),
-    repr
-  )
+    initialState,
+    recordKey,
+    namespace,
+    bucket,
+    prefix,
+    objectName,
+    startAfter,
+    objectNameFinder,
+    stateFold,
+    transducer
+  ) {}
 }
