@@ -63,7 +63,6 @@ object Tamer {
         case emptyChunk => UIO(emptyChunk)
       }
       .runDrain
-      .onError(e => log.warn(s"could not push to topic $topic: ${e.prettyPrint}").orDie)
 
   private[tamer] final def source[K, V, S](
       stateTopic: String,
