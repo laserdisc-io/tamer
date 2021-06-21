@@ -15,7 +15,7 @@ import zio.kafka.producer.{Producer, ProducerSettings}
 import zio.stream.{UStream, ZStream}
 
 trait Tamer {
-  def runLoop: ZIO[Blocking with Clock, TamerError, Unit]
+  def runLoop: ZIO[Clock, TamerError, Unit]
 }
 
 object Tamer {
@@ -57,7 +57,7 @@ object Tamer {
         case chunk if chunk.nonEmpty =>
           producer
             .produceChunk(chunk)
-            .provideSomeLayer[Blocking](registryLayer)
+            .provideLayer(registryLayer)
             .tapError(_ => log.debug(s"failed pushing ${chunk.size} messages to $topic"))
             .retry(tenTimes) <* log.info(s"pushed ${chunk.size} messages to $topic")
         case emptyChunk => UIO(emptyChunk)
@@ -143,8 +143,9 @@ object Tamer {
         log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
           stateProducer
             .produce(stateTopic, key, initialState)
-            .provideSomeLayer[Blocking](registryLayer)
-            .flatMap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
+            .provideLayer(registryLayer)
+            .tap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
+            .unit
       case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
       case Retry | Fail => // TODO: fix handling of retry case
         log.error(s"consumer group $stateGroupId is already at the end of $stateTopic, manual intervention required") *>
@@ -153,7 +154,7 @@ object Tamer {
 
     val stateStream = stateConsumer
       .plainStream(stateKeySerde.deserializer, stateSerde)
-      .provideSomeLayer[Blocking with Clock](registryLayer)
+      .provideLayer(registryLayer)
       .mapM {
         case CommittableRecord(record, offset) if record.key == key =>
           log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.info}") *>
@@ -168,7 +169,7 @@ object Tamer {
                 log.debug(s"consumer group $stateGroupId committed offset ${offset.info}") <*
                 stateProducer
                   .produce(stateTopic, key, newState)
-                  .provideSomeLayer[Blocking](registryLayer)
+                  .provideLayer(registryLayer)
                   .tap(rmd => log.debug(s"pushed state $newState to $rmd"))
             }
         case CommittableRecord(record, offset) =>
@@ -242,7 +243,7 @@ object Tamer {
       _     <- sourceStream(kvChunkQueue, stateRegistry, log).ensuringFirst(stopSource(log)).ensuring(drainSink(fiber, kvStream, sinkRegistry, log))
     } yield ()
 
-    override final val runLoop: ZIO[Blocking with Clock, TamerError, Unit] = {
+    override final val runLoop: ZIO[Clock, TamerError, Unit] = {
       val logic = for {
         log                  <- logTask
         _                    <- log.info(s"initializing Tamer with setup: \n$repr")
@@ -267,7 +268,7 @@ object Tamer {
         stateKey: Int,
         iterationFunction: (S, Queue[Chunk[(K, V)]]) => Task[S],
         repr: String
-    ): ZManaged[Clock with Blocking, TamerError, Live[K, V, S]] = {
+    ): ZManaged[Blocking with Clock, TamerError, Live[K, V, S]] = {
 
       val KafkaConfig(brokers, _, closeTimeout, _, _, StateConfig(_, groupId, clientId), properties) = config
 
@@ -296,13 +297,13 @@ object Tamer {
 
     private[tamer] final def getLayer[R, K, V, S](
         setup: Setup[R, K, V, S]
-    ): ZLayer[R with Clock with Blocking with Has[KafkaConfig], TamerError, Has[Tamer]] =
-      ZLayer.fromServiceManaged[KafkaConfig, R with Clock with Blocking, TamerError, Tamer] { config =>
+    ): ZLayer[R with Blocking with Clock with Has[KafkaConfig], TamerError, Has[Tamer]] =
+      ZLayer.fromServiceManaged[KafkaConfig, R with Blocking with Clock, TamerError, Tamer] { config =>
         val iterationFunctionManaged = ZIO.environment[R].map(r => Function.untupled((setup.iteration _).tupled.andThen(_.provide(r)))).toManaged_
         iterationFunctionManaged.flatMap(Live.getManaged(config, setup.serdes, setup.initialState, setup.stateKey, _, setup.repr))
       }
   }
 
-  final def live[R, K, V, S](setup: Setup[R, K, V, S]): ZLayer[R with Has[KafkaConfig] with Clock with Blocking, TamerError, Has[Tamer]] =
+  final def live[R, K, V, S](setup: Setup[R, K, V, S]): ZLayer[R with Blocking with Clock with Has[KafkaConfig], TamerError, Has[Tamer]] =
     Live.getLayer(setup)
 }

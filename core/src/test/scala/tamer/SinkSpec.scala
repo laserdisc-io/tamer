@@ -5,7 +5,6 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.{Metric, MetricName, TopicPartition}
 import zio._
-import zio.blocking.Blocking
 import zio.duration.durationInt
 import zio.kafka.producer.Producer.Service
 import zio.stream.ZStream
@@ -42,15 +41,15 @@ object SinkSpec extends DefaultRunnableSpec {
 }
 
 sealed class FakeProducer[R, K, V](val produced: Ref[Vector[ProducerRecord[K, V]]]) extends Service[R, K, V] {
-  override def produce(record: ProducerRecord[K, V]): RIO[R with Blocking, RecordMetadata]                                = ???
-  override def produce(topic: String, key: K, value: V): RIO[R with Blocking, RecordMetadata]                             = ???
-  override def produceAsync(record: ProducerRecord[K, V]): RIO[R with Blocking, Task[RecordMetadata]]                     = ???
-  override def produceAsync(topic: String, key: K, value: V): RIO[R with Blocking, Task[RecordMetadata]]                  = ???
-  override def produceChunkAsync(records: Chunk[ProducerRecord[K, V]]): RIO[R with Blocking, Task[Chunk[RecordMetadata]]] = ???
-  override def produceChunk(records: Chunk[ProducerRecord[K, V]]): RIO[R with Blocking, Chunk[RecordMetadata]] =
+  override def produce(record: ProducerRecord[K, V]): RIO[R, RecordMetadata]                                = ???
+  override def produce(topic: String, key: K, value: V): RIO[R, RecordMetadata]                             = ???
+  override def produceAsync(record: ProducerRecord[K, V]): RIO[R, Task[RecordMetadata]]                     = ???
+  override def produceAsync(topic: String, key: K, value: V): RIO[R, Task[RecordMetadata]]                  = ???
+  override def produceChunkAsync(records: Chunk[ProducerRecord[K, V]]): RIO[R, Task[Chunk[RecordMetadata]]] = ???
+  override def produceChunk(records: Chunk[ProducerRecord[K, V]]): RIO[R, Chunk[RecordMetadata]] =
     produced.update(_ ++ records) *> UIO(Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0)))
-  override def flush: RIO[Blocking, Unit]                      = ???
-  override def metrics: RIO[Blocking, Map[MetricName, Metric]] = ???
+  override def flush: Task[Unit]                      = ???
+  override def metrics: Task[Map[MetricName, Metric]] = ???
 }
 object FakeProducer {
   def mk[R, K, V]: UIO[FakeProducer[R, K, V]] =
@@ -58,7 +57,7 @@ object FakeProducer {
 }
 sealed class FailingFakeProducer[R, K, V](override val produced: Ref[Vector[ProducerRecord[K, V]]], counter: Ref[Int])
     extends FakeProducer[R, K, V](produced) {
-  override def produceChunkAsync(records: Chunk[ProducerRecord[K, V]]): RIO[R with Blocking, Task[Chunk[RecordMetadata]]] =
+  override def produceChunkAsync(records: Chunk[ProducerRecord[K, V]]): RIO[R, Task[Chunk[RecordMetadata]]] =
     counter.updateAndGet(_ + 1).flatMap {
       case 10 =>
         produced.update(_ ++ records) *> UIO(UIO(Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0))))
