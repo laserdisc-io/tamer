@@ -1,28 +1,27 @@
-val scala_212 = "2.12.13"
+val scala_212 = "2.12.14"
 val scala_213 = "2.13.6"
 
 val V = new {
   val avro4s         = "4.0.9"
-  val awsSdk         = "2.16.74"
+  val awsSdk         = "2.16.87"
   val cats           = "2.6.1"
-  val circe          = "0.13.0"
-  val ciris          = "2.0.1"
+  val circe          = "0.14.1"
+  val ciris          = "1.2.1"
   val confluent      = "6.1.1"
   val doobie         = "0.13.4"
-  val `json-schema`  = "1.12.2"
+  val `json-schema`  = "1.12.3"
   val kafka          = "2.7.0"
   val logback        = "1.2.3"
   val `log-effect`   = "0.15.0"
-  val ociSdk         = "1.37.0"
-  val postgres       = "42.2.20"
-  val refined        = "0.9.26"
+  val ociSdk         = "1.37.2"
+  val postgres       = "42.2.22"
   val `scala-compat` = "2.4.4"
-  val slf4j          = "1.7.30"
-  val sttp           = "3.3.5"
+  val slf4j          = "1.7.31"
+  val sttp           = "3.3.7"
   val uzhttp         = "0.2.7"
-  val zio            = "1.0.8"
+  val zio            = "1.0.9"
   val `zio-interop`  = "2.5.1.0"
-  val `zio-kafka`    = "0.14.0"
+  val `zio-kafka`    = "0.15.0"
   val `zio-oci-os`   = "0.2.1"
   val `zio-s3`       = "0.3.5"
 }
@@ -101,15 +100,13 @@ lazy val core = project
   .settings(
     name := "tamer-core",
     libraryDependencies ++= Seq(
-      "com.sksamuel.avro4s"              %% "avro4s-core"                    % V.avro4s,
+      "com.sksamuel.avro4s"              %% "avro4s-core"                    % V.avro4s        % Optional,
       "dev.zio"                          %% "zio-interop-cats"               % V.`zio-interop`,
       "dev.zio"                          %% "zio-kafka"                      % V.`zio-kafka`,
       "dev.zio"                          %% "zio-streams"                    % V.zio,
-      "eu.timepit"                       %% "refined"                        % V.refined,
-      "io.confluent"                      % "kafka-avro-serializer"          % V.confluent,
+      "io.confluent"                      % "kafka-schema-registry-client"   % V.confluent,
       "io.laserdisc"                     %% "log-effect-zio"                 % V.`log-effect`,
       "is.cir"                           %% "ciris"                          % V.ciris,
-      "is.cir"                           %% "ciris-refined"                  % V.ciris,
       "org.apache.kafka"                  % "kafka-clients"                  % V.kafka,
       "ch.qos.logback"                    % "logback-classic"                % V.logback       % Test,
       "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test,
@@ -164,6 +161,7 @@ lazy val rest = project
     name := "tamer-rest",
     libraryDependencies ++= Seq(
       "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp,
+      "com.sksamuel.avro4s"           %% "avro4s-core"            % V.avro4s % Test,
       "io.circe"                      %% "circe-core"             % V.circe  % Test,
       "io.circe"                      %% "circe-generic"          % V.circe  % Test,
       "io.circe"                      %% "circe-parser"           % V.circe  % Test,
@@ -179,6 +177,7 @@ lazy val example = project
   .settings(
     libraryDependencies ++= Seq(
       "ch.qos.logback"          % "logback-classic"         % V.logback,
+      "com.sksamuel.avro4s"    %% "avro4s-core"             % V.avro4s,
       "org.polynote"           %% "uzhttp"                  % V.uzhttp,
       "org.postgresql"          % "postgresql"              % V.postgres,
       "org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`

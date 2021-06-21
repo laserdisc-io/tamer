@@ -1,36 +1,11 @@
 package tamer
 
-import com.sksamuel.avro4s._
-import io.confluent.kafka.schemaregistry.ParsedSchema
-import io.confluent.kafka.schemaregistry.avro.AvroSchema
-import zio.kafka.serde.{Deserializer, Serializer}
-import zio.{Has, RIO, Task, URIO}
-
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream, OutputStream}
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.ByteBuffer
 
-sealed trait Codec[A] { // we need this since avro4s Codec _is_ both an Encoder and a Decoder
-  def decode: InputStream => Either[Throwable, A]
-  def encode: (A, OutputStream) => Unit
-  def schema: ParsedSchema
-}
-
-object Codec {
-  final def apply[A](implicit A: Codec[A]): Codec[A] = A
-
-  implicit final def avro4s[A: Decoder: Encoder: SchemaFor]: Codec[A] = new Codec[A] {
-    private[this] final val _avroSchema                            = SchemaFor[A].schema
-    private[this] final val _avroDecoder                           = AvroInputStream.binary[A](Decoder[A])
-    private[this] final val _avroEncoder                           = AvroOutputStream.binary[A](Encoder[A])
-    override final val decode: InputStream => Either[Throwable, A] = _avroDecoder.from(_).build(_avroSchema).tryIterator.next().toEither
-    override final val encode: (A, OutputStream) => Unit = (a, os) => {
-      val ser = _avroEncoder.to(os).build()
-      ser.write(a)
-      ser.close()
-    }
-    override final val schema: ParsedSchema = new AvroSchema(_avroSchema)
-  }
-}
+import io.confluent.kafka.schemaregistry.ParsedSchema
+import zio.kafka.serde.{Deserializer, Serializer}
+import zio.{Has, RIO, Task, URIO}
 
 sealed trait Serde[A] extends Any {
   def isKey: Boolean
@@ -60,7 +35,7 @@ object Serde {
         for {
           _ <- RIO.accessM[Has[Registry]](_.get.verifySchema(id, schema))
           res <- RIO.fromEither {
-            val length  = buffer.limit() - 1 - intByteSize
+            val length  = buffer.limit() - (intByteSize + 1)
             val payload = new Array[Byte](length)
             buffer.get(payload, 0, length)
             codec.decode(new ByteArrayInputStream(payload))
@@ -74,8 +49,7 @@ object Serde {
         id <- RIO.accessM[Has[Registry]](_.get.getOrRegisterId(subject(t), schema))
         arr <- Task {
           val baos = new ByteArrayOutputStream
-          baos.write(Magic.toInt)
-          baos.write(ByteBuffer.allocate(intByteSize).putInt(id).array())
+          baos.write(ByteBuffer.allocate(intByteSize + 1).put(Magic).putInt(id).array())
           codec.encode(a, baos)
           baos.toByteArray
         }

@@ -1,31 +1,27 @@
 package tamer
 
+import java.sql.SQLException
+import java.time.Instant
+
 import cats.effect.Blocker
 import doobie.hikari.HikariTransactor
 import doobie.util.transactor.Transactor
-import eu.timepit.refined.api.Refined
-import eu.timepit.refined.auto._
-import eu.timepit.refined.string.Uri
 import zio._
 import zio.blocking.Blocking
+import zio.duration._
 import zio.interop.catz._
 
-import java.sql.SQLException
-import java.time.Instant
 import scala.concurrent.ExecutionContext
-import scala.concurrent.duration.FiniteDuration
+import scala.math.Ordering.Implicits._
 
 package object db {
-  type Password  = String
-  type UriString = String Refined Uri
-
   implicit final class InstantOps(private val instant: Instant) extends AnyVal {
-    def orNow: UIO[Instant] = UIO(Instant.now).map {
-      case now if instant.isAfter(now) => now
-      case _                           => instant
+    def orNow(lag: Duration = 0.seconds): Instant = Instant.now() match {
+      case now if instant > now => now - lag
+      case _                    => instant
     }
-    def +(d: FiniteDuration): Instant = instant.plusMillis(d.toMillis)
-    def -(d: FiniteDuration): Instant = instant.minusMillis(d.toMillis)
+    def +(d: Duration): Instant = instant.plus(d)
+    def -(d: Duration): Instant = instant.minus(d)
   }
 
   final val hikariLayer: ZLayer[Blocking with Has[ConnectionConfig], TamerError, Has[Transactor[Task]]] = ZLayer.fromManaged {
@@ -47,4 +43,9 @@ package object db {
       .toManagedZIO
       .refineToOrDie[SQLException]
       .mapError(sqle => TamerError(sqle.getLocalizedMessage, sqle))
+
+  final val dbLayerFromEnvironment: ZLayer[Blocking, TamerError, Has[ConnectionConfig] with Has[QueryConfig] with Has[Transactor[Task]]] = {
+    val configs = DbConfig.fromEnvironment
+    configs ++ ((ZLayer.requires[Blocking] ++ configs) >>> hikariLayer)
+  }
 }
