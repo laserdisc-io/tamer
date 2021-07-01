@@ -1,17 +1,16 @@
 package tamer
 
 import java.net.http.HttpRequest
-
 import sttp.capabilities.{Effect, WebSockets}
 import sttp.capabilities.zio.ZioStreams
-import sttp.client3.Request
+import sttp.client3.{Request, Response, SttpBackendOptions}
 import zio.{Has, Layer, Ref, Task}
 import sttp.client3.httpclient.zio._
-import sttp.client3.SttpBackendOptions
 
 package object rest {
   type EphemeralSecretCache = Ref[Option[String]]
   type SttpRequest          = Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets]
+  type FallibleResponse     = Either[Throwable, Response[Either[String, String]]]
 
   final def restLive(
       options: SttpBackendOptions = SttpBackendOptions.Default,

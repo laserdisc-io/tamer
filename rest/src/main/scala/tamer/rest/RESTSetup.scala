@@ -24,7 +24,7 @@ sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
     filterPage: (DecodedPage[V, S], S) => List[V],
     stateFold: (DecodedPage[V, S], S) => URIO[R, S],
     retrySchedule: Option[
-      SttpRequest => Schedule[Any, Either[Throwable, Response[Either[String, String]]], Either[Throwable, Response[Either[String, String]]]]
+      SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
     ] = None
 ) extends Setup[R with SttpClient with Clock with Has[EphemeralSecretCache], K, V, S] {
 
@@ -114,7 +114,7 @@ object RESTSetup {
       authentication: Option[Authentication[R]] = None,
       filterPage: (DecodedPage[V, S], S) => List[V] = (dp: DecodedPage[V, S], _: S) => dp.data,
       retrySchedule: Option[
-        SttpRequest => Schedule[Any, Either[Throwable, Response[Either[String, String]]], Either[Throwable, Response[Either[String, String]]]]
+        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
       ] = None
   ): RESTSetup[R, K, V, S] = new RESTSetup(
     Setup.Serdes[K, V, S],
@@ -133,7 +133,7 @@ object RESTSetup {
       pageDecoder: String => RIO[R, DecodedPage[V, Offset]],
       authentication: Option[Authentication[R]] = None,
       retrySchedule: Option[
-        SttpRequest => Schedule[Any, Either[Throwable, Response[Either[String, String]]], Either[Throwable, Response[Either[String, String]]]]
+        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
       ] = None
   )(
       recordKey: (Offset, V) => K,
@@ -222,7 +222,7 @@ object RESTSetup {
       startingOffset: Int = 0,
       filterPage: (DecodedPage[V, PeriodicOffset], PeriodicOffset) => List[V] = (dp: DecodedPage[V, PeriodicOffset], _: PeriodicOffset) => dp.data,
       retrySchedule: Option[
-        SttpRequest => Schedule[Any, Either[Throwable, Response[Either[String, String]]], Either[Throwable, Response[Either[String, String]]]]
+        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
       ] = None
   )(recordKey: (PeriodicOffset, V) => K)(
       implicit ev: Codec[PeriodicOffset]

@@ -18,7 +18,7 @@ object RESTBasicAuth extends App {
 
   def retrySchedule(
       request: SttpRequest
-  ): Schedule[Any, Either[Throwable, Response[Either[String, String]]], Either[Throwable, Response[Either[String, String]]]] =
+  ): Schedule[Any, FallibleResponse, FallibleResponse] =
     Schedule.spaced(5.seconds) *> Schedule.recurs(3) *> Schedule.recurWhile(response => RetryWhen.Default(request, response))
 
   val program: ZIO[ZEnv, TamerError, Unit] = RESTSetup
