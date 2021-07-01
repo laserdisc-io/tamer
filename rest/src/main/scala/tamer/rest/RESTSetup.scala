@@ -22,8 +22,11 @@ sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
     queryFor: S => Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets],
     pageDecoder: String => RIO[R, DecodedPage[V, S]],
     filterPage: (DecodedPage[V, S], S) => List[V],
-    stateFold: (DecodedPage[V, S], S) => URIO[R, S]
-) extends Setup[R with SttpClient with Has[EphemeralSecretCache], K, V, S] {
+    stateFold: (DecodedPage[V, S], S) => URIO[R, S],
+    retrySchedule: Option[
+      SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
+    ] = None
+) extends Setup[R with SttpClient with Clock with Has[EphemeralSecretCache], K, V, S] {
 
   private[this] final val query            = queryFor(initialState).show(includeHeaders = false, includeBody = false)
   private[this] final val queryHash        = query.hash
@@ -44,12 +47,17 @@ sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
       request: SttpRequest,
       secretCacheRef: EphemeralSecretCache,
       log: LogWriter[Task]
-  ): RIO[R with SttpClient, DecodedPage[V, S]] = {
-    def authenticateAndSendRequest(auth: Authentication[R]): RIO[R with SttpClient, Response[Either[String, String]]] = {
+  ): RIO[R with SttpClient with Clock, DecodedPage[V, S]] = {
+    def sendRequestRepeatMaybe(request: SttpRequest) =
+      retrySchedule.fold[ZIO[SttpClient with Clock, Throwable, Response[Either[String, String]]]](send(request))(schedule =>
+        send(request).either.repeat(schedule(request)).absolve
+      )
 
-      def authenticateAndSendHelper(maybeToken: Option[String]): RIO[SttpClient, Response[Either[String, String]]] = {
+    def authenticateAndSendRequest(auth: Authentication[R]): RIO[R with SttpClient with Clock, Response[Either[String, String]]] = {
+
+      def authenticateAndSendHelper(maybeToken: Option[String]): RIO[SttpClient with Clock, Response[Either[String, String]]] = {
         val authenticatedRequest = auth.addAuthentication(request, maybeToken)
-        log.debug(s"going to execute request $authenticatedRequest") *> send(authenticatedRequest)
+        log.debug(s"going to execute request $authenticatedRequest") *> sendRequestRepeatMaybe(authenticatedRequest)
       }
 
       for {
@@ -68,7 +76,7 @@ sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
     }
 
     for {
-      response <- authentication.map(authenticateAndSendRequest).getOrElse(send(request))
+      response <- authentication.map(authenticateAndSendRequest).getOrElse(sendRequestRepeatMaybe(request))
       decodedPage <- response.body match {
         case Left(error) =>
           // assume the cookie/auth expired
@@ -87,7 +95,7 @@ sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
   // (for example when we are waiting new pages to appear). This has to be combined with an
   // intuitive filtering of the page result and automatic type inference of the state for
   // the page decoder helper functions.
-  override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R with SttpClient with Has[EphemeralSecretCache], S] = for {
+  override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R with SttpClient with Clock with Has[EphemeralSecretCache], S] = for {
     log         <- logTask
     tokenCache  <- ZIO.service[EphemeralSecretCache]
     decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
@@ -104,7 +112,10 @@ object RESTSetup {
       recordKey: (S, V) => K,
       stateFold: (DecodedPage[V, S], S) => URIO[R, S],
       authentication: Option[Authentication[R]] = None,
-      filterPage: (DecodedPage[V, S], S) => List[V] = (dp: DecodedPage[V, S], _: S) => dp.data
+      filterPage: (DecodedPage[V, S], S) => List[V] = (dp: DecodedPage[V, S], _: S) => dp.data,
+      retrySchedule: Option[
+        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
+      ] = None
   ): RESTSetup[R, K, V, S] = new RESTSetup(
     Setup.Serdes[K, V, S],
     initialState,
@@ -113,13 +124,17 @@ object RESTSetup {
     query,
     pageDecoder,
     filterPage,
-    stateFold
+    stateFold,
+    retrySchedule
   ) {}
 
   def paginated[R, K: Codec, V: Codec](
       baseUrl: String,
       pageDecoder: String => RIO[R, DecodedPage[V, Offset]],
-      authentication: Option[Authentication[R]] = None
+      authentication: Option[Authentication[R]] = None,
+      retrySchedule: Option[
+        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
+      ] = None
   )(
       recordKey: (Offset, V) => K,
       offsetParameterName: String = "page",
@@ -156,7 +171,8 @@ object RESTSetup {
       queryFor,
       pageDecoder,
       filterPage,
-      nextPageOrNextIndexIfPageNotComplete
+      nextPageOrNextIndexIfPageNotComplete,
+      retrySchedule
     ) {
       override def iteration(
           currentState: Offset,
@@ -204,7 +220,10 @@ object RESTSetup {
       maxPeriod: Duration = 1.hour,
       readRequestTimeout: Duration = 30.seconds,
       startingOffset: Int = 0,
-      filterPage: (DecodedPage[V, PeriodicOffset], PeriodicOffset) => List[V] = (dp: DecodedPage[V, PeriodicOffset], _: PeriodicOffset) => dp.data
+      filterPage: (DecodedPage[V, PeriodicOffset], PeriodicOffset) => List[V] = (dp: DecodedPage[V, PeriodicOffset], _: PeriodicOffset) => dp.data,
+      retrySchedule: Option[
+        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
+      ] = None
   )(recordKey: (PeriodicOffset, V) => K)(
       implicit ev: Codec[PeriodicOffset]
   ): RESTSetup[R with Clock, K, V, PeriodicOffset] = {
@@ -238,7 +257,8 @@ object RESTSetup {
       queryFor,
       pageDecoder,
       filterPage,
-      getNextState
+      getNextState,
+      retrySchedule
     ) {
       override def iteration(
           currentState: PeriodicOffset,
