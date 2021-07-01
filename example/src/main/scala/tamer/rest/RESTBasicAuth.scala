@@ -1,7 +1,7 @@
 package tamer
 package rest
 
-import sttp.client3.{Response, RetryWhen}
+import sttp.client3.RetryWhen
 import zio._
 import zio.duration._
 
