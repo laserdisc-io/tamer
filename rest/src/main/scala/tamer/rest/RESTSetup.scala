@@ -14,7 +14,7 @@ import zio._
 import zio.clock.Clock
 import zio.duration._
 
-sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
+abstract case class RESTSetup[-R, K, V, S: Hashable](
     serdes: Setup.Serdes[K, V, S],
     initialState: S,
     recordKey: (S, V) => K,
