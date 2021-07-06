@@ -1,25 +1,24 @@
 package tamer
 package rest
 
-import java.time.Instant
-
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import sttp.capabilities.{Effect, WebSockets}
-import sttp.capabilities.zio.ZioStreams
-import sttp.client3.{Request, Response, UriContext, basicRequest}
 import sttp.client3.httpclient.zio.{SttpClient, send}
+import sttp.client3.{Response, UriContext, basicRequest}
 import sttp.model.StatusCode.{Forbidden, NotFound, Unauthorized}
 import zio._
 import zio.clock.Clock
 import zio.duration._
 
+import java.time.Instant
+
 abstract case class RESTSetup[-R, K, V, S: Hashable](
+    resourceName: String,
     serdes: Setup.Serdes[K, V, S],
     initialState: S,
     recordKey: (S, V) => K,
     authentication: Option[Authentication[R]],
-    queryFor: S => Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets],
+    queryFor: S => RIO[R, SttpRequest],
     pageDecoder: String => RIO[R, DecodedPage[V, S]],
     filterPage: (DecodedPage[V, S], S) => List[V],
     stateFold: (DecodedPage[V, S], S) => URIO[R, S],
@@ -28,14 +27,14 @@ abstract case class RESTSetup[-R, K, V, S: Hashable](
     ] = None
 ) extends Setup[R with SttpClient with Clock with Has[EphemeralSecretCache], K, V, S] {
 
-  private[this] final val query            = queryFor(initialState).show(includeHeaders = false, includeBody = false)
-  private[this] final val queryHash        = query.hash
   private[this] final val initialStateHash = initialState.hash
+  private[this] final val resourceNameHash = resourceName.hash
 
-  override final val stateKey = queryHash + initialStateHash
+  override final val stateKey = resourceNameHash + initialStateHash
+
   override final val repr =
-    s"""query:              $query
-       |query hash:         $queryHash
+    s"""resourceName:       $resourceName
+       |resourceName hash:  $resourceName
        |initial state:      $initialState
        |initial state hash: ${initialState.hash}
        |state key:          $stateKey
@@ -55,7 +54,7 @@ abstract case class RESTSetup[-R, K, V, S: Hashable](
 
     def authenticateAndSendRequest(auth: Authentication[R]): RIO[R with SttpClient with Clock, Response[Either[String, String]]] = {
 
-      def authenticateAndSendHelper(maybeToken: Option[String]): RIO[SttpClient with Clock, Response[Either[String, String]]] = {
+      def authenticateAndSendHelper(maybeToken: Option[String]): RIO[R with SttpClient with Clock, Response[Either[String, String]]] = {
         val authenticatedRequest = auth.addAuthentication(request, maybeToken)
         log.debug(s"going to execute request $authenticatedRequest") *> sendRequestRepeatMaybe(authenticatedRequest)
       }
@@ -98,7 +97,8 @@ abstract case class RESTSetup[-R, K, V, S: Hashable](
   override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R with SttpClient with Clock with Has[EphemeralSecretCache], S] = for {
     log         <- logTask
     tokenCache  <- ZIO.service[EphemeralSecretCache]
-    decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
+    request     <- queryFor(currentState)
+    decodedPage <- fetchAndDecodePage(request, tokenCache, log)
     chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
     _         <- queue.offer(chunk)
     nextState <- stateFold(decodedPage, currentState)
@@ -107,7 +107,8 @@ abstract case class RESTSetup[-R, K, V, S: Hashable](
 
 object RESTSetup {
   def apply[R, K: Codec, V: Codec, S: Codec: Hashable](initialState: S)(
-      query: S => Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets],
+      resourceName: String,
+      query: S => RIO[R, SttpRequest],
       pageDecoder: String => RIO[R, DecodedPage[V, S]],
       recordKey: (S, V) => K,
       stateFold: (DecodedPage[V, S], S) => URIO[R, S],
@@ -117,6 +118,7 @@ object RESTSetup {
         SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
       ] = None
   ): RESTSetup[R, K, V, S] = new RESTSetup(
+    resourceName,
     Setup.Serdes[K, V, S],
     initialState,
     recordKey,
@@ -146,7 +148,7 @@ object RESTSetup {
       implicit ev: Codec[Offset]
   ): RESTSetup[R with Clock, K, V, Offset] = {
     def queryFor(state: Offset) =
-      basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala)
+      RIO(basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala))
 
     def nextPageOrNextIndexIfPageNotComplete(decodedPage: DecodedPage[V, Offset], offset: Offset): URIO[R with Clock, Offset] = {
       val fetchedElementCount = decodedPage.data.length
@@ -164,6 +166,7 @@ object RESTSetup {
     }
 
     new RESTSetup(
+      s"$baseUrl/paginated",
       Setup.Serdes[K, V, Offset],
       initialOffset,
       recordKey,
@@ -201,7 +204,8 @@ object RESTSetup {
           log: LogWriter[Task]
       ): RIO[R with Clock with SttpClient, DecodedPage[V, Offset]] =
         for {
-          decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
+          request     <- queryFor(currentState)
+          decodedPage <- fetchAndDecodePage(request, tokenCache, log)
           dataFromIndex = decodedPage.data.drop(currentState.nextIndex)
           pageLength    = decodedPage.data.length
           _ <- log.debug(s"retrieved ${dataFromIndex.length} new datapoints. ($pageLength total for page ${currentState.offset})")
@@ -228,7 +232,7 @@ object RESTSetup {
       implicit ev: Codec[PeriodicOffset]
   ): RESTSetup[R with Clock, K, V, PeriodicOffset] = {
     def queryFor(state: PeriodicOffset) =
-      basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala)
+      RIO(basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala))
 
     def getNextState(decodedPage: DecodedPage[V, PeriodicOffset], periodicOffset: PeriodicOffset): URIO[R with Clock, PeriodicOffset] =
       decodedPage.nextState.map(UIO(_)).getOrElse {
@@ -250,6 +254,7 @@ object RESTSetup {
       }
 
     new RESTSetup(
+      s"$baseUrl/paginated",
       Setup.Serdes[K, V, PeriodicOffset],
       PeriodicOffset(startingOffset, periodStart),
       recordKey,
@@ -274,7 +279,8 @@ object RESTSetup {
             UIO(Duration.fromInterval(now, currentState.periodStart)).tap(delayUntilNextPeriod =>
               log.info(s"$baseUrl is going to sleep for ${delayUntilNextPeriod.render}")
             )
-        decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log).delay(delayUntilNextPeriod)
+        request     <- queryFor(currentState)
+        decodedPage <- fetchAndDecodePage(request, tokenCache, log).delay(delayUntilNextPeriod)
         _           <- queue.offer(Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value)))
         nextState   <- getNextState(decodedPage, currentState)
       } yield nextState

@@ -23,14 +23,15 @@ object RESTSetupSpec extends DefaultRunnableSpec with UzHttpServerSupport {
   }
 
   final case class Fixtures(port: Int) {
-    private[this] def queryFor(@unused state: State): Request[Either[String, String], Any] =
-      basicRequest.get(uri"http://localhost:$port/random").readTimeout(20.seconds.asScala)
+    private[this] def queryFor(@unused state: State): Task[SttpRequest] =
+      RIO(basicRequest.get(uri"http://localhost:$port/random").readTimeout(20.seconds.asScala))
 
     private[this] val decoder: String => Task[DecodedPage[Value, State]] = DecodedPage.fromString { v =>
       ZIO.fromEither(parser.decode[Value](v)).map(List(_)).catchAll(e => ZIO.fail(new RuntimeException(s"Decoder failed!\n$e")))
     }
 
     val rest = RESTSetup(State(0))(
+      "test-fixtures",
       queryFor,
       decoder,
       (_: State, v: Value) => Key(v.time),
