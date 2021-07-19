@@ -6,8 +6,12 @@ import zio._
 import zio.duration._
 import zio.interop.catz._
 
+sealed trait StateRecoveryStrategy extends Product with Serializable
+case object ManualRecovery         extends StateRecoveryStrategy
+case object AutomaticRecovery      extends StateRecoveryStrategy
+
 final case class SinkConfig(topic: String)
-final case class StateConfig(topic: String, groupId: String, clientId: String)
+final case class StateConfig(topic: String, groupId: String, clientId: String, recoveryStrategy: StateRecoveryStrategy = ManualRecovery)
 final case class KafkaConfig(
     brokers: List[String],
     schemaRegistryUrl: String,
@@ -46,7 +50,7 @@ object KafkaConfig {
     env("KAFKA_STATE_TOPIC").as[String],
     env("KAFKA_STATE_GROUP_ID").as[String],
     env("KAFKA_STATE_CLIENT_ID").as[String]
-  ).parMapN(StateConfig)
+  ).parMapN(StateConfig(_, _, _, ManualRecovery))
   private[this] val kafkaConfigValue = (
     env("KAFKA_BROKERS").as[List[String]],
     env("KAFKA_SCHEMA_REGISTRY_URL").as[String],
