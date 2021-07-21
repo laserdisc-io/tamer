@@ -2,11 +2,10 @@ package tamer
 
 import io.confluent.kafka.schemaregistry.ParsedSchema
 import log.effect.zio.ZioLogWriter.log4sFromName
-import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
-import org.apache.kafka.common.{Metric, MetricName, TopicPartition}
+import org.apache.kafka.clients.producer.ProducerRecord
+import utils.{FailingFakeProducer, FakeProducer}
 import zio._
 import zio.duration.durationInt
-import zio.kafka.producer.Producer.Service
 import zio.stream.ZStream
 import zio.test.Assertion._
 import zio.test.environment.TestClock
@@ -22,50 +21,20 @@ object SinkSpec extends DefaultRunnableSpec {
     testM("should correctly produce") {
       for {
         log      <- log4sFromName.provide("test1")
-        producer <- FakeProducer.mk[RegistryInfo, Key, Value]
+        producer <- FakeProducer.mk[RegistryInfo, Key, Value](log)
         _        <- Tamer.sink(ZStream.repeat(Key(42) -> Value(42)).take(1), producer, "topic", nullRegistryInfoFor("topic"), log)
-        records  <- producer.produced.get
-      } yield assert(records)(equalTo(Vector(new ProducerRecord("topic", Key(42), Value(42)))))
+        records  <- producer.produced.takeAll
+      } yield assert(records)(equalTo(List(new ProducerRecord("topic", Key(42), Value(42)))))
     },
     testM("should correctly produce in case of moderate jitter") {
       for {
         log      <- log4sFromName.provide("test2")
-        producer <- FailingFakeProducer.mk[RegistryInfo, Key, Value]
+        producer <- FailingFakeProducer.mk[RegistryInfo, Key, Value](log)
         fiber    <- Tamer.sink(ZStream.repeat(Key(42) -> Value(42)).take(1), producer, "topic", nullRegistryInfoFor("topic"), log).fork
         _        <- TestClock.adjust(5.second).repeat(Schedule.recurs(10))
         _        <- fiber.join
-        records  <- producer.produced.get
-      } yield assert(records)(equalTo(Vector(new ProducerRecord("topic", Key(42), Value(42)))))
+        records  <- producer.produced.takeAll
+      } yield assert(records)(equalTo(List(new ProducerRecord("topic", Key(42), Value(42)))))
     }
   )
-}
-
-sealed class FakeProducer[R, K, V](val produced: Ref[Vector[ProducerRecord[K, V]]]) extends Service[R, K, V] {
-  override def produce(record: ProducerRecord[K, V]): RIO[R, RecordMetadata]                                = ???
-  override def produce(topic: String, key: K, value: V): RIO[R, RecordMetadata]                             = ???
-  override def produceAsync(record: ProducerRecord[K, V]): RIO[R, Task[RecordMetadata]]                     = ???
-  override def produceAsync(topic: String, key: K, value: V): RIO[R, Task[RecordMetadata]]                  = ???
-  override def produceChunkAsync(records: Chunk[ProducerRecord[K, V]]): RIO[R, Task[Chunk[RecordMetadata]]] = ???
-  override def produceChunk(records: Chunk[ProducerRecord[K, V]]): RIO[R, Chunk[RecordMetadata]] =
-    produced.update(_ ++ records) *> UIO(Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0)))
-  override def flush: Task[Unit]                      = ???
-  override def metrics: Task[Map[MetricName, Metric]] = ???
-}
-object FakeProducer {
-  def mk[R, K, V]: UIO[FakeProducer[R, K, V]] =
-    Ref.make(Vector.empty[ProducerRecord[K, V]]).map(new FakeProducer(_))
-}
-sealed class FailingFakeProducer[R, K, V](override val produced: Ref[Vector[ProducerRecord[K, V]]], counter: Ref[Int])
-    extends FakeProducer[R, K, V](produced) {
-  override def produceChunkAsync(records: Chunk[ProducerRecord[K, V]]): RIO[R, Task[Chunk[RecordMetadata]]] =
-    counter.updateAndGet(_ + 1).flatMap {
-      case 10 =>
-        produced.update(_ ++ records) *> UIO(UIO(Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0))))
-      case n => ZIO.fail(new RuntimeException(s"expected error for testing purposes with counter $n"))
-    }
-}
-object FailingFakeProducer {
-  def mk[R, K, V]: UIO[FakeProducer[R, K, V]] = UIO.mapN(Ref.make(Vector.empty[ProducerRecord[K, V]]), Ref.make(0)) {
-    new FailingFakeProducer(_, _)
-  }
 }

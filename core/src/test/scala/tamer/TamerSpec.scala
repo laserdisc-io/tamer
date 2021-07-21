@@ -9,7 +9,7 @@ import zio.test.TestAspect.timeout
 import zio.test.environment.TestEnvironment
 import zio.test.{DefaultRunnableSpec, TestFailure, assert}
 
-object KafkaSpec extends DefaultRunnableSpec {
+object TamerSpec extends DefaultRunnableSpec {
   case class Log(series: Vector[Int])
   object Log {
     val layer: ULayer[Has[Ref[Log]]] = Ref.make(Log(Vector.empty)).toLayer

@@ -19,11 +19,11 @@ trait Tamer {
 }
 
 object Tamer {
-  private[this] final case class StateKey(stateKey: String, groupId: String)
+  private[tamer] final case class StateKey(stateKey: String, groupId: String)
   private[this] final val stateKeySerde = Serde.key[StateKey]
 
   private[this] object Lag {
-    final def unapply(pair: (Map[TopicPartition, Long], Map[TopicPartition, Long])): Some[Map[TopicPartition, Long]] =
+    final def unapply(pair: (Map[TopicPartition, Long], Map[TopicPartition, Long])): Some[Map[TopicPartition, Long]] = // end offset, committed
       Some((pair._1.keySet ++ pair._2.keySet).foldLeft(Map.empty[TopicPartition, Long]) {
         case (acc, tp) if pair._1.contains(tp) => acc + (tp -> (pair._1(tp) - pair._2.getOrElse(tp, 0L)))
         case (acc, _)                          => acc
@@ -129,7 +129,7 @@ object Tamer {
         case (po, _) if po.values.forall(_ == 0L) => Initialize
         case Lag(lags) if lags.values.sum == 1L   => Resume
         case Lag(lags) if lags.values.sum == 0L   => Retry
-        case _                                    => Fail
+        case _                                    => Fail // questo comprenderebbe anche 0L ma ovviamente il caso base e' quando il lag e' piu' di uno (ad esempio un lag di 1 su due partizioni) 0L e' quando il prossimo stato non esiste perche abbiamo committato ma non abbiamo scritto
       }
     }
 
