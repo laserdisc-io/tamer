@@ -93,9 +93,9 @@ object Tamer {
   //    the previous state offset has been committed.
   private[tamer] sealed trait Decision                                            extends Product with Serializable
   private[tamer] final case object Initialize                                     extends Decision
-  private[tamer] case object Resume                                               extends Decision
+  private[tamer] final case object Resume                                         extends Decision
   private[tamer] final case class Recover(to: Map[AdminPartition, AdminMetadata]) extends Decision
-  private[tamer] case object Die                                                  extends Decision
+  private[tamer] final case object Die                                            extends Decision
 
   private[tamer] def stateOffsetCorrection(
       lags: Map[TopicPartition, Long],
@@ -183,14 +183,14 @@ object Tamer {
               .unit
         case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
         case Recover(corrected) =>
-          log.error(s"incorrect consumer group's lag on $stateTopic. Group id: $stateGroupId. Unsubscribing the state consumer ...") *>
+          log.warn(s"incorrect consumer group's lag on $stateTopic. Group id: $stateGroupId. Unsubscribing the state consumer ...") *>
             stateConsumer.unsubscribe *>
-            log.error(s"state consumer to $stateTopic with group id $stateGroupId unsubscribed. Fixing the offset ...") *>
-            log.error(
+            log.warn(s"state consumer to $stateTopic with group id $stateGroupId unsubscribed. Fixing the offset ...") *>
+            log.warn(
               s"applying the following correction to $stateGroupId:\n${corrected.values.map(_.metadata.getOrElse("No Correction Metadata")).mkString("\n")}"
             ) *>
             adminClient.alterConsumerGroupOffsets(stateGroupId, corrected) *>
-            log.error(
+            log.warn(
               s"offset of $stateGroupId corrected. Retrying initialization of state consumer to $stateTopic with group id $stateGroupId ..."
             ) *>
             initialize
