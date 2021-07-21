@@ -9,6 +9,8 @@ import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
+import zio.kafka.admin.AdminClient.{OffsetAndMetadata => AdminMetadata, TopicPartition => AdminPartition}
+import zio.kafka.admin.{AdminClient, AdminClientSettings}
 import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.kafka.consumer._
 import zio.kafka.producer.{Producer, ProducerSettings}
@@ -22,7 +24,7 @@ object Tamer {
   private[this] final case class StateKey(stateKey: String, groupId: String)
   private[this] final val stateKeySerde = Serde.key[StateKey]
 
-  private[this] object Lag {
+  private[tamer] object Lag {
     final def unapply(pair: (Map[TopicPartition, Long], Map[TopicPartition, Long])): Some[Map[TopicPartition, Long]] =
       Some((pair._1.keySet ++ pair._2.keySet).foldLeft(Map.empty[TopicPartition, Long]) {
         case (acc, tp) if pair._1.contains(tp) => acc + (tp -> (pair._1(tp) - pair._2.getOrElse(tp, 0L)))
@@ -64,14 +66,79 @@ object Tamer {
       }
       .runDrain
 
+  // There are at least 4 possible decisions:
+  //
+  // 1. logEndOffsets.forAll(_ == 0L)               => initialize
+  // 2. lag(logEndOffsets, currentOffset).sum == 1L => resume
+  // 3. lag(logEndOffsets, currentOffset).sum == 0L => retry
+  // 4. _                                           => fail
+  //
+  // Notes:
+  // Point 2 should be further refined, to ensure that the partition offset that is
+  // not in the committed set is also > than the maximum committed offset for the same.
+  // Point 3 is totally arbitrary, and currently implemented in the same manner as point
+  // 4. If the consumer is current but there are (or have been, depending how the state
+  // topic is configured) states in the topic the consumer would stay put forever. The
+  // decision here is to retry, that is shift back offset by 1.
+  // Point 4 is the catch all. Take the case when the committed offsets are lagging
+  // behind more than 1. This should not happen based on the assumption that a state
+  // will not be pushed until the last batch has been put in the queue. Unfortunately,
+  // there's no such guarantee currently, as there is no synchronization between the
+  // fiber that sends the chunks of values to Kafka and the one that sends the new state
+  // to Kafka. This should be addressed by https://github.com/laserdisc-io/tamer/issues/43
+  // Ideally, we should use transactions for this but
+  // a. zio-kafka does not support them yet (https://github.com/zio/zio-kafka/issues/33)
+  // b. more importantly, they would not be able to span our strongly typed producers,
+  //    so they would be "limited" to ensuring no state is visible to our consumer until
+  //    the previous state offset has been committed.
+  private[tamer] sealed trait Decision                                            extends Product with Serializable
+  private[tamer] final case object Initialize                                     extends Decision
+  private[tamer] final case object Resume                                         extends Decision
+  private[tamer] final case class Recover(to: Map[AdminPartition, AdminMetadata]) extends Decision
+  private[tamer] final case object Die                                            extends Decision
+
+  private[tamer] def stateOffsetCorrection(
+      lags: Map[TopicPartition, Long],
+      committedOffset: Map[TopicPartition, Long]
+  ): Map[AdminPartition, AdminMetadata] =
+    lags.foldLeft(Map.empty[AdminPartition, AdminMetadata]) { case (correction, (p, lag)) =>
+      val correctOffset = committedOffset.get(p).fold(1L)(_ + lag - 1L)
+      if (lag == 0 || lag > 1)
+        correction.updated(
+          AdminPartition(p),
+          AdminMetadata(
+            correctOffset,
+            None,
+            Some(s"Tamer offset correction. Topic: ${p.topic()}. Partition: ${p.partition()}. Lag was $lag, offset corrected to $correctOffset")
+          )
+        )
+      else correction
+    }
+
+  private[tamer] def decidedAction(strategy: StateRecoveryStrategy)(
+      endOffset: Map[TopicPartition, Long],
+      committedOffset: Map[TopicPartition, Long]
+  ): Decision =
+    (endOffset, committedOffset) match {
+      case (po, _) if po.values.forall(_ == 0L) => Initialize
+      case Lag(lags) if lags.values.sum == 1L   => Resume
+      case Lag(lags) =>
+        strategy match {
+          case ManualRecovery    => Die
+          case AutomaticRecovery => Recover(stateOffsetCorrection(lags, committedOffset))
+        }
+    }
+
   private[tamer] final def source[K, V, S](
       stateTopic: String,
       stateGroupId: String,
       stateHash: Int,
       stateSerde: ZSerde[RegistryInfo, S],
       initialState: S,
+      adminClient: AdminClient,
       stateConsumer: Consumer.Service,
       stateProducer: Producer.Service[RegistryInfo, StateKey, S],
+      stateRecovery: StateRecoveryStrategy,
       kvChunkQueue: Queue[Chunk[(K, V)]],
       registryLayer: ULayer[RegistryInfo],
       iterationFunction: (S, Queue[Chunk[(K, V)]]) => Task[S],
@@ -81,76 +148,56 @@ object Tamer {
     val key          = StateKey(stateHash.toHexString, stateGroupId)
     val subscription = Subscription.topics(stateTopic)
 
-    // There are at least 4 possible decisions:
-    //
-    // 1. logEndOffsets.forAll(_ == 0L)               => initialize
-    // 2. lag(logEndOffsets, currentOffset).sum == 1L => resume
-    // 3. lag(logEndOffsets, currentOffset).sum == 0L => retry
-    // 4. _                                           => fail
-    //
-    // Notes:
-    // Point 2 should be further refined, to ensure that the partition offset that is
-    // not in the committed set is also > than the maximum committed offset for the same.
-    // Point 3 is totally arbitrary, and currently implemented in the same manner as point
-    // 4. If the consumer is current but there are (or have been, depending how the state
-    // topic is configured) states in the topic the consumer would stay put forever. The
-    // decision here is to retry, that is shift back offset by 1.
-    // Point 4 is the catch all. Take the case when the committed offsets are lagging
-    // behind more than 1. This should not happen based on the assumption that a state
-    // will not be pushed until the last batch has been put in the queue. Unfortunately,
-    // there's no such guarantee currently, as there is no synchronization between the
-    // fiber that sends the chunks of values to Kafka and the one that sends the new state
-    // to Kafka. This should be addressed by https://github.com/laserdisc-io/tamer/issues/43
-    // Ideally, we should use transactions for this but
-    // a. zio-kafka does not support them yet (https://github.com/zio/zio-kafka/issues/33)
-    // b. more importantly, they would not be able to span our strongly typed producers,
-    //    so they would be "limited" to ensuring no state is visible to our consumer until
-    //    the previous state offset has been committed.
-    sealed trait Decision  extends Product with Serializable
-    case object Initialize extends Decision
-    case object Resume     extends Decision
-    case object Retry      extends Decision
-    case object Fail       extends Decision
-
     val waitForAssignment = stateConsumer.assignment
       .withFilter(_.nonEmpty)
       .tapError(_ => log.debug(s"still no assignment on $stateGroupId, there are no partitions to process"))
       .retry(tenTimes)
 
-    val decide = (partitionSet: Set[TopicPartition]) => {
-      val partitionOffsets = stateConsumer.endOffsets(partitionSet)
-      val committedPartitionOffsets = stateConsumer.committed(partitionSet).map {
-        _.map {
-          case (tp, Some(o)) => Some((tp, o.offset()))
-          case _             => None
-        }.flatten.toMap
+    val decide: Set[TopicPartition] => Task[Decision] =
+      (partitionSet: Set[TopicPartition]) => {
+        val partitionOffsets = stateConsumer.endOffsets(partitionSet)
+        val committedPartitionOffsets = stateConsumer.committed(partitionSet).map {
+          _.map {
+            case (tp, Some(o)) => Some((tp, o.offset()))
+            case _             => None
+          }.flatten.toMap
+        }
+        partitionOffsets.zip(committedPartitionOffsets).map { case (end, committed) =>
+          decidedAction(stateRecovery)(end, committed)
+        }
       }
-      partitionOffsets.zip(committedPartitionOffsets).map {
-        case (po, _) if po.values.forall(_ == 0L) => Initialize
-        case Lag(lags) if lags.values.sum == 1L   => Resume
-        case Lag(lags) if lags.values.sum == 0L   => Retry
-        case _                                    => Fail
-      }
-    }
 
     val subscribeAndDecide = log.debug(s"subscribing to $subscription") *>
       stateConsumer.subscribe(subscription) *>
       log.debug("awaiting assignment") *>
       waitForAssignment.flatMap(a => log.debug(s"received assignment $a") *> decide(a).tap(d => log.debug(s"decided to $d")))
 
-    val initialize = subscribeAndDecide.flatMap {
-      case Initialize =>
-        log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
-          stateProducer
-            .produce(stateTopic, key, initialState)
-            .provideLayer(registryLayer)
-            .tap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
-            .unit
-      case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
-      case Retry | Fail => // TODO: fix handling of retry case
-        log.error(s"consumer group $stateGroupId is already at the end of $stateTopic, manual intervention required") *>
-          ZIO.fail(TamerError(s"Consumer group $stateGroupId stuck at end of stream"))
-    }
+    def initialize: RIO[Clock, Unit] =
+      subscribeAndDecide.flatMap {
+        case Initialize =>
+          log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
+            stateProducer
+              .produce(stateTopic, key, initialState)
+              .provideLayer(registryLayer)
+              .tap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
+              .unit
+        case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
+        case Recover(corrected) =>
+          log.warn(s"incorrect consumer group's lag on $stateTopic. Group id: $stateGroupId. Unsubscribing the state consumer ...") *>
+            stateConsumer.unsubscribe *>
+            log.warn(s"state consumer to $stateTopic with group id $stateGroupId unsubscribed. Fixing the offset ...") *>
+            log.warn(
+              s"applying the following correction to $stateGroupId:\n${corrected.values.map(_.metadata.getOrElse("No Correction Metadata")).mkString("\n")}"
+            ) *>
+            adminClient.alterConsumerGroupOffsets(stateGroupId, corrected) *>
+            log.warn(
+              s"offset of $stateGroupId corrected. Retrying initialization of state consumer to $stateTopic with group id $stateGroupId ..."
+            ) *>
+            initialize
+        case Die =>
+          log.error(s"consumer group $stateGroupId is already at the end of $stateTopic, manual intervention required") *>
+            ZIO.fail(TamerError(s"Consumer group $stateGroupId stuck at end of stream"))
+      }
 
     val stateStream = stateConsumer
       .plainStream(stateKeySerde.deserializer, stateSerde)
@@ -188,6 +235,7 @@ object Tamer {
       stateHash: Int,
       iterationFunction: (S, Queue[Chunk[(K, V)]]) => Task[S],
       repr: String,
+      adminClient: AdminClient,
       stateConsumer: Consumer.Service,
       stateProducer: Producer.Service[RegistryInfo, StateKey, S],
       valueProducer: Producer.Service[RegistryInfo, K, V]
@@ -195,8 +243,8 @@ object Tamer {
 
     private[this] final val logTask = log4sFromName.provide("tamer.kafka")
 
-    private[this] final val SinkConfig(sinkTopic)                    = config.sink
-    private[this] final val StateConfig(stateTopic, stateGroupId, _) = config.state
+    private[this] final val SinkConfig(sinkTopic)                                      = config.sink
+    private[this] final val StateConfig(stateTopic, stateGroupId, _, recoveryStrategy) = config.state
 
     private[tamer] final def sinkStream(kvStream: UStream[(K, V)], registryLayer: ULayer[RegistryInfo], log: LogWriter[Task]) =
       ZStream.fromEffect(sink(kvStream, valueProducer, sinkTopic, registryLayer, log).fork <* log.info("running sink perpetually"))
@@ -208,8 +256,10 @@ object Tamer {
         stateHash,
         serdes.stateSerde,
         initialState,
+        adminClient,
         stateConsumer,
         stateProducer,
+        recoveryStrategy,
         kvChunkQueue,
         registryLayer,
         iterationFunction,
@@ -270,8 +320,10 @@ object Tamer {
         repr: String
     ): ZManaged[Blocking with Clock, TamerError, Live[K, V, S]] = {
 
-      val KafkaConfig(brokers, _, closeTimeout, _, _, StateConfig(_, groupId, clientId), properties) = config
+      val KafkaConfig(brokers, _, closeTimeout, _, _, StateConfig(_, groupId, clientId, _), properties) = config
 
+      val adminClientSettings = AdminClientSettings(brokers)
+        .withProperties(properties)
       val consumerSettings = ConsumerSettings(brokers)
         .withProperties(properties)
         .withGroupId(groupId)
@@ -282,7 +334,12 @@ object Tamer {
         .withProperties(properties)
         .withCloseTimeout(closeTimeout)
 
-      val stateConsumer = Consumer.make(consumerSettings).mapError(TamerError("Could not make state consumer", _))
+      val adminClient = AdminClient
+        .make(adminClientSettings)
+        .mapError(TamerError("Could not make admin client", _))
+      val stateConsumer = Consumer
+        .make(consumerSettings)
+        .mapError(TamerError("Could not make state consumer", _))
       val stateProducer = Producer
         .make(producerSettings, stateKeySerde.serializer, serdes.stateSerde)
         .mapError(TamerError("Could not make state producer", _))
@@ -290,8 +347,8 @@ object Tamer {
         .make(producerSettings, serdes.keySerializer, serdes.valueSerializer)
         .mapError(TamerError("Could not make value producer", _))
 
-      ZManaged.mapN(stateConsumer, stateProducer, valueProducer) {
-        new Live(config, serdes, initialState, stateKey, iterationFunction, repr, _, _, _)
+      ZManaged.mapN(adminClient, stateConsumer, stateProducer, valueProducer) {
+        new Live(config, serdes, initialState, stateKey, iterationFunction, repr, _, _, _, _)
       }
     }
 
