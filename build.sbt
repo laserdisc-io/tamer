@@ -3,7 +3,7 @@ val scala_213 = "2.13.6"
 
 val V = new {
   val avro4s         = "4.0.10"
-  val awsSdk         = "2.16.104"
+  val awsSdk         = "2.17.1"
   val cats           = "2.6.1"
   val circe          = "0.14.1"
   val ciris          = "1.2.1"
