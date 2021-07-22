@@ -3,21 +3,22 @@ val scala_213 = "2.13.6"
 
 val V = new {
   val avro4s         = "4.0.10"
-  val awsSdk         = "2.16.98"
+  val awsSdk         = "2.17.1"
   val cats           = "2.6.1"
   val circe          = "0.14.1"
   val ciris          = "1.2.1"
   val confluent      = "6.1.1"
   val doobie         = "0.13.4"
-  val `json-schema`  = "1.12.3"
+  val `json-schema`  = "1.13.0"
   val kafka          = "2.7.0"
-  val logback        = "1.2.3"
+  val logback        = "1.2.4"
   val `log-effect`   = "0.16.1"
-  val ociSdk         = "2.1.1"
+  val ociSdk         = "2.3.0"
   val postgres       = "42.2.23"
   val `scala-compat` = "2.5.0"
-  val slf4j          = "1.7.31"
-  val sttp           = "3.3.9"
+  val mockito        = "1.0.0-M2"
+  val slf4j          = "1.7.32"
+  val sttp           = "3.3.11"
   val uzhttp         = "0.2.7"
   val zio            = "1.0.9"
   val `zio-interop`  = "2.5.1.0"
@@ -108,6 +109,7 @@ lazy val core = project
       "io.laserdisc"                     %% "log-effect-zio"                 % V.`log-effect`,
       "is.cir"                           %% "ciris"                          % V.ciris,
       "org.apache.kafka"                  % "kafka-clients"                  % V.kafka,
+      "org.scalatestplus"                %% "scalatestplus-mockito"                        % V.mockito  % Test,
       "ch.qos.logback"                    % "logback-classic"                % V.logback       % Test,
       "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test,
       "io.github.embeddedkafka"          %% "embedded-kafka"                 % V.kafka         % Test,

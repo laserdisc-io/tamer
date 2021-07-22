@@ -9,7 +9,7 @@ import zio.kafka.producer.Producer.Service
 sealed class FakeProducer[R, K, V](val produced: Queue[ProducerRecord[K, V]], log: LogWriter[Task]) extends Service[R, K, V] {
   override def produce(record: ProducerRecord[K, V]): RIO[R, RecordMetadata] = ???
   override def produce(topic: String, key: K, value: V): RIO[R, RecordMetadata] = produced.offer(new ProducerRecord(topic, key, value)) *>
-    log.info(s"producer fakely producing record '$key:$value' to topic '$topic-0'") *>
+    log.info(s"producer fakely offered record '$key:$value' to topic '$topic-0'") *>
     RIO(new RecordMetadata(new TopicPartition(topic, 0), 0, 0, 0, 0, 0, 0))
   override def produceAsync(record: ProducerRecord[K, V]): RIO[R, Task[RecordMetadata]]                     = ???
   override def produceAsync(topic: String, key: K, value: V): RIO[R, Task[RecordMetadata]]                  = ???

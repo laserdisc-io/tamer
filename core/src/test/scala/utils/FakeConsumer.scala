@@ -70,7 +70,8 @@ sealed class FakeConsumer[IK, IV](
       counters       <- ZStream.fromEffect(Ref.make(initialOffsets))
       partitionQueues = produced.map { case (partition, queue) => queue.map(record => (partition, record)) }
       stream <- partitionQueues
-        .map(ZStream.fromQueue(_))
+        .map(ZStream.fromQueue(_)
+        .tap { case (partition, value) => log.info(s"consumer fakely taking ($partition, ${value.value()}) from a queue")})
         .fold(ZStream.empty) { case (a, b) => a.interleaveWith(b)(ZStream.repeatEffect(zio.random.nextBoolean.provideLayer(Random.live))) }
 //        ZStream.mergeAllUnbounded()(partitionQueues.map(ZStream.fromQueue(_)).toSeq: _*)
         .mapM { case (partition, record) =>
