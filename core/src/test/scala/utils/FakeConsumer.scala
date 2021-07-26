@@ -11,12 +11,14 @@ import zio.kafka.consumer.{CommittableRecord, SubscribedConsumer, Subscription}
 import zio.kafka.serde.Deserializer
 import zio.random.Random
 import zio.stream.ZStream
-import zio.{IO, Queue, Ref, Schedule, Task, UIO, URIO, ZIO, stream}
+import zio.stream.ZStream.repeatEffectOption
+import zio.{Cause, IO, Queue, Ref, Schedule, Task, UIO, URIO, ZIO, ZQueue, stream}
 
 /** Topic is fixed to 'topic'
   */
 sealed class FakeConsumer[IK, IV](
     val committed: Ref[Map[TopicPartition, Option[Long]]],
+    val inFlight: Queue[(TopicPartition, ProducerRecord[IK, IV])],
     val produced: Map[TopicPartition, Queue[ProducerRecord[IK, IV]]],
     log: LogWriter[Task]
 ) extends Service {
@@ -60,20 +62,39 @@ sealed class FakeConsumer[IK, IV](
       keyDeserializer: Deserializer[R, K],
       valueDeserializer: Deserializer[R, V]
   ): stream.Stream[Throwable, (TopicPartition, ZStream[R, Throwable, CommittableRecord[K, V]])] = ???
+  private object Pull {
+    def halt[E](c: Cause[E]): IO[Option[E], Nothing] = IO.halt(c).mapError(Some(_))
+    val end: IO[Option[Nothing], Nothing]            = IO.fail(None)
+  }
+  private def fromTamerQueue[R, E](
+      queue: ZQueue[Nothing, R, Any, E, Nothing, (TopicPartition, ProducerRecord[IK, IV])],
+      inFlight: Queue[(TopicPartition, ProducerRecord[IK, IV])]
+  ): ZStream[R, E, (TopicPartition, ProducerRecord[IK, IV])] =
+    repeatEffectOption {
+      queue.take
+        .tap(value => inFlight.offer(value))
+        .catchAllCause(c =>
+          queue.isShutdown.flatMap { down =>
+            if (down && c.interrupted) Pull.end
+            else Pull.halt(c)
+          }
+        )
+    }
   override def plainStream[R, K, V](
       keyDeserializer: Deserializer[R, K],
       valueDeserializer: Deserializer[R, V],
       outputBuffer: Int
   ): ZStream[R, Throwable, CommittableRecord[K, V]] =
     for {
-      initialOffsets <- ZStream.fromEffect(committed.get).map(_.view.mapValues(_.map(_ + 1L).getOrElse(0L)).toMap)
+      initialOffsets <- ZStream.fromEffect(committed.get).map(_.view.mapValues(_.getOrElse(0L)).toMap)
       counters       <- ZStream.fromEffect(Ref.make(initialOffsets))
       partitionQueues = produced.map { case (partition, queue) => queue.map(record => (partition, record)) }
       stream <- partitionQueues
-        .map(ZStream.fromQueue(_)
-        .tap { case (partition, value) => log.info(s"consumer fakely taking ($partition, ${value.value()}) from a queue")})
+        .map(partitionQueue =>
+          fromTamerQueue(partitionQueue, inFlight)
+            .tap { case (partition, value) => log.info(s"consumer fakely taking ($partition, ${value.value()}) from a queue") }
+        )
         .fold(ZStream.empty) { case (a, b) => a.interleaveWith(b)(ZStream.repeatEffect(zio.random.nextBoolean.provideLayer(Random.live))) }
-//        ZStream.mergeAllUnbounded()(partitionQueues.map(ZStream.fromQueue(_)).toSeq: _*)
         .mapM { case (partition, record) =>
           for {
             offset <- counters
@@ -83,11 +104,18 @@ sealed class FakeConsumer[IK, IV](
               .absolve
           } yield CommittableRecord(
             record = new ConsumerRecord("topic", 0, offset, record.key().asInstanceOf[K], record.value().asInstanceOf[V]),
-            commitHandle = (toCommit: Map[TopicPartition, Long]) => {
-              val toCommitOffset = toCommit(partition)
-              log.info(s"consumer fakely committing offset $toCommitOffset") *>
-                committed.update(_.updated(partition, Some(toCommitOffset))).unit
-            }
+            commitHandle = (toCommit: Map[TopicPartition, Long]) =>
+              (for {
+                r <- Task(new java.util.Random().nextInt(5)).map(_.longValue) // simulates the asynchronicity
+                _ <- Task(Thread.sleep(r)) // simulates the asynchronicity
+                _ <- {
+                  val toCommitOffset = toCommit(partition)
+                  log.info(s"consumer fakely committing offset $toCommitOffset") *>
+                    inFlight.take // TODO: make sure we take the expected value
+                      .tap { case (partition, value) => log.info(s"consumer fakely removing ($partition -> ${value.value()}) from in-flight") } *>
+                    committed.update(_.updated(partition, Some(toCommitOffset)))
+                }
+              } yield ()).fork.unit // simulates the asynchronicity (remove this and the above when using kafka transactions)
           )
         }
         .tap(committableRecord => log.info(s"consumer fakely emitting an element summarized as: ${committableRecord.key}:${committableRecord.value}"))
@@ -113,9 +141,21 @@ sealed class FakeConsumer[IK, IV](
 object FakeConsumer {
   val partition0 = new TopicPartition("topic", 0)
 
-  def mk[K, V](producerRecordQueue: Queue[ProducerRecord[K, V]], logWriter: LogWriter[Task]): UIO[FakeConsumer[K, V]] =
-    Ref.make(Map(partition0 -> Option(0L))).map(new FakeConsumer(_, Map(partition0 -> producerRecordQueue), logWriter))
+  def mk[K, V](producerRecordQueue: Queue[ProducerRecord[K, V]], logWriter: LogWriter[Task]): UIO[FakeConsumer[K, V]] = for {
+    committed <- Ref.make(Map(partition0 -> Option(0L)))
+    inFlight  <- Queue.unbounded[(TopicPartition, ProducerRecord[K, V])]
+  } yield new FakeConsumer(committed, inFlight, Map(partition0 -> producerRecordQueue), logWriter)
 
-  def mk[K, V](initialCommitted: Int, producerRecordQueue: Queue[ProducerRecord[K, V]], logWriter: LogWriter[Task]): UIO[FakeConsumer[K, V]] =
-    Ref.make(Map(partition0 -> Option(initialCommitted.longValue))).map(new FakeConsumer(_, Map(partition0 -> producerRecordQueue), logWriter))
+  def mk[K, V](
+      producerRecordQueue: Queue[ProducerRecord[K, V]],
+      inFlightQueue: Queue[(TopicPartition, ProducerRecord[K, V])],
+      logWriter: LogWriter[Task]
+  ): UIO[FakeConsumer[K, V]] = for {
+    committed <- Ref.make(Map(partition0 -> Option(0L)))
+  } yield new FakeConsumer(committed, inFlightQueue, Map(partition0 -> producerRecordQueue), logWriter)
+
+  def mk[K, V](initialCommitted: Int, producerRecordQueue: Queue[ProducerRecord[K, V]], logWriter: LogWriter[Task]): UIO[FakeConsumer[K, V]] = for {
+    committed <- Ref.make(Map(partition0 -> Option(initialCommitted.longValue)))
+    inFlight  <- Queue.unbounded[(TopicPartition, ProducerRecord[K, V])]
+  } yield new FakeConsumer(committed, inFlight, Map(partition0 -> producerRecordQueue), logWriter)
 }
