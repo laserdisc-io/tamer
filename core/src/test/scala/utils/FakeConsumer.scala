@@ -82,8 +82,6 @@ sealed class FakeConsumer[IK, IV](
         )
     }
 
-
-
   override def plainStream[R, K, V](
       keyDeserializer: Deserializer[R, K],
       valueDeserializer: Deserializer[R, V],
@@ -110,7 +108,7 @@ sealed class FakeConsumer[IK, IV](
             record = new ConsumerRecord("topic", 0, offset, record.key().asInstanceOf[K], record.value().asInstanceOf[V]),
             commitHandle = (toCommit: Map[TopicPartition, Long]) =>
               (for {
-                r <- Task(new java.util.Random().nextInt(5)).map(_.longValue) // simulates the asynchronicity
+                r <- Task(new java.util.Random().nextInt(1)).map(_.longValue) // simulates the asynchronicity
                 _ <- Task(Thread.sleep(r)) // simulates the asynchronicity
                 _ <- {
                   val toCommitOffset = toCommit(partition)
@@ -124,8 +122,6 @@ sealed class FakeConsumer[IK, IV](
         }
         .tap(committableRecord => log.info(s"consumer fakely emitting an element summarized as: ${committableRecord.key}:${committableRecord.value}"))
     } yield stream
-
-
 
   override def stopConsumption: UIO[Unit] = ???
   override def consumeWith[R, RC, K, V](

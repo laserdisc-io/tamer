@@ -204,7 +204,7 @@ object SourceSpec extends DefaultRunnableSpec {
         sourceHasStartedWorking = assert(data)(isEmpty).negate
 
       } yield sourceHasStartedWorking ==> assert(tapeSize)(isLessThanEqualTo(1))
-    }.provideSomeLayer[Clock with Random](Clock.live ++ Random.live) @@ nonFlaky @@ failing,
+    }.provideSomeLayer[Clock with Random](Clock.live ++ Random.live) @@ nonFlaky(300) @@ failing @@ nonFlaky(10),
     // TODO: the above test is marked as `failing` because this is not our target state, we would like that,
     // whenever Tamer crashes, there is always exactly one uncommitted message in the state topic.
     // This test was written mainly to characterize this behaviour as long as we are using async API so that
@@ -252,7 +252,7 @@ object SourceSpec extends DefaultRunnableSpec {
         sourceHasStartedWorking = assert(data)(isEmpty).negate
 
       } yield sourceHasStartedWorking ==> assert(tapeSize)(isGreaterThanEqualTo(1))
-    }.provideSomeLayer[Clock with Random](Clock.live ++ Random.live) @@ nonFlaky @@ failing
+    }.provideSomeLayer[Clock with Random](Clock.live ++ Random.live) @@ nonFlaky(300) @@ failing @@ nonFlaky(10)
     // TODO: whenever there is a lag between the commit of the old state and the publishing
     // of the next state this test should fail. This is not desirable of course, the only
     // purpose of this test is to correctly characterize the fake kafka so that further test
