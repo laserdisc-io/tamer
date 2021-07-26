@@ -3,8 +3,8 @@ package utils
 import log.effect.LogWriter
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.{Metric, MetricName, TopicPartition}
-import zio.{Chunk, Queue, RIO, Ref, Task, UIO, ZIO}
 import zio.kafka.producer.Producer.Service
+import zio.{Chunk, Queue, RIO, Ref, Task, UIO, ZIO}
 
 sealed class FakeProducer[R, K, V](val produced: Queue[ProducerRecord[K, V]], log: LogWriter[Task]) extends Service[R, K, V] {
   override def produce(record: ProducerRecord[K, V]): RIO[R, RecordMetadata] = ???
