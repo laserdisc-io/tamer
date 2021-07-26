@@ -4,6 +4,7 @@ import log.effect.LogWriter
 import org.apache.kafka.clients.consumer.{ConsumerRecord, OffsetAndMetadata, OffsetAndTimestamp}
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.{Metric, MetricName, PartitionInfo, TopicPartition}
+import utils.FakeConsumerUtils.{getCommittedOr0, increaseForPartition}
 import zio.clock.Clock
 import zio.duration.Duration
 import zio.kafka.consumer.Consumer.Service
@@ -80,13 +81,16 @@ sealed class FakeConsumer[IK, IV](
           }
         )
     }
+
+
+
   override def plainStream[R, K, V](
       keyDeserializer: Deserializer[R, K],
       valueDeserializer: Deserializer[R, V],
       outputBuffer: Int
   ): ZStream[R, Throwable, CommittableRecord[K, V]] =
     for {
-      initialOffsets <- ZStream.fromEffect(committed.get).map(_.mapValues(_.getOrElse(0L)).toMap)
+      initialOffsets <- getCommittedOr0(committed)
       counters       <- ZStream.fromEffect(Ref.make(initialOffsets))
       partitionQueues = produced.map { case (partition, queue) => queue.map(record => (partition, record)) }
       stream <- partitionQueues
@@ -98,7 +102,7 @@ sealed class FakeConsumer[IK, IV](
         .mapM { case (partition, record) =>
           for {
             offset <- counters
-              .getAndUpdate(m => m.updated(partition, m(partition) + 1))
+              .getAndUpdate(m => increaseForPartition(partition, m))
               .map(_.get(partition))
               .map(_.toRight(new RuntimeException(s"Counters did not contain partition $partition")))
               .absolve
@@ -120,6 +124,9 @@ sealed class FakeConsumer[IK, IV](
         }
         .tap(committableRecord => log.info(s"consumer fakely emitting an element summarized as: ${committableRecord.key}:${committableRecord.value}"))
     } yield stream
+
+
+
   override def stopConsumption: UIO[Unit] = ???
   override def consumeWith[R, RC, K, V](
       subscription: Subscription,
