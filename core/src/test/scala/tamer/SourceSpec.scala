@@ -59,7 +59,7 @@ object SourceSpec extends DefaultRunnableSpec {
         log        <- log4sFromName.provide("testSource.2")
         stateQueue <- Queue.unbounded[ProducerRecord[StateKey, State]]
         producer   <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](stateQueue, log)
-        inFlight  <- zio.Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
+        inFlight   <- zio.Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
         consumer   <- FakeConsumer.mk(stateQueue, inFlight, log)
         dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
 
@@ -163,13 +163,13 @@ object SourceSpec extends DefaultRunnableSpec {
     },
     testM("tape should not have more than one state") {
       for {
-        randomId <- zio.random.nextIntBounded(10000)
-        log        <- log4sFromName.provide(s"testSource.5.$randomId")
-        stateQueue <- Queue.unbounded[ProducerRecord[StateKey, State]]
-        producer   <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](stateQueue, log)
-        inFlight <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
-        consumer   <- FakeConsumer.mk(stateQueue, inFlight, log)
-        dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
+        randomId                  <- zio.random.nextIntBounded(10000)
+        log                       <- log4sFromName.provide(s"testSource.5.$randomId")
+        stateQueue                <- Queue.unbounded[ProducerRecord[StateKey, State]]
+        producer                  <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](stateQueue, log)
+        inFlight                  <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
+        consumer                  <- FakeConsumer.mk(stateQueue, inFlight, log)
+        dataQueue                 <- zio.Queue.unbounded[Chunk[(Key, Value)]]
         randomShortDurationMillis <- nextLongBetween(50L, 100L)
 
         sourceFiber <- Tamer
@@ -195,10 +195,10 @@ object SourceSpec extends DefaultRunnableSpec {
           )
           .runDrain
           .fork
-        _ <- sleep(Duration.fromMillis(randomShortDurationMillis))
-        _ <- sourceFiber.interrupt
+        _                <- sleep(Duration.fromMillis(randomShortDurationMillis))
+        _                <- sourceFiber.interrupt
         listOfNextStates <- stateQueue.takeAll.map(_.map(_.value()))
-        listOfInFlight <- inFlight.takeAll.map(_.map(_._2.value()))
+        listOfInFlight   <- inFlight.takeAll.map(_.map(_._2.value()))
         tapeSize = listOfNextStates.size + listOfInFlight.size
         data <- dataQueue.takeAll
         sourceHasStartedWorking = assert(data)(isEmpty).negate
@@ -211,13 +211,13 @@ object SourceSpec extends DefaultRunnableSpec {
     // other test may be written with high fidelity to the real behaviour.
     testM("tape should always have at least 1 state") {
       for {
-        randomId <- zio.random.nextIntBounded(10000)
-        log        <- log4sFromName.provide(s"testSource.6.$randomId")
-        stateQueue <- Queue.unbounded[ProducerRecord[StateKey, State]]
-        producer   <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](stateQueue, log)
-        inFlight <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
-        consumer   <- FakeConsumer.mk(stateQueue, inFlight, log)
-        dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
+        randomId                  <- zio.random.nextIntBounded(10000)
+        log                       <- log4sFromName.provide(s"testSource.6.$randomId")
+        stateQueue                <- Queue.unbounded[ProducerRecord[StateKey, State]]
+        producer                  <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](stateQueue, log)
+        inFlight                  <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
+        consumer                  <- FakeConsumer.mk(stateQueue, inFlight, log)
+        dataQueue                 <- zio.Queue.unbounded[Chunk[(Key, Value)]]
         randomShortDurationMillis <- nextLongBetween(50L, 100L)
 
         sourceFiber <- Tamer
@@ -243,10 +243,10 @@ object SourceSpec extends DefaultRunnableSpec {
           )
           .runDrain
           .fork
-        _ <- sleep(Duration.fromMillis(randomShortDurationMillis))
-        _ <- sourceFiber.interrupt
+        _                <- sleep(Duration.fromMillis(randomShortDurationMillis))
+        _                <- sourceFiber.interrupt
         listOfNextStates <- stateQueue.takeAll.map(_.map(_.value()))
-        listOfInFlight <- inFlight.takeAll.map(_.map(_._2.value()))
+        listOfInFlight   <- inFlight.takeAll.map(_.map(_._2.value()))
         tapeSize = listOfNextStates.size + listOfInFlight.size
         data <- dataQueue.takeAll
         sourceHasStartedWorking = assert(data)(isEmpty).negate

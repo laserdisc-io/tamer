@@ -109,7 +109,7 @@ lazy val core = project
       "io.laserdisc"                     %% "log-effect-zio"                 % V.`log-effect`,
       "is.cir"                           %% "ciris"                          % V.ciris,
       "org.apache.kafka"                  % "kafka-clients"                  % V.kafka,
-      "org.scalatestplus"                %% "scalatestplus-mockito"                        % V.mockito  % Test,
+      "org.scalatestplus"                %% "scalatestplus-mockito"          % V.mockito       % Test,
       "ch.qos.logback"                    % "logback-classic"                % V.logback       % Test,
       "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test,
       "io.github.embeddedkafka"          %% "embedded-kafka"                 % V.kafka         % Test,
