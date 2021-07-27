@@ -3,7 +3,7 @@ package tamer
 import io.confluent.kafka.schemaregistry.ParsedSchema
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.ProducerRecord
-import utils.{FailingFakeProducer, FakeProducer}
+import tamer.utils.{FailingFakeProducer, FakeProducer}
 import zio._
 import zio.duration.durationInt
 import zio.stream.ZStream

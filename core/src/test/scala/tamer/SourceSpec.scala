@@ -6,7 +6,7 @@ import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.TopicPartition
 import org.scalatestplus.mockito.MockitoSugar.mock
 import tamer.Tamer.StateKey
-import utils.{FakeConsumer, FakeProducer}
+import tamer.utils.{FakeConsumer, FakeProducer}
 import zio.clock.{Clock, sleep}
 import zio.duration.Duration
 import zio.kafka.admin.AdminClient
@@ -28,7 +28,7 @@ object SourceSpec extends DefaultRunnableSpec {
       val data = for {
         log       <- log4sFromName.provide("testSource.1")
         records   <- Queue.unbounded[ProducerRecord[StateKey, State]]
-        producer  <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](records, log)
+        producer  <- FakeProducer.mk[RegistryInfo, StateKey, State](records, log)
         consumer  <- FakeConsumer.mk(records, log)
         dataQueue <- zio.Queue.unbounded[Chunk[(Key, Value)]]
         _ <- Tamer
@@ -58,7 +58,7 @@ object SourceSpec extends DefaultRunnableSpec {
       val tape = for {
         log        <- log4sFromName.provide("testSource.2")
         stateQueue <- Queue.unbounded[ProducerRecord[StateKey, State]]
-        producer   <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](stateQueue, log)
+        producer   <- FakeProducer.mk[RegistryInfo, StateKey, State](stateQueue, log)
         inFlight   <- zio.Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
         consumer   <- FakeConsumer.mk(stateQueue, inFlight, log)
         dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
@@ -95,7 +95,7 @@ object SourceSpec extends DefaultRunnableSpec {
         log        <- log4sFromName.provide("testSource.3")
         stateQueue <- Queue.unbounded[ProducerRecord[StateKey, State]]
         _          <- stateQueue.offer(new ProducerRecord("topic", StateKey("0", "topicGroupId"), State(2)))
-        producer   <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](stateQueue, log)
+        producer   <- FakeProducer.mk[RegistryInfo, StateKey, State](stateQueue, log)
         consumer   <- FakeConsumer.mk(1, stateQueue, log)
         dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
         _ <- Tamer
@@ -131,7 +131,7 @@ object SourceSpec extends DefaultRunnableSpec {
         stateQueue <- Queue.unbounded[ProducerRecord[StateKey, State]]
         _          <- stateQueue.offer(new ProducerRecord("topic", StateKey("0", "topicGroupId"), State(2)))
         _          <- stateQueue.offer(new ProducerRecord("topic", StateKey("0", "topicGroupId"), State(3)))
-        producer   <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](stateQueue, log)
+        producer   <- FakeProducer.mk[RegistryInfo, StateKey, State](stateQueue, log)
         consumer   <- FakeConsumer.mk(1, stateQueue, log)
         dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
         _ <- Tamer
@@ -166,7 +166,7 @@ object SourceSpec extends DefaultRunnableSpec {
         randomId                  <- zio.random.nextIntBounded(10000)
         log                       <- log4sFromName.provide(s"testSource.5.$randomId")
         stateQueue                <- Queue.unbounded[ProducerRecord[StateKey, State]]
-        producer                  <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](stateQueue, log)
+        producer                  <- FakeProducer.mk[RegistryInfo, StateKey, State](stateQueue, log)
         inFlight                  <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
         consumer                  <- FakeConsumer.mk(stateQueue, inFlight, log)
         dataQueue                 <- zio.Queue.unbounded[Chunk[(Key, Value)]]
@@ -214,7 +214,7 @@ object SourceSpec extends DefaultRunnableSpec {
         randomId                  <- zio.random.nextIntBounded(10000)
         log                       <- log4sFromName.provide(s"testSource.6.$randomId")
         stateQueue                <- Queue.unbounded[ProducerRecord[StateKey, State]]
-        producer                  <- FakeProducer.mk[RegistryInfo, Tamer.StateKey, State](stateQueue, log)
+        producer                  <- FakeProducer.mk[RegistryInfo, StateKey, State](stateQueue, log)
         inFlight                  <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
         consumer                  <- FakeConsumer.mk(stateQueue, inFlight, log)
         dataQueue                 <- zio.Queue.unbounded[Chunk[(Key, Value)]]
