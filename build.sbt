@@ -16,6 +16,7 @@ val V = new {
   val ociSdk         = "2.3.0"
   val postgres       = "42.2.23"
   val `scala-compat` = "2.5.0"
+  val mockito        = "1.0.0-M2"
   val slf4j          = "1.7.32"
   val sttp           = "3.3.11"
   val uzhttp         = "0.2.7"
@@ -108,6 +109,7 @@ lazy val core = project
       "io.laserdisc"                     %% "log-effect-zio"                 % V.`log-effect`,
       "is.cir"                           %% "ciris"                          % V.ciris,
       "org.apache.kafka"                  % "kafka-clients"                  % V.kafka,
+      "org.scalatestplus"                %% "scalatestplus-mockito"          % V.mockito       % Test,
       "ch.qos.logback"                    % "logback-classic"                % V.logback       % Test,
       "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test,
       "io.github.embeddedkafka"          %% "embedded-kafka"                 % V.kafka         % Test,
