@@ -259,7 +259,6 @@ object SourceSpec extends DefaultRunnableSpec {
     // can be devised with high fidelity.
   ) // you can add `@@ sequential` here as a trick to order the logs
 
-  private def failsAtLeastOnceIn(times: Int): TestAspect[Nothing, ZTestEnv with Annotations, Nothing, Any] = {
+  private def failsAtLeastOnceIn(times: Int): TestAspect[Nothing, ZTestEnv with Annotations, Nothing, Any] =
     nonFlaky(times) >>> failing
-  }
 }
