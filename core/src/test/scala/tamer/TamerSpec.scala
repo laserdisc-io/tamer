@@ -52,7 +52,7 @@ object TamerSpec extends DefaultRunnableSpec with TamerSpecGen {
 
         val p1Offset = fixedPartitions(AdminPartition(p))
 
-        assert(p1Offset.offset)(equalTo(12L))
+        assert(p1Offset.offset)(equalTo(12L)) &&
         assert(p1Offset.metadata)(equalTo(Some("Tamer offset correction. Topic: a-test-topic. Partition: 1. Lag was 3, offset corrected to 12")))
       },
       test("should successfully fix the state consumer's offset when the lag is 0") {
@@ -62,7 +62,7 @@ object TamerSpec extends DefaultRunnableSpec with TamerSpecGen {
 
         val p1Offset = fixedPartitions(AdminPartition(p))
 
-        assert(p1Offset.offset)(equalTo(6L))
+        assert(p1Offset.offset)(equalTo(6L)) &&
         assert(p1Offset.metadata)(equalTo(Some("Tamer offset correction. Topic: a-test-topic. Partition: 1. Lag was 0, offset corrected to 6")))
       },
       test("should ignore the state consumer's offset when the lag is 1") {
