@@ -21,7 +21,7 @@ trait Tamer {
 }
 
 object Tamer {
-  private[this] final case class StateKey(stateKey: String, groupId: String)
+  private[tamer] final case class StateKey(stateKey: String, groupId: String)
   private[this] final val stateKeySerde = Serde.key[StateKey]
 
   private[tamer] object Lag {
