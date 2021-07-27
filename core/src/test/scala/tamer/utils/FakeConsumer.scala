@@ -1,10 +1,10 @@
-package utils
+package tamer.utils
 
 import log.effect.LogWriter
 import org.apache.kafka.clients.consumer.{ConsumerRecord, OffsetAndMetadata, OffsetAndTimestamp}
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.{Metric, MetricName, PartitionInfo, TopicPartition}
-import utils.FakeConsumerUtils.{getCommittedOr0, increaseForPartition}
+import tamer.utils.FakeConsumerUtils.{getCommittedOr0, increaseForPartition}
 import zio.clock.Clock
 import zio.duration.Duration
 import zio.kafka.consumer.Consumer.Service

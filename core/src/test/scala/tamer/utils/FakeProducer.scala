@@ -1,4 +1,4 @@
-package utils
+package tamer.utils
 
 import log.effect.LogWriter
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
