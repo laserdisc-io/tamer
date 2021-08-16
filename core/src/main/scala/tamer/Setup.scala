@@ -22,10 +22,10 @@ abstract class Setup[-R, K, V, S] {
 
 object Setup {
   sealed abstract class Serdes[-K, -V, S](
-      val keySerializer: Serializer[RegistryInfo, K],
-      val valueSerializer: Serializer[RegistryInfo, V],
-      val stateSerializer: Serializer[RegistryInfo, S],
-      val stateDeserializer: Deserializer[RegistryInfo, S]
+      val keySerializer: Serializer[SinkRegistry, K],
+      val valueSerializer: Serializer[SinkRegistry, V],
+      val stateSerializer: Serializer[StateRegistry, S],
+      val stateDeserializer: Deserializer[StateRegistry, S]
   )
 
   object Serdes {

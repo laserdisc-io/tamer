@@ -10,9 +10,9 @@ import zio.duration.Duration
 import zio.kafka.consumer.{CommittableRecord, Consumer, SubscribedConsumer, Subscription}
 import zio.kafka.serde.Deserializer
 import zio.random.Random
-import zio.stream.ZStream
+import zio.stream.{Stream, ZStream}
 import zio.stream.ZStream.repeatEffectOption
-import zio.{Cause, Chunk, IO, Queue, Ref, Schedule, Task, UIO, URIO, ZIO, ZQueue, stream}
+import zio.{Cause, Chunk, IO, Queue, Ref, Schedule, Task, UIO, URIO, ZIO, ZQueue}
 
 /** Topic is fixed to 'topic'
   */
@@ -62,7 +62,7 @@ sealed class FakeConsumer[IK, IV](
   override def partitionedStream[R, K, V](
       keyDeserializer: Deserializer[R, K],
       valueDeserializer: Deserializer[R, V]
-  ): stream.Stream[Throwable, (TopicPartition, ZStream[R, Throwable, CommittableRecord[K, V]])] = ???
+  ): Stream[Throwable, (TopicPartition, ZStream[R, Throwable, CommittableRecord[K, V]])] = ???
   private object Pull {
     def halt[E](c: Cause[E]): IO[Option[E], Nothing] = IO.halt(c).mapError(Some(_))
     val end: IO[Option[Nothing], Nothing]            = IO.fail(None)
@@ -158,7 +158,7 @@ sealed class FakeConsumer[IK, IV](
   override def partitionedAssignmentStream[R, K, V](
       keyDeserializer: Deserializer[R, K],
       valueDeserializer: Deserializer[R, V]
-  ): stream.Stream[Throwable, Chunk[(TopicPartition, ZStream[R, Throwable, CommittableRecord[K, V]])]] = ???
+  ): Stream[Throwable, Chunk[(TopicPartition, ZStream[R, Throwable, CommittableRecord[K, V]])]] = ???
 }
 
 object FakeConsumer {
