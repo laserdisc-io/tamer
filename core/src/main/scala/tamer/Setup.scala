@@ -3,7 +3,7 @@ package tamer
 import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
-import zio.kafka.serde.Serializer
+import zio.kafka.serde.{Deserializer, Serializer}
 
 abstract class Setup[-R, K, V, S] {
   val serdes: Setup.Serdes[K, V, S]
@@ -24,12 +24,13 @@ object Setup {
   sealed abstract class Serdes[-K, -V, S](
       val keySerializer: Serializer[RegistryInfo, K],
       val valueSerializer: Serializer[RegistryInfo, V],
-      val stateSerde: ZSerde[RegistryInfo, S]
+      val stateSerializer: Serializer[RegistryInfo, S],
+      val stateDeserializer: Deserializer[RegistryInfo, S]
   )
 
   object Serdes {
     def apply[K: Codec, V: Codec, S: Codec]: Serdes[K, V, S] =
-      new Serdes(Serde.key[K].serializer, Serde.value[V].serializer, Serde.value[S].serde) {}
+      new Serdes(Serde.key[K].serializer, Serde.value[V].serializer, Serde.value[S].serializer, Serde.value[S].deserializer) {}
   }
 
 }

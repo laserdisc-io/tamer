@@ -14,6 +14,7 @@ import zio.kafka.admin.{AdminClient, AdminClientSettings}
 import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.kafka.consumer._
 import zio.kafka.producer.{Producer, ProducerSettings}
+import zio.kafka.serde.{Deserializer, Serializer}
 import zio.stream.{UStream, ZStream}
 
 trait Tamer {
@@ -48,9 +49,10 @@ object Tamer {
 
   private[tamer] final def sink[K, V](
       kvStream: UStream[(K, V)],
-      producer: Producer.Service[RegistryInfo, K, V],
+      producer: Producer,
       topic: String,
-      registryLayer: ULayer[RegistryInfo],
+      keySerializer: Serializer[RegistryInfo, K],
+      valueSerializer: Serializer[RegistryInfo, V],
       log: LogWriter[Task]
   ) =
     kvStream
@@ -58,8 +60,7 @@ object Tamer {
       .mapChunksM {
         case chunk if chunk.nonEmpty =>
           producer
-            .produceChunk(chunk)
-            .provideLayer(registryLayer)
+            .produceChunk(chunk, keySerializer, valueSerializer)
             .tapError(_ => log.debug(s"failed pushing ${chunk.size} messages to $topic"))
             .retry(tenTimes) <* log.info(s"pushed ${chunk.size} messages to $topic")
         case emptyChunk => UIO(emptyChunk)
@@ -133,14 +134,15 @@ object Tamer {
       stateTopic: String,
       stateGroupId: String,
       stateHash: Int,
-      stateSerde: ZSerde[RegistryInfo, S],
+      stateSerializer: Serializer[RegistryInfo, S],
+      stateDeserializer: Deserializer[RegistryInfo, S],
       initialState: S,
       adminClient: AdminClient,
-      stateConsumer: Consumer.Service,
-      stateProducer: Producer.Service[RegistryInfo, StateKey, S],
+      stateConsumer: Consumer,
+      stateProducer: Producer,
       stateRecovery: StateRecoveryStrategy,
       kvChunkQueue: Queue[Chunk[(K, V)]],
-      registryLayer: ULayer[RegistryInfo],
+      stateRegistryLayer: ULayer[RegistryInfo],
       iterationFunction: (S, Queue[Chunk[(K, V)]]) => Task[S],
       log: LogWriter[Task]
   ) = {
@@ -177,8 +179,8 @@ object Tamer {
         case Initialize =>
           log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
             stateProducer
-              .produce(stateTopic, key, initialState)
-              .provideLayer(registryLayer)
+              .produce(stateTopic, key, initialState, stateKeySerde.serializer, stateSerializer)
+              .provideLayer(stateRegistryLayer)
               .tap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
               .unit
         case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
@@ -200,8 +202,8 @@ object Tamer {
       }
 
     val stateStream = stateConsumer
-      .plainStream(stateKeySerde.deserializer, stateSerde)
-      .provideLayer(registryLayer)
+      .plainStream(stateKeySerde.deserializer, stateDeserializer)
+      .provideLayer(stateRegistryLayer)
       .mapM {
         case CommittableRecord(record, offset) if record.key == key =>
           log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.info}") *>
@@ -215,8 +217,8 @@ object Tamer {
               offset.commitOrRetry(tenTimes) <*
                 log.debug(s"consumer group $stateGroupId committed offset ${offset.info}") <*
                 stateProducer
-                  .produce(stateTopic, key, newState)
-                  .provideLayer(registryLayer)
+                  .produce(stateTopic, key, newState, stateKeySerde.serializer, stateSerializer)
+                  .provideLayer(stateRegistryLayer)
                   .tap(rmd => log.debug(s"pushed state $newState to $rmd"))
             }
         case CommittableRecord(record, offset) =>
@@ -236,9 +238,9 @@ object Tamer {
       iterationFunction: (S, Queue[Chunk[(K, V)]]) => Task[S],
       repr: String,
       adminClient: AdminClient,
-      stateConsumer: Consumer.Service,
-      stateProducer: Producer.Service[RegistryInfo, StateKey, S],
-      valueProducer: Producer.Service[RegistryInfo, K, V]
+      stateConsumer: Consumer,
+      stateProducer: Producer,
+      valueProducer: Producer
   ) extends Tamer {
 
     private[this] final val logTask = log4sFromName.provide("tamer.kafka")
@@ -246,15 +248,21 @@ object Tamer {
     private[this] final val SinkConfig(sinkTopic)                                      = config.sink
     private[this] final val StateConfig(stateTopic, stateGroupId, _, recoveryStrategy) = config.state
 
-    private[tamer] final def sinkStream(kvStream: UStream[(K, V)], registryLayer: ULayer[RegistryInfo], log: LogWriter[Task]) =
-      ZStream.fromEffect(sink(kvStream, valueProducer, sinkTopic, registryLayer, log).fork <* log.info("running sink perpetually"))
+    private[tamer] final def sinkStream(
+        kvStream: UStream[(K, V)],
+        keySerializer: Serializer[RegistryInfo, K],
+        valueSerializer: Serializer[RegistryInfo, V],
+        log: LogWriter[Task]
+    ) =
+      ZStream.fromEffect(sink(kvStream, valueProducer, sinkTopic, keySerializer, valueSerializer, log).fork <* log.info("running sink perpetually"))
 
     private[tamer] final def sourceStream(kvChunkQueue: Queue[Chunk[(K, V)]], registryLayer: ULayer[RegistryInfo], log: LogWriter[Task]) =
       source(
         stateTopic,
         stateGroupId,
         stateHash,
-        serdes.stateSerde,
+        serdes.stateSerializer,
+        serdes.stateDeserializer,
         initialState,
         adminClient,
         stateConsumer,
@@ -274,12 +282,13 @@ object Tamer {
     private[tamer] final def drainSink(
         fiber: Fiber[Throwable, Unit],
         kvStream: UStream[(K, V)],
-        registryLayer: ULayer[RegistryInfo],
+        keySerializer: Serializer[RegistryInfo, K],
+        valueSerializer: Serializer[RegistryInfo, V],
         log: LogWriter[Task]
     ) = log.info(s"stopping producing to $sinkTopic").ignore *>
       fiber.interrupt *>
       log.info(s"producer to topic $sinkTopic stopped, running final drain on sink queue").ignore *>
-      sink(kvStream, valueProducer, sinkTopic, registryLayer, log).run <*
+      sink(kvStream, valueProducer, sinkTopic, keySerializer, valueSerializer, log).run <*
       log.info("sink queue drained").ignore
 
     private[tamer] final def runLoop(
@@ -289,8 +298,13 @@ object Tamer {
         sinkRegistry: ULayer[RegistryInfo],
         log: LogWriter[Task]
     ) = for {
-      fiber <- sinkStream(kvStream, sinkRegistry, log)
-      _     <- sourceStream(kvChunkQueue, stateRegistry, log).ensuringFirst(stopSource(log)).ensuring(drainSink(fiber, kvStream, sinkRegistry, log))
+      fiber <- sinkStream(kvStream, serdes.keySerializer, serdes.valueSerializer, log).provideSomeLayer[Clock](sinkRegistry)
+      _ <- sourceStream(kvChunkQueue, stateRegistry, log)
+        .ensuringFirst(stopSource(log))
+        .ensuring(
+          drainSink(fiber, kvStream, serdes.keySerializer, serdes.valueSerializer, log)
+            .provideSomeLayer[Clock](sinkRegistry)
+        )
     } yield ()
 
     override final val runLoop: ZIO[Clock, TamerError, Unit] = {
@@ -341,10 +355,10 @@ object Tamer {
         .make(consumerSettings)
         .mapError(TamerError("Could not make state consumer", _))
       val stateProducer = Producer
-        .make(producerSettings, stateKeySerde.serializer, serdes.stateSerde)
+        .make(producerSettings)
         .mapError(TamerError("Could not make state producer", _))
       val valueProducer = Producer
-        .make(producerSettings, serdes.keySerializer, serdes.valueSerializer)
+        .make(producerSettings)
         .mapError(TamerError("Could not make value producer", _))
 
       ZManaged.mapN(adminClient, stateConsumer, stateProducer, valueProducer) {

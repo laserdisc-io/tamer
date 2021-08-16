@@ -7,13 +7,12 @@ import org.apache.kafka.common.{Metric, MetricName, PartitionInfo, TopicPartitio
 import tamer.utils.FakeConsumerUtils._
 import zio.clock.Clock
 import zio.duration.Duration
-import zio.kafka.consumer.Consumer.Service
-import zio.kafka.consumer.{CommittableRecord, SubscribedConsumer, Subscription}
+import zio.kafka.consumer.{CommittableRecord, Consumer, SubscribedConsumer, Subscription}
 import zio.kafka.serde.Deserializer
 import zio.random.Random
 import zio.stream.ZStream
 import zio.stream.ZStream.repeatEffectOption
-import zio.{Cause, IO, Queue, Ref, Schedule, Task, UIO, URIO, ZIO, ZQueue, stream}
+import zio.{Cause, Chunk, IO, Queue, Ref, Schedule, Task, UIO, URIO, ZIO, ZQueue, stream}
 
 /** Topic is fixed to 'topic'
   */
@@ -22,7 +21,8 @@ sealed class FakeConsumer[IK, IV](
     val inFlight: Queue[(TopicPartition, ProducerRecord[IK, IV])],
     val produced: Map[TopicPartition, Queue[ProducerRecord[IK, IV]]],
     log: LogWriter[Task]
-) extends Service {
+) extends Consumer {
+  val r = new java.util.Random()
   protected def checkThatThereIsExactly1TopicPartition(partitions: Set[TopicPartition]): IO[IllegalArgumentException, TopicPartition] = for {
     partition <- ZIO.fromOption(partitions.headOption).orElseFail(new IllegalArgumentException("You passed an empty set of TopicPartition"))
     _ <- ZIO.when(partitions.size > 1)(
@@ -108,8 +108,6 @@ sealed class FakeConsumer[IK, IV](
             record = new ConsumerRecord("topic", 0, offset, record.key().asInstanceOf[K], record.value().asInstanceOf[V]),
             commitHandle = (toCommit: Map[TopicPartition, Long]) =>
               (for {
-                r <- Task(new java.util.Random().nextInt(1)).map(_.longValue) // simulates the asynchronicity
-                _ <- Task(Thread.sleep(r)) // simulates the asynchronicity
                 _ <- {
                   val toCommitOffset = toCommit(partition)
                   log.info(s"consumer fakely committing offset $toCommitOffset") *>
@@ -117,8 +115,19 @@ sealed class FakeConsumer[IK, IV](
                       .tap { case (partition, value) => log.info(s"consumer fakely removing ($partition -> ${value.value()}) from in-flight") } *>
                     committed.update(_.updated(partition, Some(toCommitOffset)))
                 }
-              } yield ()).fork.unit // simulates the asynchronicity (remove this and the above when using kafka transactions)
+              } yield ()).unit
           )
+        }
+        .flatMap { committableRecord =>
+          // sometimes the same message gets taken twice because, after a disconnection,
+          // the consumer loses track of the current offset and and resets to the latest
+          // committed, this effectively results in a duplicate message being processed
+          // while the same offset is committed, thus increasing the lag
+          if (r.nextFloat() < 0.005) {
+            ZStream.fromEffect(inFlight.offer((new TopicPartition("topic", committableRecord.partition), new ProducerRecord("topic", committableRecord.key.asInstanceOf[IK], committableRecord.value.asInstanceOf[IV])))) *>
+            ZStream(committableRecord, committableRecord.copy())
+          } else
+            ZStream(committableRecord)
         }
         .tap(committableRecord => log.info(s"consumer fakely emitting an element summarized as: ${committableRecord.key}:${committableRecord.value}"))
     } yield stream
@@ -129,7 +138,7 @@ sealed class FakeConsumer[IK, IV](
       keyDeserializer: Deserializer[R, K],
       valueDeserializer: Deserializer[R, V],
       commitRetryPolicy: Schedule[Clock, Any, Any]
-  )(f: (K, V) => URIO[RC, Unit]): ZIO[R with RC with Clock, Throwable, Unit] = ???
+  )(f: (K, V) => URIO[RC, Unit]): ZIO[R with RC, Throwable, Unit] = ???
   override def subscribe(subscription: Subscription): Task[Unit] =
     log.info(s"consumer fakely subscribing to $subscription").unit
   override def unsubscribe: Task[Unit]                                                                                                  = ???
@@ -139,6 +148,10 @@ sealed class FakeConsumer[IK, IV](
   override def subscribeAnd(subscription: Subscription): SubscribedConsumer                                                             = ???
   override def subscription: Task[Set[String]]                                                                                          = ???
   override def metrics: Task[Map[MetricName, Metric]]                                                                                   = ???
+  override def partitionedAssignmentStream[R, K, V](
+      keyDeserializer: Deserializer[R, K],
+      valueDeserializer: Deserializer[R, V]
+  ): stream.Stream[Throwable, Chunk[(TopicPartition, ZStream[R, Throwable, CommittableRecord[K, V]])]] = ???
 }
 
 object FakeConsumer {
