@@ -19,26 +19,31 @@ object SinkSpec extends DefaultRunnableSpec {
     def verifySchema(id: Int, schema: ParsedSchema): Task[Unit]           = ???
   })
 
-  val serializerK: Serializer[Any, Key] = Serializer[Any, Key]{ case (_, _, k) => IO(Array(k.key.toByte)) }
-  val serializerV: Serializer[Any, Value] = Serializer[Any, Value]{ case (_, _, v) => IO(Array(v.value.toByte))}
+  val serializerK: Serializer[Any, Key]   = Serializer[Any, Key] { case (_, _, k) => IO(Array(k.key.toByte)) }
+  val serializerV: Serializer[Any, Value] = Serializer[Any, Value] { case (_, _, v) => IO(Array(v.value.toByte)) }
 
   override final val spec = suite("SinkSpec")(
     testM("should correctly produce") {
       for {
         log      <- log4sFromName.provide("test1")
         producer <- FakeProducer.mk[Key, Value](log)
-        _        <- Tamer.sink(ZStream.repeat(Key(42) -> Value(42)).take(1), producer, "topic", serializerK, serializerV, log).provideSomeLayer[Clock](nullRegistryInfoFor("topic"))
-        records  <- producer.produced.takeAll
+        _ <- Tamer
+          .sink(ZStream.repeat(Key(42) -> Value(42)).take(1), producer, "topic", serializerK, serializerV, log)
+          .provideSomeLayer[Clock](nullRegistryInfoFor("topic"))
+        records <- producer.produced.takeAll
       } yield assert(records)(equalTo(List(new ProducerRecord("topic", Key(42), Value(42)))))
     },
     testM("should correctly produce in case of moderate jitter") {
       for {
         log      <- log4sFromName.provide("test2")
         producer <- FailingFakeProducer.mk[Key, Value](log)
-        fiber    <- Tamer.sink(ZStream.repeat(Key(42) -> Value(42)).take(1), producer, "topic", serializerK, serializerV, log).provideSomeLayer[Clock](nullRegistryInfoFor("topic")).fork
-        _        <- TestClock.adjust(5.second).repeat(Schedule.recurs(10))
-        _        <- fiber.join
-        records  <- producer.produced.takeAll
+        fiber <- Tamer
+          .sink(ZStream.repeat(Key(42) -> Value(42)).take(1), producer, "topic", serializerK, serializerV, log)
+          .provideSomeLayer[Clock](nullRegistryInfoFor("topic"))
+          .fork
+        _       <- TestClock.adjust(5.second).repeat(Schedule.recurs(10))
+        _       <- fiber.join
+        records <- producer.produced.takeAll
       } yield assert(records)(equalTo(List(new ProducerRecord("topic", Key(42), Value(42)))))
     }
   )

@@ -124,8 +124,15 @@ sealed class FakeConsumer[IK, IV](
           // committed, this effectively results in a duplicate message being processed
           // while the same offset is committed, thus increasing the lag
           if (r.nextFloat() < 0.005) {
-            ZStream.fromEffect(inFlight.offer((new TopicPartition("topic", committableRecord.partition), new ProducerRecord("topic", committableRecord.key.asInstanceOf[IK], committableRecord.value.asInstanceOf[IV])))) *>
-            ZStream(committableRecord, committableRecord.copy())
+            ZStream.fromEffect(
+              inFlight.offer(
+                (
+                  new TopicPartition("topic", committableRecord.partition),
+                  new ProducerRecord("topic", committableRecord.key.asInstanceOf[IK], committableRecord.value.asInstanceOf[IV])
+                )
+              )
+            ) *>
+              ZStream(committableRecord, committableRecord.copy())
           } else
             ZStream(committableRecord)
         }
