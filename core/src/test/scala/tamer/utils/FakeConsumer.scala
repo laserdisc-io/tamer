@@ -12,7 +12,8 @@ import zio.kafka.serde.Deserializer
 import zio.random.Random
 import zio.stream.{Stream, ZStream}
 import zio.stream.ZStream.repeatEffectOption
-import zio.{Cause, Chunk, IO, Queue, Ref, Schedule, Task, UIO, URIO, ZIO, ZQueue}
+import zio.random._
+import zio.{Cause, Chunk, Has, IO, Queue, Ref, Schedule, Task, UIO, URIO, ZIO, ZQueue}
 
 /** Topic is fixed to 'topic'
   */
@@ -22,7 +23,6 @@ sealed class FakeConsumer[IK, IV](
     val produced: Map[TopicPartition, Queue[ProducerRecord[IK, IV]]],
     log: LogWriter[Task]
 ) extends Consumer {
-  val r = new java.util.Random()
   protected def checkThatThereIsExactly1TopicPartition(partitions: Set[TopicPartition]): IO[IllegalArgumentException, TopicPartition] = for {
     partition <- ZIO.fromOption(partitions.headOption).orElseFail(new IllegalArgumentException("You passed an empty set of TopicPartition"))
     _ <- ZIO.when(partitions.size > 1)(
@@ -87,7 +87,7 @@ sealed class FakeConsumer[IK, IV](
       valueDeserializer: Deserializer[R, V],
       outputBuffer: Int
   ): ZStream[R, Throwable, CommittableRecord[K, V]] =
-    for {
+    (for {
       initialOffsets <- getCommittedOr0(committed)
       counters       <- ZStream.fromEffect(Ref.make(initialOffsets))
       partitionQueues = produced.map { case (partition, queue) => queue.map(record => (partition, record)) }
@@ -118,12 +118,13 @@ sealed class FakeConsumer[IK, IV](
               } yield ()).unit
           )
         }
-        .flatMap { committableRecord =>
+        .zip(ZStream.repeatEffect(nextDouble))
+        .flatMap { case (committableRecord, randomDouble) =>
           // sometimes the same message gets taken twice because, after a disconnection,
           // the consumer loses track of the current offset and and resets to the latest
           // committed, this effectively results in a duplicate message being processed
           // while the same offset is committed, thus increasing the lag
-          if (r.nextFloat() < 0.005) {
+          if (randomDouble < 0.005) {
             ZStream.fromEffect(
               inFlight.offer(
                 (
@@ -137,7 +138,7 @@ sealed class FakeConsumer[IK, IV](
             ZStream(committableRecord)
         }
         .tap(committableRecord => log.info(s"consumer fakely emitting an element summarized as: ${committableRecord.key}:${committableRecord.value}"))
-    } yield stream
+    } yield stream).provideSome[R](_ => Has(Random.Service.live))
 
   override def stopConsumption: UIO[Unit] = ???
   override def consumeWith[R, RC, K, V](
