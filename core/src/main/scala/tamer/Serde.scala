@@ -10,9 +10,9 @@ import zio.{Has, RIO, Task, URIO}
 sealed trait Serde[A] extends Any {
   def isKey: Boolean
   def schema: ParsedSchema
-  def deserializer: Deserializer[RegistryInfo, A]
-  def serializer: Serializer[RegistryInfo, A]
-  final def serde: ZSerde[RegistryInfo, A] = ZSerde(deserializer)(serializer)
+  def deserializer: Deserializer[Has[Registry] with Has[TopicName], A]
+  def serializer: Serializer[Has[Registry] with Has[TopicName], A]
+  final def serde: ZSerde[Has[Registry] with Has[TopicName], A] = ZSerde(deserializer)(serializer)
 }
 
 object Serde {
@@ -22,12 +22,12 @@ object Serde {
   final def key[A: Codec]   = new DelegatingSerde[A](isKey = true, Codec[A])
   final def value[A: Codec] = new DelegatingSerde[A](isKey = false, Codec[A])
 
-  final class DelegatingSerde[A](override final val isKey: Boolean, codec: Codec[A]) extends Serde[A] {
+  final class DelegatingSerde[A](override val isKey: Boolean, codec: Codec[A]) extends Serde[A] {
     private[this] def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
 
-    override final val schema: ParsedSchema = codec.schema
+    override val schema: ParsedSchema = codec.schema
 
-    override final val deserializer: Deserializer[RegistryInfo, A] = Deserializer.byteArray.mapM { ba =>
+    override val deserializer: Deserializer[Has[Registry], A] = Deserializer.byteArray.mapM { ba =>
       val buffer = ByteBuffer.wrap(ba)
       if (buffer.get() != Magic) RIO.fail(TamerError("Deserialization failed: unknown magic byte!"))
       else {
@@ -43,7 +43,7 @@ object Serde {
         } yield res
       }
     }
-    override final val serializer: Serializer[RegistryInfo, A] = Serializer.byteArray.contramapM { a =>
+    override val serializer: Serializer[Has[Registry] with Has[TopicName], A] = Serializer.byteArray.contramapM { a =>
       for {
         t  <- URIO.service[TopicName]
         id <- RIO.accessM[Has[Registry]](_.get.getOrRegisterId(subject(t), schema))
