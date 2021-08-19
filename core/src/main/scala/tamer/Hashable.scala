@@ -6,8 +6,7 @@ import java.time.Instant
 
 trait Hashable[S] {
 
-  /** It is required for this hash to be consistent even across executions
-    * for the same semantic state. This is in contrast with the built-in
+  /** It is required for this hash to be consistent even across executions for the same semantic state. This is in contrast with the built-in
     * `hashCode` method.
     */
   def hash(s: S): Int

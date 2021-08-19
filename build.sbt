@@ -73,11 +73,11 @@ def versionDependent(scalaVersion: String) =
   }
 
 lazy val baseSettings = Seq(
-  organization := "io.laserdisc",
-  scalaVersion := scala_213,
+  organization       := "io.laserdisc",
+  scalaVersion       := scala_213,
   crossScalaVersions := Seq(scala_212, scala_213),
-  homepage := Some(url("https://github.com/laserdisc-io/tamer")),
-  licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
+  homepage           := Some(url("https://github.com/laserdisc-io/tamer")),
+  licenses += "MIT"  -> url("http://opensource.org/licenses/MIT"),
   developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
   scalacOptions ++= versionDependent(scalaVersion.value)
 )
@@ -92,7 +92,7 @@ lazy val commonSettings = baseSettings ++ Seq(
   testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
   Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
   Test / console / scalacOptions := (Compile / console / scalacOptions).value,
-  Test / fork := true
+  Test / fork                    := true
 )
 
 lazy val core = project
@@ -101,21 +101,21 @@ lazy val core = project
   .settings(
     name := "tamer-core",
     libraryDependencies ++= Seq(
-      "com.sksamuel.avro4s"              %% "avro4s-core"                    % V.avro4s        % Optional,
-      "dev.zio"                          %% "zio-interop-cats"               % V.`zio-interop`,
-      "dev.zio"                          %% "zio-kafka"                      % V.`zio-kafka`,
-      "dev.zio"                          %% "zio-streams"                    % V.zio,
-      "io.confluent"                      % "kafka-schema-registry-client"   % V.confluent,
-      "io.laserdisc"                     %% "log-effect-zio"                 % V.`log-effect`,
-      "is.cir"                           %% "ciris"                          % V.ciris,
-      "org.apache.kafka"                  % "kafka-clients"                  % V.kafka,
-      "org.scalatestplus"                %% "scalatestplus-mockito"          % V.mockito       % Test,
-      "ch.qos.logback"                    % "logback-classic"                % V.logback       % Test,
-      "com.github.everit-org.json-schema" % "org.everit.json.schema"         % V.`json-schema` % Test,
-      "io.github.embeddedkafka"          %% "embedded-kafka"                 % V.kafka         % Test,
-      "io.github.embeddedkafka"          %% "embedded-kafka-schema-registry" % V.confluent     % Test excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema", "org.slf4j" % "slf4j-log4j12"),
-      "org.slf4j"                         % "jul-to-slf4j"                   % V.slf4j         % Test,
-      "org.slf4j"                         % "log4j-over-slf4j"               % V.slf4j         % Test
+      "com.sksamuel.avro4s"              %% "avro4s-core"                  % V.avro4s        % Optional,
+      "dev.zio"                          %% "zio-interop-cats"             % V.`zio-interop`,
+      "dev.zio"                          %% "zio-kafka"                    % V.`zio-kafka`,
+      "dev.zio"                          %% "zio-streams"                  % V.zio,
+      "io.confluent"                      % "kafka-schema-registry-client" % V.confluent,
+      "io.laserdisc"                     %% "log-effect-zio"               % V.`log-effect`,
+      "is.cir"                           %% "ciris"                        % V.ciris,
+      "org.apache.kafka"                  % "kafka-clients"                % V.kafka,
+      "org.scalatestplus"                %% "scalatestplus-mockito"        % V.mockito       % Test,
+      "ch.qos.logback"                    % "logback-classic"              % V.logback       % Test,
+      "com.github.everit-org.json-schema" % "org.everit.json.schema"       % V.`json-schema` % Test,
+      "io.github.embeddedkafka"          %% "embedded-kafka"               % V.kafka         % Test,
+      "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.confluent % Test excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema", "org.slf4j" % "slf4j-log4j12"),
+      "org.slf4j" % "jul-to-slf4j"     % V.slf4j % Test,
+      "org.slf4j" % "log4j-over-slf4j" % V.slf4j % Test
     )
   )
 
