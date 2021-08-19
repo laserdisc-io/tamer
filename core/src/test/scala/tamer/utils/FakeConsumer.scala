@@ -46,7 +46,7 @@ sealed class FakeConsumer[IK, IV](
     } yield latestCommittedOffset
 
   override def endOffsets(partitions: Set[TopicPartition], timeout: Duration): Task[Map[TopicPartition, Long]] = for {
-    producedSizes  <- ZIO.foreach(produced)({ case (topicPartition, queue) => queue.size.map((topicPartition, _)) })
+    producedSizes  <- ZIO.foreach(produced) { case (topicPartition, queue) => queue.size.map((topicPartition, _)) }
     initialOffsets <- committed.get
     endOffsets <- Task(initialOffsets.map { case (topicPartition, initialOffset) =>
       // depends on kafka read mode

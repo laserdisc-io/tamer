@@ -11,9 +11,9 @@ final case class QueryResult[V](metadata: ResultMetadata, results: List[V])
 final case class ChunkWithMetadata[V](chunk: Chunk[V], pulledAt: Long = System.nanoTime())
 final case class ValueWithMetadata[V](value: V, pulledAt: Long = System.nanoTime())
 
-/** By specifying a field here, tamer will order database records according
-  * to this date. Usually you want your latest update timestamp here.
-  * @param timestamp the value tamer will use to order the records by.
+/** By specifying a field here, tamer will order database records according to this date. Usually you want your latest update timestamp here.
+  * @param timestamp
+  *   the value tamer will use to order the records by.
   */
 abstract class Timestamped(val timestamp: Instant)
 object Timestamped {
