@@ -69,7 +69,7 @@ object DbSetup {
   )(
       recordKey: (S, V) => K,
       stateFold: (S, QueryResult[V]) => UIO[S]
-  ): DbSetup[K, V, S] = new DbSetup(Setup.Serdes[K, V, S], initialState, recordKey, query, stateFold) {}
+  ): DbSetup[K, V, S] = new DbSetup(Setup.mkSerdes[K, V, S], initialState, recordKey, query, stateFold) {}
 
   final def tumbling[K: Codec, V <: Timestamped: Ordering: Codec](
       query: Window => Query0[V]

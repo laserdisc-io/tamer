@@ -25,17 +25,17 @@ object FakeKafka {
     override def stop(): UIO[Unit]              = UIO.unit
   }
 
-  val kafkaConfigLayer: RLayer[Random with Has[FakeKafka], Has[KafkaConfig]] = (for {
+  val kafkaConfigLayer: RLayer[Random with Has[FakeKafka], Has[KafkaConfig] with Has[Registry]] = (for {
     randomString <- random.nextUUID.map(uuid => s"test-$uuid")
     fakeKafka    <- ZIO.service[FakeKafka]
   } yield KafkaConfig(
     brokers = fakeKafka.bootstrapServers,
-    schemaRegistryUrl = fakeKafka.schemaRegistryUrl,
+    schemaRegistryUrl = Some(fakeKafka.schemaRegistryUrl),
     closeTimeout = 1.second,
     bufferSize = 5,
     sink = SinkConfig(s"sink.topic.$randomString"),
     state = StateConfig(s"sink.topic.tape.$randomString", s"embedded.groupid.$randomString", s"embedded.clientid.$randomString")
-  )).toLayer
+  )).toLayer >+> Registry.fromKafkaConfig
 
   val embeddedKafkaLayer: TaskLayer[Has[FakeKafka]] = ZLayer.fromManaged {
     implicit val embeddedKafkaConfig: EmbeddedKafkaConfig = EmbeddedKafkaConfig(
@@ -44,7 +44,8 @@ object FakeKafka {
     ZManaged.make(ZIO.effect(EmbeddedKafkaService(EmbeddedKafka.start())))(_.stop())
   }
 
-  val embeddedKafkaConfigLayer: RLayer[Random, Has[KafkaConfig]] = embeddedKafkaLayer ++ ZLayer.requires[Random] >>> kafkaConfigLayer
+  val embeddedKafkaConfigLayer: RLayer[Random, Has[KafkaConfig] with Has[Registry]] =
+    embeddedKafkaLayer ++ ZLayer.requires[Random] >>> kafkaConfigLayer
 
   val localKafkaLayer: ULayer[Has[FakeKafka]] = ZLayer.succeed(DefaultLocal)
 }

@@ -122,7 +122,7 @@ object S3Setup {
       parallelism: Int = 1,
       transducer: ZTransducer[R, Throwable, Byte, V] = defaultTransducer
   ): S3Setup[R, K, V, S] = new S3Setup(
-    Setup.Serdes[K, V, S],
+    Setup.mkSerdes[K, V, S],
     initialState,
     recordKey,
     bucket,
@@ -173,7 +173,7 @@ object S3Setup {
   )(
       implicit ev: Codec[Instant]
   ): S3Setup[R, K, V, Instant] = new S3Setup(
-    Setup.Serdes[K, V, Instant],
+    Setup.mkSerdes[K, V, Instant],
     from,
     recordKey,
     bucket,

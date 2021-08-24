@@ -34,8 +34,8 @@ object S3Generalized extends App {
   val myKafkaConfigLayer = ZLayer.succeed {
     val kafkaSink  = SinkConfig("sink-topic")
     val kafkaState = StateConfig("state-topic", "groupid", "clientid")
-    KafkaConfig(List("localhost:9092"), "http://localhost:8081", 10.seconds, 50, kafkaSink, kafkaState)
-  }
+    KafkaConfig(List("localhost:9092"), Some("http://localhost:8081"), 10.seconds, 50, kafkaSink, kafkaState)
+  } >+> Registry.fromKafkaConfig
 
   val program = S3Setup(
     bucket = internals.bucketName,

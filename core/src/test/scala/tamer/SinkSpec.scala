@@ -1,6 +1,5 @@
 package tamer
 
-import io.confluent.kafka.schemaregistry.ParsedSchema
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.ProducerRecord
 import tamer.utils.{FailingFakeProducer, FakeProducer}
@@ -14,11 +13,6 @@ import zio.test.environment.TestClock
 import zio.test.{DefaultRunnableSpec, assert}
 
 object SinkSpec extends DefaultRunnableSpec {
-  private[this] def nullRegistryInfoFor(topic: String) = ZLayer.succeed(topic) ++ ZLayer.succeed(new Registry {
-    def getOrRegisterId(subject: String, schema: ParsedSchema): Task[Int] = ???
-    def verifySchema(id: Int, schema: ParsedSchema): Task[Unit]           = ???
-  })
-
   val serializerK: Serializer[Any, Key]   = Serializer[Any, Key] { case (_, _, k) => IO(Array(k.key.toByte)) }
   val serializerV: Serializer[Any, Value] = Serializer[Any, Value] { case (_, _, v) => IO(Array(v.value.toByte)) }
 
@@ -29,7 +23,7 @@ object SinkSpec extends DefaultRunnableSpec {
         producer <- FakeProducer.mk[Key, Value](log)
         _ <- Tamer
           .sink(ZStream.repeat(Key(42) -> Value(42)).take(1), producer, "topic", serializerK, serializerV, log)
-          .provideSomeLayer[Clock](nullRegistryInfoFor("topic"))
+          .provideSomeLayer[Clock](Registry.fake)
         records <- producer.produced.takeAll
       } yield assert(records)(equalTo(List(new ProducerRecord("topic", Key(42), Value(42)))))
     },
@@ -39,7 +33,7 @@ object SinkSpec extends DefaultRunnableSpec {
         producer <- FailingFakeProducer.mk[Key, Value](log)
         fiber <- Tamer
           .sink(ZStream.repeat(Key(42) -> Value(42)).take(1), producer, "topic", serializerK, serializerV, log)
-          .provideSomeLayer[Clock](nullRegistryInfoFor("topic"))
+          .provideSomeLayer[Clock](Registry.fake)
           .fork
         _       <- TestClock.adjust(5.second).repeat(Schedule.recurs(10))
         _       <- fiber.join

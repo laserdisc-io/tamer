@@ -117,7 +117,7 @@ object RESTSetup {
         SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
       ] = None
   ): RESTSetup[R, K, V, S] = new RESTSetup(
-    Setup.Serdes[K, V, S],
+    Setup.mkSerdes[K, V, S],
     initialState,
     recordKey,
     authentication,
@@ -164,7 +164,7 @@ object RESTSetup {
     }
 
     new RESTSetup(
-      Setup.Serdes[K, V, Offset],
+      Setup.mkSerdes[K, V, Offset],
       initialOffset,
       recordKey,
       authentication,
@@ -250,7 +250,7 @@ object RESTSetup {
       }
 
     new RESTSetup(
-      Setup.Serdes[K, V, PeriodicOffset],
+      Setup.mkSerdes[K, V, PeriodicOffset],
       PeriodicOffset(startingOffset, periodStart),
       recordKey,
       authentication,

@@ -1,6 +1,6 @@
 package tamer
 
-import io.confluent.kafka.schemaregistry.client.{CachedSchemaRegistryClient, SchemaRegistryClient}
+//import io.confluent.kafka.schemaregistry.client.{CachedSchemaRegistryClient, SchemaRegistryClient}
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.ProducerRecord
@@ -14,16 +14,15 @@ import zio.kafka.admin.{AdminClient, AdminClientSettings}
 import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.kafka.consumer._
 import zio.kafka.producer.{Producer, ProducerSettings}
-import zio.kafka.serde.{Deserializer, Serializer}
+import zio.kafka.serde.{Serde => ZSerde, Serializer}
 import zio.stream.{UStream, ZStream}
 
 trait Tamer {
-  def runLoop: ZIO[Clock, TamerError, Unit]
+  def runLoop: ZIO[Clock with Has[Registry], TamerError, Unit]
 }
 
 object Tamer {
   private[tamer] final case class StateKey(stateKey: String, groupId: String)
-  private[this] final val stateKeySerde = Serde.key[StateKey]
 
   private[tamer] object Lag {
     final def unapply(pair: (Map[TopicPartition, Long], Map[TopicPartition, Long])): Some[Map[TopicPartition, Long]] =
@@ -44,18 +43,15 @@ object Tamer {
     def info: String = s"${_underlying.topicPartition}@${_underlying.offset}"
   }
 
-  private[this] final def mkRegistry(schemaRegistryClient: SchemaRegistryClient, topic: String): ULayer[Has[Registry] with Has[TopicName]] =
-    ZLayer.succeed(schemaRegistryClient) >>> Registry.live ++ ZLayer.succeed(topic)
-
   private[tamer] final def sink[K, V](
-      kvStream: UStream[(K, V)],
+      stream: UStream[(K, V)],
       producer: Producer,
       topic: String,
-      keySerializer: Serializer[SinkRegistry, K],
-      valueSerializer: Serializer[SinkRegistry, V],
+      keySerializer: Serializer[Has[Registry], K],
+      valueSerializer: Serializer[Has[Registry], V],
       log: LogWriter[Task]
   ) =
-    kvStream
+    stream
       .map { case (k, v) => new ProducerRecord(topic, k, v) }
       .mapChunksM {
         case chunk if chunk.nonEmpty =>
@@ -134,15 +130,14 @@ object Tamer {
       stateTopic: String,
       stateGroupId: String,
       stateHash: Int,
-      stateSerializer: Serializer[StateRegistry, S],
-      stateDeserializer: Deserializer[StateRegistry, S],
+      stateKeySerde: ZSerde[Has[Registry], StateKey],
+      stateSerde: ZSerde[Has[Registry], S],
       initialState: S,
       adminClient: AdminClient,
       stateConsumer: Consumer,
       stateProducer: Producer,
       stateRecovery: StateRecoveryStrategy,
-      kvChunkQueue: Queue[Chunk[(K, V)]],
-      stateRegistryLayer: ULayer[StateRegistry],
+      queue: Queue[Chunk[(K, V)]],
       iterationFunction: (S, Queue[Chunk[(K, V)]]) => Task[S],
       log: LogWriter[Task]
   ) = {
@@ -174,42 +169,37 @@ object Tamer {
       log.debug("awaiting assignment") *>
       waitForAssignment.flatMap(a => log.debug(s"received assignment $a") *> decide(a).tap(d => log.debug(s"decided to $d")))
 
-    def initialize: RIO[Clock, Unit] =
-      subscribeAndDecide.flatMap {
-        case Initialize =>
-          log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
-            stateProducer
-              .produce(stateTopic, key, initialState, stateKeySerde.serializer, stateSerializer)
-              .provideLayer(stateRegistryLayer)
-              .tap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
-              .unit
-        case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
-        case Recover(corrected) =>
-          log.warn(s"incorrect consumer group's lag on $stateTopic. Group id: $stateGroupId. Unsubscribing the state consumer ...") *>
-            stateConsumer.unsubscribe *>
-            log.warn(s"state consumer to $stateTopic with group id $stateGroupId unsubscribed. Fixing the offset ...") *>
-            log.warn(
-              s"applying the following correction to $stateGroupId:\n${corrected.values.map(_.metadata.getOrElse("No Correction Metadata")).mkString("\n")}"
-            ) *>
-            adminClient.alterConsumerGroupOffsets(stateGroupId, corrected) *>
-            log.warn(
-              s"offset of $stateGroupId corrected. Retrying initialization of state consumer to $stateTopic with group id $stateGroupId ..."
-            ) *>
-            initialize
-        case Die =>
-          log.error(s"consumer group $stateGroupId is already at the end of $stateTopic, manual intervention required") *>
-            ZIO.fail(TamerError(s"Consumer group $stateGroupId stuck at end of stream"))
-      }
+    def initialize: RIO[Clock with Has[Registry], Unit] = subscribeAndDecide.flatMap {
+      case Initialize =>
+        log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
+          stateProducer
+            .produce(stateTopic, key, initialState, stateKeySerde, stateSerde)
+            .tap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
+            .unit
+      case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
+      case Recover(corrected) =>
+        log.warn(s"incorrect consumer group's lag on $stateTopic. Group id: $stateGroupId. Unsubscribing the state consumer ...") *>
+          stateConsumer.unsubscribe *>
+          log.warn(s"state consumer to $stateTopic with group id $stateGroupId unsubscribed. Fixing the offset ...") *>
+          log.warn(
+            s"applying the following correction to $stateGroupId:\n${corrected.values.map(_.metadata.getOrElse("No Correction Metadata")).mkString("\n")}"
+          ) *>
+          adminClient.alterConsumerGroupOffsets(stateGroupId, corrected) *>
+          log.warn(s"offset of $stateGroupId corrected. Retrying initialization of state consumer to $stateTopic with group id $stateGroupId ...") *>
+          initialize
+      case Die =>
+        log.error(s"consumer group $stateGroupId is already at the end of $stateTopic, manual intervention required") *>
+          ZIO.fail(TamerError(s"Consumer group $stateGroupId stuck at end of stream"))
+    }
 
     val stateStream = stateConsumer
-      .plainStream(stateKeySerde.deserializer, stateDeserializer)
-      .provideLayer(stateRegistryLayer)
+      .plainStream(stateKeySerde, stateSerde)
       .mapM {
         case CommittableRecord(record, offset) if record.key == key =>
           log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.info}") *>
             // we got a valid state to process, invoke the handler
-            log.debug("invoking the iteration function") *> iterationFunction(record.value, kvChunkQueue).flatMap { newState =>
-              // now that te handler has concluded its job, we've got to commit the offset and push the new state to Kafka
+            log.debug("invoking the iteration function") *> iterationFunction(record.value, queue).flatMap { newState =>
+              // now that the handler has concluded its job, we've got to commit the offset and push the new state to Kafka
               // we should do these two operations within a transactional boundary as there is no guarantee whatsoever that
               // both will successfully complete
               // here we're chosing to commit first before pushing the new state so we should never lag more than 1 but
@@ -217,8 +207,7 @@ object Tamer {
               offset.commitOrRetry(tenTimes) <*
                 log.debug(s"consumer group $stateGroupId committed offset ${offset.info}") <*
                 stateProducer
-                  .produce(stateTopic, key, newState, stateKeySerde.serializer, stateSerializer)
-                  .provideLayer(stateRegistryLayer)
+                  .produce(stateTopic, key, newState, stateKeySerde, stateSerde)
                   .tap(rmd => log.debug(s"pushed state $newState to $rmd"))
             }
         case CommittableRecord(record, offset) =>
@@ -238,84 +227,65 @@ object Tamer {
       iterationFunction: (S, Queue[Chunk[(K, V)]]) => Task[S],
       repr: String,
       adminClient: AdminClient,
-      stateConsumer: Consumer,
+      consumer: Consumer,
       producer: Producer
   ) extends Tamer {
 
-    private[this] final val logTask = log4sFromName.provide("tamer.kafka")
+    private[this] val logTask = log4sFromName.provide("tamer.kafka")
 
     private[this] val SinkConfig(sinkTopic)                                      = config.sink
     private[this] val StateConfig(stateTopic, stateGroupId, _, recoveryStrategy) = config.state
 
-    private[tamer] def sinkStream(
-        kvStream: UStream[(K, V)],
-        keySerializer: Serializer[SinkRegistry, K],
-        valueSerializer: Serializer[SinkRegistry, V],
-        log: LogWriter[Task]
-    ) =
-      ZStream.fromEffect(sink(kvStream, producer, sinkTopic, keySerializer, valueSerializer, log).fork <* log.info("running sink perpetually"))
+    private[this] val keySerializer   = serdes.keySerializer
+    private[this] val valueSerializer = serdes.valueSerializer
 
-    private[tamer] def sourceStream(kvChunkQueue: Queue[Chunk[(K, V)]], registryLayer: ULayer[StateRegistry], log: LogWriter[Task]) =
+    private[this] val stateKeySerde   = Serde.key[StateKey]
+    private[this] val stateValueSerde = serdes.stateSerde
+
+    private[tamer] def sinkStream(stream: UStream[(K, V)], log: LogWriter[Task]) =
+      ZStream.fromEffect(sink(stream, producer, sinkTopic, keySerializer, valueSerializer, log).fork <* log.info("running sink perpetually"))
+
+    private[tamer] def sourceStream(queue: Queue[Chunk[(K, V)]], log: LogWriter[Task]) =
       source(
         stateTopic,
         stateGroupId,
         stateHash,
-        serdes.stateSerializer,
-        serdes.stateDeserializer,
+        stateKeySerde,
+        stateValueSerde,
         initialState,
         adminClient,
-        stateConsumer,
+        consumer,
         producer,
         recoveryStrategy,
-        kvChunkQueue,
-        registryLayer,
+        queue,
         iterationFunction,
         log
       )
 
     private[this] def stopSource(log: LogWriter[Task]) =
       log.info(s"stopping consuming of topic $stateTopic").ignore *>
-        stateConsumer.stopConsumption <*
+        consumer.stopConsumption <*
         log.info(s"consumer of topic $stateTopic stopped").ignore
 
-    private[tamer] def drainSink(
-        fiber: Fiber[Throwable, Unit],
-        kvStream: UStream[(K, V)],
-        keySerializer: Serializer[SinkRegistry, K],
-        valueSerializer: Serializer[SinkRegistry, V],
-        log: LogWriter[Task]
-    ) = log.info(s"stopping producing to $sinkTopic").ignore *>
-      fiber.interrupt *>
-      log.info(s"producer to topic $sinkTopic stopped, running final drain on sink queue").ignore *>
-      sink(kvStream, producer, sinkTopic, keySerializer, valueSerializer, log).run <*
-      log.info("sink queue drained").ignore
+    private[tamer] def drainSink(fiber: Fiber[Throwable, Unit], stream: UStream[(K, V)], log: LogWriter[Task]) =
+      log.info(s"stopping producing to $sinkTopic").ignore *>
+        fiber.interrupt *>
+        log.info(s"producer to topic $sinkTopic stopped, running final drain on sink queue").ignore *>
+        sink(stream, producer, sinkTopic, keySerializer, valueSerializer, log).run <*
+        log.info("sink queue drained").ignore
 
-    private[tamer] def runLoop(
-        kvChunkQueue: Queue[Chunk[(K, V)]],
-        kvStream: UStream[(K, V)],
-        stateRegistry: ULayer[StateRegistry],
-        sinkRegistry: ULayer[SinkRegistry],
-        log: LogWriter[Task]
-    ) = for {
-      fiber <- sinkStream(kvStream, serdes.keySerializer, serdes.valueSerializer, log).provideSomeLayer[Clock](sinkRegistry)
-      _ <- sourceStream(kvChunkQueue, stateRegistry, log)
-        .ensuringFirst(stopSource(log))
-        .ensuring(
-          drainSink(fiber, kvStream, serdes.keySerializer, serdes.valueSerializer, log)
-            .provideSomeLayer[Clock](sinkRegistry)
-        )
+    private[tamer] def runLoop(queue: Queue[Chunk[(K, V)]], log: LogWriter[Task]) = for {
+      stream <- ZStream.succeed(ZStream.fromChunkQueueWithShutdown(queue))
+      fiber  <- sinkStream(stream, log)
+      _      <- sourceStream(queue, log).ensuringFirst(stopSource(log)).ensuring(drainSink(fiber, stream, log))
     } yield ()
 
-    override val runLoop: ZIO[Clock, TamerError, Unit] = {
+    override val runLoop: ZIO[Clock with Has[Registry], TamerError, Unit] = {
       val logic = for {
-        log                  <- logTask
-        _                    <- log.info(s"initializing Tamer with setup: \n$repr")
-        schemaRegistryClient <- Task(new CachedSchemaRegistryClient(config.schemaRegistryUrl, 1000)) // FIXME magic number & manual wiring
-        kvChunkQueue         <- Queue.bounded[Chunk[(K, V)]](config.bufferSize)
-        kvStream             <- UIO(ZStream.fromChunkQueueWithShutdown(kvChunkQueue))
-        stateRegistry        <- UIO(mkRegistry(schemaRegistryClient, stateTopic))
-        sinkRegistry         <- UIO(mkRegistry(schemaRegistryClient, sinkTopic))
-        _                    <- runLoop(kvChunkQueue, kvStream, stateRegistry, sinkRegistry, log).runDrain
+        log   <- logTask
+        _     <- log.info(s"initializing Tamer with setup: \n$repr")
+        queue <- Queue.bounded[Chunk[(K, V)]](config.bufferSize)
+        _     <- runLoop(queue, log).runDrain
       } yield ()
 
       logic.refineOrDie(tamerErrors)
@@ -338,39 +308,32 @@ object Tamer {
       val adminClientSettings = AdminClientSettings(brokers)
         .withProperties(properties)
       val consumerSettings = ConsumerSettings(brokers)
-        .withProperties(properties)
-        .withGroupId(groupId)
         .withClientId(clientId)
         .withCloseTimeout(closeTimeout)
+        .withGroupId(groupId)
         .withOffsetRetrieval(OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest))
-      val producerSettings = ProducerSettings(brokers)
         .withProperties(properties)
+      val producerSettings = ProducerSettings(brokers)
         .withCloseTimeout(closeTimeout)
+        .withProperties(properties)
 
-      val adminClient = AdminClient
-        .make(adminClientSettings)
-        .mapError(TamerError("Could not make admin client", _))
-      val stateConsumer = Consumer
-        .make(consumerSettings)
-        .mapError(TamerError("Could not make state consumer", _))
-      val producer = Producer
-        .make(producerSettings)
-        .mapError(TamerError("Could not make producer", _))
-
-      ZManaged.mapN(adminClient, stateConsumer, producer) {
-        new Live(config, serdes, initialState, stateKey, iterationFunction, repr, _, _, _)
-      }
+      ZManaged
+        .mapN(AdminClient.make(adminClientSettings), Consumer.make(consumerSettings), Producer.make(producerSettings)) {
+          new Live(config, serdes, initialState, stateKey, iterationFunction, repr, _, _, _)
+        }
+        .mapError(TamerError("Could not build Kafka client", _))
     }
 
     private[tamer] final def getLayer[R, K, V, S](
         setup: Setup[R, K, V, S]
     ): ZLayer[R with Blocking with Clock with Has[KafkaConfig], TamerError, Has[Tamer]] =
       ZLayer.fromServiceManaged[KafkaConfig, R with Blocking with Clock, TamerError, Tamer] { config =>
-        val iterationFunctionManaged = ZIO.environment[R].map(r => Function.untupled((setup.iteration _).tupled.andThen(_.provide(r)))).toManaged_
-        iterationFunctionManaged.flatMap(Live.getManaged(config, setup.serdes, setup.initialState, setup.stateKey, _, setup.repr))
+        val iterationFunctionManaged = ZManaged.environment[R].map(r => Function.untupled((setup.iteration _).tupled.andThen(_.provide(r))))
+        iterationFunctionManaged.flatMap(getManaged(config, setup.serdes, setup.initialState, setup.stateKey, _, setup.repr))
       }
   }
 
-  final def live[R, K, V, S](setup: Setup[R, K, V, S]): ZLayer[R with Blocking with Clock with Has[KafkaConfig], TamerError, Has[Tamer]] =
-    Live.getLayer(setup)
+  final def live[R, K, V, S](
+      setup: Setup[R, K, V, S]
+  ): ZLayer[R with Blocking with Clock with Has[KafkaConfig] with Has[Registry], TamerError, Has[Tamer]] = Live.getLayer(setup)
 }
