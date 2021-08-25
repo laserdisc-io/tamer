@@ -3,11 +3,13 @@ package tamer
 import java.io.{InputStream, OutputStream}
 
 import io.confluent.kafka.schemaregistry.ParsedSchema
+import scala.annotation.implicitNotFound
 
+@implicitNotFound("Could not find an implicit Codec[${A}] in scope")
 sealed trait Codec[A] {
   def decode: InputStream => Either[Throwable, A]
   def encode: (A, OutputStream) => Unit
-  def schema: ParsedSchema
+  def maybeSchema: Option[ParsedSchema]
 }
 
 object Codec {
@@ -28,6 +30,6 @@ object Codec {
       ser.write(a)
       ser.close()
     }
-    override final val schema: ParsedSchema = new io.confluent.kafka.schemaregistry.avro.AvroSchema(_avroSchema)
+    override final val maybeSchema: Option[ParsedSchema] = Some(new io.confluent.kafka.schemaregistry.avro.AvroSchema(_avroSchema))
   }
 }
