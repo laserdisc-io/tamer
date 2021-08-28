@@ -24,7 +24,7 @@ val V = new {
   val `zio-interop`  = "2.5.1.0"
   val `zio-kafka`    = "0.16.0"
   val `zio-oci-os`   = "0.2.1"
-  val `zio-s3`       = "0.3.5"
+  val `zio-s3`       = "0.3.6"
 }
 
 val flags = Seq(
