@@ -3,7 +3,7 @@ val scala_213 = "2.13.6"
 
 val V = new {
   val avro4s         = "4.0.10"
-  val awsSdk         = "2.17.25"
+  val awsSdk         = "2.17.29"
   val cats           = "2.6.1"
   val circe          = "0.14.1"
   val ciris          = "1.2.1"
@@ -14,7 +14,7 @@ val V = new {
   val logback        = "1.2.5"
   val `log-effect`   = "0.16.1"
   val mockito        = "1.0.0-M2"
-  val ociSdk         = "2.3.2"
+  val ociSdk         = "2.4.1"
   val postgres       = "42.2.23"
   val `scala-compat` = "2.5.0"
   val slf4j          = "1.7.32"
@@ -25,7 +25,7 @@ val V = new {
   val `zio-json`     = "0.1.5"
   val `zio-kafka`    = "0.16.0"
   val `zio-oci-os`   = "0.2.1"
-  val `zio-s3`       = "0.3.5"
+  val `zio-s3`       = "0.3.6"
 }
 
 val flags = Seq(
