@@ -13,15 +13,16 @@ val V = new {
   val kafka          = "2.7.0"
   val logback        = "1.2.5"
   val `log-effect`   = "0.16.1"
+  val mockito        = "1.0.0-M2"
   val ociSdk         = "2.3.2"
   val postgres       = "42.2.23"
   val `scala-compat` = "2.5.0"
-  val mockito        = "1.0.0-M2"
   val slf4j          = "1.7.32"
   val sttp           = "3.3.13"
   val uzhttp         = "0.2.7"
   val zio            = "1.0.11"
   val `zio-interop`  = "2.5.1.0"
+  val `zio-json`     = "0.1.5"
   val `zio-kafka`    = "0.16.0"
   val `zio-oci-os`   = "0.2.1"
   val `zio-s3`       = "0.3.5"
@@ -32,22 +33,22 @@ val flags = Seq(
   "-encoding",
   "UTF-8",
   "-explaintypes",
-  "-Yrangepos",
   "-feature",
-  "-language:higherKinds",
   "-language:existentials",
+  "-language:higherKinds",
   "-language:implicitConversions",
+  "-opt-warnings",
   "-unchecked",
+  "-Xfatal-warnings",
   "-Xlint:_,-type-parameter-shadow",
+  "-Xlint:constant",
   "-Xsource:2.13",
+  "-Yrangepos",
   "-Ywarn-dead-code",
+  "-Ywarn-extra-implicit",
   "-Ywarn-numeric-widen",
   "-Ywarn-value-discard",
-  "-Xfatal-warnings",
-  "-Ywarn-unused",
-  "-opt-warnings",
-  "-Xlint:constant",
-  "-Ywarn-extra-implicit"
+  "-Ywarn-unused:-nowarn"
 )
 
 def versionDependent(scalaVersion: String) =
@@ -55,9 +56,8 @@ def versionDependent(scalaVersion: String) =
     case Some((2, major)) if major >= 13 =>
       flags ++ Seq(
         "-Wconf:any:error",
-        "-Ymacro-annotations",
         "-Xlint:-byname-implicit",
-        "-Ywarn-unused:-nowarn"
+        "-Ymacro-annotations"
       )
     case _ =>
       flags ++ Seq(
@@ -103,11 +103,13 @@ lazy val core = project
     libraryDependencies ++= Seq(
       "com.sksamuel.avro4s"              %% "avro4s-core"                  % V.avro4s        % Optional,
       "dev.zio"                          %% "zio-interop-cats"             % V.`zio-interop`,
+      "dev.zio"                          %% "zio-json"                     % V.`zio-json`    % Optional,
       "dev.zio"                          %% "zio-kafka"                    % V.`zio-kafka`,
       "dev.zio"                          %% "zio-streams"                  % V.zio,
       "io.confluent"                      % "kafka-schema-registry-client" % V.confluent,
       "io.laserdisc"                     %% "log-effect-zio"               % V.`log-effect`,
       "is.cir"                           %% "ciris"                        % V.ciris,
+      "io.circe"                         %% "circe-parser"                 % V.circe         % Optional,
       "org.apache.kafka"                  % "kafka-clients"                % V.kafka,
       "org.scalatestplus"                %% "scalatestplus-mockito"        % V.mockito       % Test,
       "ch.qos.logback"                    % "logback-classic"              % V.logback       % Test,
