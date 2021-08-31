@@ -6,7 +6,7 @@ import io.confluent.kafka.schemaregistry.ParsedSchema
 import scala.annotation.{implicitNotFound, nowarn}
 
 @implicitNotFound("Could not find an implicit Codec[${A}] in scope")
-sealed trait Codec[A] {
+sealed trait Codec[@specialized A] {
   def decode(is: InputStream): Either[Throwable, A]
   def encode(value: A, os: OutputStream): Unit
   def maybeSchema: Option[ParsedSchema]
@@ -50,6 +50,18 @@ private[tamer] sealed trait LowPriorityCodecs {
     override final val maybeSchema: Option[ParsedSchema] = None
   }
 
+  implicit final def optionalJsoniterScalaCodec[@specialized A, C[_]: JsoniterScalaCodec](
+      implicit ca: C[A]
+  ): Codec[A] = new Codec[A] {
+    private[this] final val _jsoniterCodec = ca.asInstanceOf[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[A]]
+
+    override final def decode(is: InputStream): Either[Throwable, A] =
+      scala.util.Try(com.github.plokhotnyuk.jsoniter_scala.core.readFromStream(is)(_jsoniterCodec)).toEither
+    override final def encode(value: A, os: OutputStream): Unit =
+      com.github.plokhotnyuk.jsoniter_scala.core.writeToStream(value, os)(_jsoniterCodec)
+    override final val maybeSchema: Option[ParsedSchema] = None
+  }
+
   implicit final def optionalZioJsonCodec[A, D[_]: ZioJsonDecoder, E[_]: ZioJsonEncoder](
       implicit da: D[A],
       ea: E[A]
@@ -76,6 +88,11 @@ private final abstract class CirceDecoder[D[_]]
 @nowarn private object CirceDecoder { @inline implicit final def get: CirceDecoder[io.circe.Decoder] = null }
 private final abstract class CirceEncoder[E[_]]
 @nowarn private object CirceEncoder { @inline implicit final def get: CirceEncoder[io.circe.Encoder] = null }
+
+private final abstract class JsoniterScalaCodec[C[_]]
+@nowarn private object JsoniterScalaCodec {
+  @inline implicit final def get: JsoniterScalaCodec[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec] = null
+}
 
 private final abstract class ZioJsonDecoder[D[_]]
 @nowarn private object ZioJsonDecoder { @inline implicit final def get: ZioJsonDecoder[zio.json.JsonDecoder] = null }
