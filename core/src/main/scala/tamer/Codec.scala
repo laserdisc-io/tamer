@@ -7,7 +7,7 @@ import scala.annotation.{implicitNotFound, nowarn}
 
 @implicitNotFound("Could not find an implicit Codec[${A}] in scope")
 sealed trait Codec[@specialized A] {
-  def decode(is: InputStream): Either[Throwable, A]
+  def decode(is: InputStream): A
   def encode(value: A, os: OutputStream): Unit
   def maybeSchema: Option[ParsedSchema]
 }
@@ -26,7 +26,7 @@ object Codec extends LowPriorityCodecs {
     private[this] final val _avroEncoderBuilder = com.sksamuel.avro4s.AvroOutputStream.binary(ea.asInstanceOf[com.sksamuel.avro4s.Encoder[A]])
     private[this] final val _avroSchema         = sfa.asInstanceOf[com.sksamuel.avro4s.SchemaFor[A]].schema
 
-    override final def decode(is: InputStream): Either[Throwable, A] = _avroDecoderBuilder.from(is).build(_avroSchema).tryIterator.next().toEither
+    override final def decode(is: InputStream): A = _avroDecoderBuilder.from(is).build(_avroSchema).iterator.next()
     override final def encode(value: A, os: OutputStream): Unit = {
       val ser = _avroEncoderBuilder.to(os).build()
       ser.write(value)
@@ -43,8 +43,11 @@ private[tamer] sealed trait LowPriorityCodecs {
     private[this] final val _circeDecoder = da.asInstanceOf[io.circe.Decoder[A]]
     private[this] final val _circeEncoder = ea.asInstanceOf[io.circe.Encoder[A]]
 
-    override final def decode(is: InputStream): Either[Throwable, A] =
-      io.circe.jawn.decodeChannel(java.nio.channels.Channels.newChannel(is))(_circeDecoder)
+    override final def decode(is: InputStream): A =
+      io.circe.jawn.decodeChannel(java.nio.channels.Channels.newChannel(is))(_circeDecoder) match {
+        case Left(error)  => throw error
+        case Right(value) => value
+      }
     override final def encode(value: A, os: OutputStream): Unit =
       new java.io.OutputStreamWriter(os, java.nio.charset.StandardCharsets.UTF_8).append(_circeEncoder(value).noSpaces).flush()
     override final val maybeSchema: Option[ParsedSchema] = None
@@ -55,11 +58,9 @@ private[tamer] sealed trait LowPriorityCodecs {
   ): Codec[A] = new Codec[A] {
     private[this] final val _jsoniterCodec = ca.asInstanceOf[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[A]]
 
-    override final def decode(is: InputStream): Either[Throwable, A] =
-      scala.util.Try(com.github.plokhotnyuk.jsoniter_scala.core.readFromStream(is)(_jsoniterCodec)).toEither
-    override final def encode(value: A, os: OutputStream): Unit =
-      com.github.plokhotnyuk.jsoniter_scala.core.writeToStream(value, os)(_jsoniterCodec)
-    override final val maybeSchema: Option[ParsedSchema] = None
+    override final def decode(is: InputStream): A               = com.github.plokhotnyuk.jsoniter_scala.core.readFromStream(is)(_jsoniterCodec)
+    override final def encode(value: A, os: OutputStream): Unit = com.github.plokhotnyuk.jsoniter_scala.core.writeToStream(value, os)(_jsoniterCodec)
+    override final val maybeSchema: Option[ParsedSchema]        = None
   }
 
   implicit final def optionalZioJsonCodec[A, D[_]: ZioJsonDecoder, E[_]: ZioJsonEncoder](
@@ -69,8 +70,8 @@ private[tamer] sealed trait LowPriorityCodecs {
     private[this] final val _zioJsonDecoder = da.asInstanceOf[zio.json.JsonDecoder[A]]
     private[this] final val _zioJsonEncoder = ea.asInstanceOf[zio.json.JsonEncoder[A]]
 
-    override final def decode(is: InputStream): Either[Throwable, A] =
-      zio.Runtime.default.unsafeRun(_zioJsonDecoder.decodeJsonStreamInput(zio.stream.ZStream.fromInputStream(is)).either)
+    override final def decode(is: InputStream): A =
+      zio.Runtime.default.unsafeRun(_zioJsonDecoder.decodeJsonStreamInput(zio.stream.ZStream.fromInputStream(is)))
     override final def encode(value: A, os: OutputStream): Unit =
       new java.io.OutputStreamWriter(os).append(_zioJsonEncoder.encodeJson(value, None)).flush()
     override final val maybeSchema: Option[ParsedSchema] = None

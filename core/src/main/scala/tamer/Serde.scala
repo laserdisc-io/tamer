@@ -15,7 +15,7 @@ object Serde {
     val Magic: Byte = 0x0
     val IntByteSize = 4
 
-    def deserializeSimple(data: Array[Byte]) = Task.fromEither(codec.decode(new ByteArrayInputStream(data)))
+    def deserializeSimple(data: Array[Byte]) = Task(codec.decode(new ByteArrayInputStream(data)))
     def serializeSimple(value: A) = Task {
       val baos = new ByteArrayOutputStream
       codec.encode(value, baos)
@@ -36,7 +36,7 @@ object Serde {
               val id = buffer.getInt()
               for {
                 _ <- registry.verifySchema(id, schema)
-                res <- Task.fromEither {
+                res <- Task {
                   val length  = buffer.limit() - (IntByteSize + 1)
                   val payload = new Array[Byte](length)
                   buffer.get(payload, 0, length)
