@@ -1,9 +1,10 @@
 package tamer
 package rest
 
+import java.time.Instant
+
 import zio._
 
-import java.time.Instant
 import scala.annotation.nowarn
 
 object RESTDynamicData extends App {
@@ -18,7 +19,7 @@ object RESTDynamicData extends App {
       pageDecoder = pageDecoder,
       periodStart = now
     )((_, data) => data)
-    .runWith(restLive() ++ kafkaConfigAndRegistryFromEnvironment)
+    .runWith(restLive() ++ kafkaConfigFromEnvironment)
 
   override def run(args: List[String]): URIO[ZEnv, ExitCode] = clock.instant.flatMap(program(_).exitCode)
 }

@@ -73,6 +73,8 @@ object ObjectStorageSetup {
       prefix: Option[String] = None,
       objectNameFinder: String => Boolean = _ => true,
       transducer: ZTransducer[R, Throwable, Byte, V] = ZTransducer.utf8Decode >>> ZTransducer.splitLines
+  )(
+      implicit ev: Codec[Tamer.StateKey]
   ): ObjectStorageSetup[R, K, V, S] = new ObjectStorageSetup(
     Setup.mkSerdes[K, V, S],
     initialState,

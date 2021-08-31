@@ -19,7 +19,7 @@ object RESTSimple extends App {
       recordKey = (_, data) => data,
       fixedPageElementCount = Some(3)
     )
-    .runWith(restLive() ++ kafkaConfigAndRegistryFromEnvironment)
+    .runWith(restLive() ++ kafkaConfigFromEnvironment)
 
   override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
 }

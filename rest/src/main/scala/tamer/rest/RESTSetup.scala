@@ -116,6 +116,8 @@ object RESTSetup {
       retrySchedule: Option[
         SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
       ] = None
+  )(
+      implicit ev: Codec[Tamer.StateKey]
   ): RESTSetup[R, K, V, S] = new RESTSetup(
     Setup.mkSerdes[K, V, S],
     initialState,
@@ -143,7 +145,8 @@ object RESTSetup {
       readRequestTimeout: Duration = 30.seconds,
       initialOffset: Offset = Offset(0, 0)
   )(
-      implicit ev: Codec[Offset]
+      implicit ev0: Codec[Tamer.StateKey],
+      ev1: Codec[Offset]
   ): RESTSetup[R with Clock, K, V, Offset] = {
     def queryFor(state: Offset) =
       basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala)
@@ -225,7 +228,8 @@ object RESTSetup {
         SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
       ] = None
   )(recordKey: (PeriodicOffset, V) => K)(
-      implicit ev: Codec[PeriodicOffset]
+      implicit ev0: Codec[Tamer.StateKey],
+      ev1: Codec[PeriodicOffset]
   ): RESTSetup[R with Clock, K, V, PeriodicOffset] = {
     def queryFor(state: PeriodicOffset) =
       basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala)

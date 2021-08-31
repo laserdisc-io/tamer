@@ -22,7 +22,7 @@ object OciObjectStorageSimple extends App {
     },
     objectName = _.current,
     startAfter = _.startAfter
-  ).runWith(objectStorageLayer(US_PHOENIX_1, ObjectStorageAuth.fromConfigFileDefaultProfile) ++ kafkaConfigAndRegistryFromEnvironment)
+  ).runWith(objectStorageLayer(US_PHOENIX_1, ObjectStorageAuth.fromConfigFileDefaultProfile) ++ kafkaConfigFromEnvironment)
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
 }

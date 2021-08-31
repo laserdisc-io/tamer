@@ -26,7 +26,7 @@ object DatabaseGeneralized extends App {
           val mostRecent = results.sortBy(_.modifiedAt).max.timestamp
           UIO(MyState(mostRecent, (mostRecent + 5.minutes).orNow()))
       }
-    ).runWith(dbLayerFromEnvironment ++ kafkaConfigAndRegistryFromEnvironment)
+    ).runWith(dbLayerFromEnvironment ++ kafkaConfigFromEnvironment)
   } yield tamer
 
   override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode

@@ -121,6 +121,8 @@ object S3Setup {
       stateFold: (KeysR, S, Queue[Unit]) => UIO[S],
       parallelism: Int = 1,
       transducer: ZTransducer[R, Throwable, Byte, V] = defaultTransducer
+  )(
+      implicit ev: Codec[Tamer.StateKey]
   ): S3Setup[R, K, V, S] = new S3Setup(
     Setup.mkSerdes[K, V, S],
     initialState,
@@ -171,7 +173,8 @@ object S3Setup {
       minimumIntervalForBucketFetch: Duration = 5.minutes,
       maximumIntervalForBucketFetch: Duration = 5.minutes
   )(
-      implicit ev: Codec[Instant]
+      implicit ev0: Codec[Tamer.StateKey],
+      ev1: Codec[Instant]
   ): S3Setup[R, K, V, Instant] = new S3Setup(
     Setup.mkSerdes[K, V, Instant],
     from,

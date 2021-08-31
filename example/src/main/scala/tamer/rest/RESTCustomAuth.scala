@@ -43,7 +43,7 @@ object RESTCustomAuth extends App {
       offsetParameterName = "offset",
       increment = 2
     )
-    .runWith(restLive() ++ kafkaConfigAndRegistryFromEnvironment)
+    .runWith(restLive() ++ kafkaConfigFromEnvironment)
 
   override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
 }

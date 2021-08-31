@@ -69,6 +69,8 @@ object DbSetup {
   )(
       recordKey: (S, V) => K,
       stateFold: (S, QueryResult[V]) => UIO[S]
+  )(
+      implicit ev: Codec[Tamer.StateKey]
   ): DbSetup[K, V, S] = new DbSetup(Setup.mkSerdes[K, V, S], initialState, recordKey, query, stateFold) {}
 
   final def tumbling[K: Codec, V <: Timestamped: Ordering: Codec](
@@ -79,7 +81,8 @@ object DbSetup {
       tumblingStep: Duration = 5.minutes,
       lag: Duration = 0.seconds
   )(
-      implicit ev: Codec[Window]
+      implicit ev0: Codec[Tamer.StateKey],
+      ev1: Codec[Window]
   ): DbSetup[K, V, Window] = {
     def stateFold(currentWindow: Window, queryResult: QueryResult[V]): UIO[Window] =
       if (queryResult.results.isEmpty) {

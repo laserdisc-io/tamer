@@ -16,8 +16,7 @@ import zio.test.TestAspect.{failing, nonFlaky}
 import zio.test._
 
 object SourceSpec extends DefaultRunnableSpec {
-  val stateKeySerde = Serde.key[StateKey]
-  val setupSerdes   = Setup.mkSerdes[Key, Value, State]
+  val setupSerdes = Setup.mkSerdes[Key, Value, State]
 
   override final val spec = suite("SourceSpec")(
     testM("check that data is present") {
@@ -32,8 +31,8 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateKeySerde = stateKeySerde,
-            stateSerde = setupSerdes.stateSerde,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
@@ -64,8 +63,8 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateKeySerde = stateKeySerde,
-            stateSerde = setupSerdes.stateSerde,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
@@ -100,8 +99,8 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateKeySerde = stateKeySerde,
-            stateSerde = setupSerdes.stateSerde,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
@@ -137,8 +136,8 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateKeySerde = stateKeySerde,
-            stateSerde = setupSerdes.stateSerde,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
@@ -176,8 +175,8 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateKeySerde = stateKeySerde,
-            stateSerde = setupSerdes.stateSerde,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
@@ -225,8 +224,8 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateKeySerde = stateKeySerde,
-            stateSerde = setupSerdes.stateSerde,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,

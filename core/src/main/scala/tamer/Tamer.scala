@@ -17,11 +17,11 @@ import zio.kafka.serde.{Serde => ZSerde, Serializer}
 import zio.stream.{UStream, ZStream}
 
 trait Tamer {
-  def runLoop: ZIO[Clock with Has[Registry], TamerError, Unit]
+  def runLoop: ZIO[Clock, TamerError, Unit]
 }
 
 object Tamer {
-  private[tamer] final case class StateKey(stateKey: String, groupId: String)
+  final case class StateKey(stateKey: String, groupId: String)
 
   private[tamer] object Lag {
     final def unapply(pair: (Map[TopicPartition, Long], Map[TopicPartition, Long])): Some[Map[TopicPartition, Long]] =
@@ -130,7 +130,7 @@ object Tamer {
       stateGroupId: String,
       stateHash: Int,
       stateKeySerde: ZSerde[Has[Registry], StateKey],
-      stateSerde: ZSerde[Has[Registry], S],
+      stateValueSerde: ZSerde[Has[Registry], S],
       initialState: S,
       adminClient: AdminClient,
       stateConsumer: Consumer,
@@ -172,7 +172,7 @@ object Tamer {
       case Initialize =>
         log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
           stateProducer
-            .produce(stateTopic, key, initialState, stateKeySerde, stateSerde)
+            .produce(stateTopic, key, initialState, stateKeySerde, stateValueSerde)
             .tap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
             .unit
       case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
@@ -192,7 +192,7 @@ object Tamer {
     }
 
     val stateStream = stateConsumer
-      .plainStream(stateKeySerde, stateSerde)
+      .plainStream(stateKeySerde, stateValueSerde)
       .mapM {
         case CommittableRecord(record, offset) if record.key == key =>
           log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.info}") *>
@@ -206,7 +206,7 @@ object Tamer {
               offset.commitOrRetry(tenTimes) <*
                 log.debug(s"consumer group $stateGroupId committed offset ${offset.info}") <*
                 stateProducer
-                  .produce(stateTopic, key, newState, stateKeySerde, stateSerde)
+                  .produce(stateTopic, key, newState, stateKeySerde, stateValueSerde)
                   .tap(rmd => log.debug(s"pushed state $newState to $rmd"))
             }
         case CommittableRecord(record, offset) =>
@@ -238,8 +238,8 @@ object Tamer {
     private[this] val keySerializer   = serdes.keySerializer
     private[this] val valueSerializer = serdes.valueSerializer
 
-    private[this] val stateKeySerde   = Serde.key[StateKey]
-    private[this] val stateValueSerde = serdes.stateSerde
+    private[this] val stateKeySerde   = serdes.stateKeySerde
+    private[this] val stateValueSerde = serdes.stateValueSerde
 
     private[tamer] def sinkStream(stream: UStream[(K, V)], log: LogWriter[Task]) =
       ZStream.fromEffect(sink(stream, producer, sinkTopic, keySerializer, valueSerializer, log).fork <* log.info("running sink perpetually"))
@@ -279,7 +279,7 @@ object Tamer {
       _      <- sourceStream(queue, log).ensuringFirst(stopSource(log)).ensuring(drainSink(fiber, stream, log))
     } yield ()
 
-    override val runLoop: ZIO[Clock with Has[Registry], TamerError, Unit] = {
+    override val runLoop: ZIO[Clock, TamerError, Unit] = {
       val logic = for {
         log   <- logTask
         _     <- log.info(s"initializing Tamer with setup: \n$repr")
@@ -287,7 +287,7 @@ object Tamer {
         _     <- runLoop(queue, log).runDrain
       } yield ()
 
-      logic.refineOrDie(tamerErrors)
+      logic.refineOrDie(tamerErrors).provideSomeLayer[Clock](config.schemaRegistryUrl.map(Registry.live(_)).getOrElse(Registry.fake))
     }
   }
 
@@ -334,5 +334,5 @@ object Tamer {
 
   final def live[R, K, V, S](
       setup: Setup[R, K, V, S]
-  ): ZLayer[R with Blocking with Clock with Has[KafkaConfig] with Has[Registry], TamerError, Has[Tamer]] = Live.getLayer(setup)
+  ): ZLayer[R with Blocking with Clock with Has[KafkaConfig], TamerError, Has[Tamer]] = Live.getLayer(setup)
 }
