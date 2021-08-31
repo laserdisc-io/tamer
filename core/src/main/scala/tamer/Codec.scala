@@ -36,25 +36,19 @@ object Codec extends LowPriorityCodecs {
   }
 }
 private[tamer] sealed trait LowPriorityCodecs {
-  implicit final def optionalCirceCodec[A, D[_]: CirceDecoder, E[_]: CirceEncoder](
-      implicit da: D[A],
-      ea: E[A]
-  ): Codec[A] = new Codec[A] {
-    private[this] final val _circeDecoder = da.asInstanceOf[io.circe.Decoder[A]]
-    private[this] final val _circeEncoder = ea.asInstanceOf[io.circe.Encoder[A]]
+  implicit final def optionalCirceCodec[A, C[_]: CirceCodec](implicit ca: C[A]): Codec[A] = new Codec[A] {
+    private[this] final val _circeCodec = ca.asInstanceOf[io.circe.Codec[A]]
 
-    override final def decode(is: InputStream): A = io.circe.jawn.decodeChannel(java.nio.channels.Channels.newChannel(is))(_circeDecoder) match {
+    override final def decode(is: InputStream): A = io.circe.jawn.decodeChannel(java.nio.channels.Channels.newChannel(is))(_circeCodec) match {
       case Left(error)  => throw error
       case Right(value) => value
     }
     override final def encode(value: A, os: OutputStream): Unit =
-      new java.io.OutputStreamWriter(os, java.nio.charset.StandardCharsets.UTF_8).append(_circeEncoder(value).noSpaces).flush()
+      new java.io.OutputStreamWriter(os, java.nio.charset.StandardCharsets.UTF_8).append(_circeCodec(value).noSpaces).flush()
     override final val maybeSchema: Option[ParsedSchema] = None
   }
 
-  implicit final def optionalJsoniterScalaCodec[@specialized A, C[_]: JsoniterScalaCodec](
-      implicit ca: C[A]
-  ): Codec[A] = new Codec[A] {
+  implicit final def optionalJsoniterScalaCodec[@specialized A, C[_]: JsoniterScalaCodec](implicit ca: C[A]): Codec[A] = new Codec[A] {
     private[this] final val _jsoniterCodec = ca.asInstanceOf[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[A]]
 
     override final def decode(is: InputStream): A               = com.github.plokhotnyuk.jsoniter_scala.core.readFromStream(is)(_jsoniterCodec)
@@ -62,17 +56,13 @@ private[tamer] sealed trait LowPriorityCodecs {
     override final val maybeSchema: Option[ParsedSchema]        = None
   }
 
-  implicit final def optionalZioJsonCodec[A, D[_]: ZioJsonDecoder, E[_]: ZioJsonEncoder](
-      implicit da: D[A],
-      ea: E[A]
-  ): Codec[A] = new Codec[A] {
-    private[this] final val _zioJsonDecoder = da.asInstanceOf[zio.json.JsonDecoder[A]]
-    private[this] final val _zioJsonEncoder = ea.asInstanceOf[zio.json.JsonEncoder[A]]
+  implicit final def optionalZioJsonCodec[A, C[_]: ZioJsonCodec](implicit ca: C[A]): Codec[A] = new Codec[A] {
+    private[this] final val _zioJsonCodec = ca.asInstanceOf[zio.json.JsonCodec[A]]
 
     override final def decode(is: InputStream): A =
-      zio.Runtime.default.unsafeRun(_zioJsonDecoder.decodeJsonStreamInput(zio.stream.ZStream.fromInputStream(is)))
+      zio.Runtime.default.unsafeRun(_zioJsonCodec.decodeJsonStreamInput(zio.stream.ZStream.fromInputStream(is)))
     override final def encode(value: A, os: OutputStream): Unit =
-      new java.io.OutputStreamWriter(os).append(_zioJsonEncoder.encodeJson(value, None)).flush()
+      new java.io.OutputStreamWriter(os).append(_zioJsonCodec.encodeJson(value, None)).flush()
     override final val maybeSchema: Option[ParsedSchema] = None
   }
 }
@@ -84,17 +74,13 @@ private final abstract class Avro4sEncoder[E[_]]
 private final abstract class Avro4sSchemaFor[SF[_]]
 @nowarn private object Avro4sSchemaFor { @inline implicit final def get: Avro4sSchemaFor[com.sksamuel.avro4s.SchemaFor] = null }
 
-private final abstract class CirceDecoder[D[_]]
-@nowarn private object CirceDecoder { @inline implicit final def get: CirceDecoder[io.circe.Decoder] = null }
-private final abstract class CirceEncoder[E[_]]
-@nowarn private object CirceEncoder { @inline implicit final def get: CirceEncoder[io.circe.Encoder] = null }
+private final abstract class CirceCodec[C[_]]
+@nowarn private object CirceCodec { @inline implicit final def get: CirceCodec[io.circe.Codec] = null }
 
 private final abstract class JsoniterScalaCodec[C[_]]
 @nowarn private object JsoniterScalaCodec {
   @inline implicit final def get: JsoniterScalaCodec[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec] = null
 }
 
-private final abstract class ZioJsonDecoder[D[_]]
-@nowarn private object ZioJsonDecoder { @inline implicit final def get: ZioJsonDecoder[zio.json.JsonDecoder] = null }
-private final abstract class ZioJsonEncoder[E[_]]
-@nowarn private object ZioJsonEncoder { @inline implicit final def get: ZioJsonEncoder[zio.json.JsonEncoder] = null }
+private final abstract class ZioJsonCodec[C[_]]
+@nowarn private object ZioJsonCodec { @inline implicit final def get: ZioJsonCodec[zio.json.JsonCodec] = null }
