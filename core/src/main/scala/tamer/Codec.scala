@@ -43,11 +43,10 @@ private[tamer] sealed trait LowPriorityCodecs {
     private[this] final val _circeDecoder = da.asInstanceOf[io.circe.Decoder[A]]
     private[this] final val _circeEncoder = ea.asInstanceOf[io.circe.Encoder[A]]
 
-    override final def decode(is: InputStream): A =
-      io.circe.jawn.decodeChannel(java.nio.channels.Channels.newChannel(is))(_circeDecoder) match {
-        case Left(error)  => throw error
-        case Right(value) => value
-      }
+    override final def decode(is: InputStream): A = io.circe.jawn.decodeChannel(java.nio.channels.Channels.newChannel(is))(_circeDecoder) match {
+      case Left(error)  => throw error
+      case Right(value) => value
+    }
     override final def encode(value: A, os: OutputStream): Unit =
       new java.io.OutputStreamWriter(os, java.nio.charset.StandardCharsets.UTF_8).append(_circeEncoder(value).noSpaces).flush()
     override final val maybeSchema: Option[ParsedSchema] = None
