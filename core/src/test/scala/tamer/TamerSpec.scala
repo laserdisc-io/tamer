@@ -39,7 +39,7 @@ object TamerSpec extends DefaultRunnableSpec with TamerSpecGen {
   }
 
   val embeddedKafkaTamerLayer =
-    FakeKafka.embeddedKafkaConfigLayer ++ ZLayer.requires[Blocking with Clock] ++ Log.layer ++ Registry.fake >>> baseTamerLayer
+    FakeKafka.embeddedKafkaConfigLayer ++ ZLayer.requires[Blocking with Clock] ++ Log.layer >>> baseTamerLayer
 
   val p = new TopicPartition("a-test-topic", 1)
 
@@ -90,7 +90,7 @@ object TamerSpec extends DefaultRunnableSpec with TamerSpecGen {
           result       <- outputVector.get
         } yield assert(result.series)(equalTo(Vector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)))
       } @@ timeout(20.seconds)
-    ).provideSomeLayerShared[TestEnvironment]((embeddedKafkaTamerLayer ++ Log.layer ++ Registry.fake).mapError(TestFailure.fail))
+    ).provideSomeLayerShared[TestEnvironment]((embeddedKafkaTamerLayer ++ Log.layer).mapError(TestFailure.fail))
       .updateService[Clock.Service](_ => Clock.Service.live)
 }
 

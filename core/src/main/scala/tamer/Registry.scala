@@ -51,9 +51,4 @@ object Registry {
   }
 
   val fake: ULayer[Has[Registry]] = ZLayer.succeed(Fake)
-
-  val fromKafkaConfig: ZLayer[Has[KafkaConfig], TamerError, Has[Registry]] = for {
-    kafkaConfig <- ZLayer.service[KafkaConfig]
-    registry    <- kafkaConfig.get.schemaRegistryUrl.map(live(_)).getOrElse(fake)
-  } yield registry
 }
