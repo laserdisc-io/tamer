@@ -28,7 +28,7 @@ object SourceSpec extends DefaultRunnableSpec {
       val data = for {
         log       <- log4sFromName.provide("testSource.1")
         records   <- Queue.unbounded[ProducerRecord[StateKey, State]]
-        producer  <- FakeProducer.mk[RegistryInfo, StateKey, State](records, log)
+        producer  <- FakeProducer.mk[StateKey, State](records, log)
         consumer  <- FakeConsumer.mk(records, log)
         dataQueue <- zio.Queue.unbounded[Chunk[(Key, Value)]]
         _ <- Tamer
@@ -36,12 +36,13 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerde = setupSerdes.stateSerde,
+            stateSerializer = setupSerdes.stateSerializer,
+            stateDeserializer = setupSerdes.stateDeserializer,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
             kvChunkQueue = dataQueue,
-            registryLayer = nullRegistryInfoFor("topic"),
+            stateRegistryLayer = nullRegistryInfoFor("topic"),
             iterationFunction = (_: State, q: Queue[Chunk[(Key, Value)]]) => q.offer(Chunk((Key(1), Value(2)))) *> Task(State(0)),
             log = log,
             adminClient = mock[AdminClient],
@@ -52,13 +53,12 @@ object SourceSpec extends DefaultRunnableSpec {
       } yield dataQueue
 
       assertM(data.flatMap(_.takeAll))(contains(Chunk((Key(1), Value(2)))))
-
     },
     testM("should point to a tape containing only State(3)") {
       val tape = for {
         log        <- log4sFromName.provide("testSource.2")
         stateQueue <- Queue.unbounded[ProducerRecord[StateKey, State]]
-        producer   <- FakeProducer.mk[RegistryInfo, StateKey, State](stateQueue, log)
+        producer   <- FakeProducer.mk[StateKey, State](stateQueue, log)
         inFlight   <- zio.Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
         consumer   <- FakeConsumer.mk(stateQueue, inFlight, log)
         dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
@@ -68,12 +68,13 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerde = setupSerdes.stateSerde,
+            stateSerializer = setupSerdes.stateSerializer,
+            stateDeserializer = setupSerdes.stateDeserializer,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
             kvChunkQueue = dataQueue,
-            registryLayer = nullRegistryInfoFor("topic"),
+            stateRegistryLayer = nullRegistryInfoFor("topic"),
             iterationFunction = (s: State, q: Queue[Chunk[(Key, Value)]]) => {
               val nextState = State(s.state + 1)
               log.info(s"iteration function fakely computing $nextState as next state") *>
@@ -95,7 +96,7 @@ object SourceSpec extends DefaultRunnableSpec {
         log        <- log4sFromName.provide("testSource.3")
         stateQueue <- Queue.unbounded[ProducerRecord[StateKey, State]]
         _          <- stateQueue.offer(new ProducerRecord("topic", StateKey("0", "topicGroupId"), State(2)))
-        producer   <- FakeProducer.mk[RegistryInfo, StateKey, State](stateQueue, log)
+        producer   <- FakeProducer.mk[StateKey, State](stateQueue, log)
         consumer   <- FakeConsumer.mk(1, stateQueue, log)
         dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
         _ <- Tamer
@@ -103,12 +104,13 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerde = setupSerdes.stateSerde,
+            stateSerializer = setupSerdes.stateSerializer,
+            stateDeserializer = setupSerdes.stateDeserializer,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
             kvChunkQueue = dataQueue,
-            registryLayer = nullRegistryInfoFor("topic"),
+            stateRegistryLayer = nullRegistryInfoFor("topic"),
             iterationFunction = (s: State, q: Queue[Chunk[(Key, Value)]]) => {
               val nextState = State(s.state + 1)
               log.info(s"iteration function fakely computing $nextState as next state") *>
@@ -131,7 +133,7 @@ object SourceSpec extends DefaultRunnableSpec {
         stateQueue <- Queue.unbounded[ProducerRecord[StateKey, State]]
         _          <- stateQueue.offer(new ProducerRecord("topic", StateKey("0", "topicGroupId"), State(2)))
         _          <- stateQueue.offer(new ProducerRecord("topic", StateKey("0", "topicGroupId"), State(3)))
-        producer   <- FakeProducer.mk[RegistryInfo, StateKey, State](stateQueue, log)
+        producer   <- FakeProducer.mk[StateKey, State](stateQueue, log)
         consumer   <- FakeConsumer.mk(1, stateQueue, log)
         dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
         _ <- Tamer
@@ -139,12 +141,13 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerde = setupSerdes.stateSerde,
+            stateSerializer = setupSerdes.stateSerializer,
+            stateDeserializer = setupSerdes.stateDeserializer,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
             kvChunkQueue = dataQueue,
-            registryLayer = nullRegistryInfoFor("topic"),
+            stateRegistryLayer = nullRegistryInfoFor("topic"),
             iterationFunction = (s: State, q: Queue[Chunk[(Key, Value)]]) => {
               val nextState = State(s.state + 1)
               log.info(s"iteration function fakely computing $nextState as next state") *>
@@ -166,7 +169,7 @@ object SourceSpec extends DefaultRunnableSpec {
         randomId                  <- zio.random.nextIntBounded(10000)
         log                       <- log4sFromName.provide(s"testSource.5.$randomId")
         stateQueue                <- Queue.unbounded[ProducerRecord[StateKey, State]]
-        producer                  <- FakeProducer.mk[RegistryInfo, StateKey, State](stateQueue, log)
+        producer                  <- FakeProducer.mk[StateKey, State](stateQueue, log)
         inFlight                  <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
         consumer                  <- FakeConsumer.mk(stateQueue, inFlight, log)
         dataQueue                 <- zio.Queue.unbounded[Chunk[(Key, Value)]]
@@ -177,12 +180,13 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerde = setupSerdes.stateSerde,
+            stateSerializer = setupSerdes.stateSerializer,
+            stateDeserializer = setupSerdes.stateDeserializer,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
             kvChunkQueue = dataQueue,
-            registryLayer = nullRegistryInfoFor("topic"),
+            stateRegistryLayer = nullRegistryInfoFor("topic"),
             iterationFunction = (s: State, q: Queue[Chunk[(Key, Value)]]) => {
               val nextState = State(s.state + 1)
               log.info(s"iteration function fakely computing $nextState as next state") *>
@@ -207,14 +211,14 @@ object SourceSpec extends DefaultRunnableSpec {
     }.provideSomeLayer[Clock with Random](Clock.live ++ Random.live) @@ failsAtLeastOnceIn(300),
     // TODO: the above test is marked as 'must fail' because this is not our target state, we would like that,
     // whenever Tamer crashes, there is always exactly one uncommitted message in the state topic.
-    // This test was written mainly to characterize this behaviour as long as we are using async API so that
+    // This test was written mainly to characterize this behaviour as long as we are using non transactional API so that
     // other tests may be written with high fidelity to the real behaviour.
     testM("tape should always have at least 1 state") {
       for {
         randomId                  <- zio.random.nextIntBounded(10000)
         log                       <- log4sFromName.provide(s"testSource.6.$randomId")
         stateQueue                <- Queue.unbounded[ProducerRecord[StateKey, State]]
-        producer                  <- FakeProducer.mk[RegistryInfo, StateKey, State](stateQueue, log)
+        producer                  <- FakeProducer.mk[StateKey, State](stateQueue, log)
         inFlight                  <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
         consumer                  <- FakeConsumer.mk(stateQueue, inFlight, log)
         dataQueue                 <- zio.Queue.unbounded[Chunk[(Key, Value)]]
@@ -225,12 +229,13 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerde = setupSerdes.stateSerde,
+            stateSerializer = setupSerdes.stateSerializer,
+            stateDeserializer = setupSerdes.stateDeserializer,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
             kvChunkQueue = dataQueue,
-            registryLayer = nullRegistryInfoFor("topic"),
+            stateRegistryLayer = nullRegistryInfoFor("topic"),
             iterationFunction = (s: State, q: Queue[Chunk[(Key, Value)]]) => {
               val nextState = State(s.state + 1)
               log.info(s"iteration function fakely computing $nextState as next state") *>
