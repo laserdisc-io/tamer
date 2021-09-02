@@ -2,14 +2,14 @@ package tamer
 package rest
 package support
 
+import java.net.InetSocketAddress
+
 import uzhttp.HTTPError.Forbidden
 import uzhttp.Response
 import uzhttp.server.Server
 import zio._
 import zio.duration.durationInt
 import zio.random.Random
-
-import java.net.InetSocketAddress
 
 import scala.annotation.nowarn
 
