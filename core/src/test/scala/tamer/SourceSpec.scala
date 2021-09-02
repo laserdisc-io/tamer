@@ -1,12 +1,12 @@
 package tamer
 
-import io.confluent.kafka.schemaregistry.ParsedSchema
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.TopicPartition
 import org.scalatestplus.mockito.MockitoSugar.mock
 import tamer.Tamer.StateKey
 import tamer.utils.{FakeConsumer, FakeProducer}
+import zio._
 import zio.clock.{Clock, sleep}
 import zio.duration.Duration
 import zio.kafka.admin.AdminClient
@@ -14,15 +14,10 @@ import zio.random.{Random, nextLongBetween}
 import zio.test.Assertion._
 import zio.test.TestAspect.{failing, nonFlaky}
 import zio.test._
-import zio.{Chunk, Queue, Task, ZLayer}
 
 object SourceSpec extends DefaultRunnableSpec {
-  private[this] def nullRegistryInfoFor(topic: String) = ZLayer.succeed(topic) ++ ZLayer.succeed(new Registry {
-    def getOrRegisterId(subject: String, schema: ParsedSchema): Task[Int] = ???
-    def verifySchema(id: Int, schema: ParsedSchema): Task[Unit]           = ???
-  })
+  val setupSerdes = Setup.mkSerdes[Key, Value, State]
 
-  val setupSerdes: Setup.Serdes[Key, Value, State] = Setup.Serdes[Key, Value, State]
   override final val spec = suite("SourceSpec")(
     testM("check that data is present") {
       val data = for {
@@ -30,24 +25,24 @@ object SourceSpec extends DefaultRunnableSpec {
         records   <- Queue.unbounded[ProducerRecord[StateKey, State]]
         producer  <- FakeProducer.mk[StateKey, State](records, log)
         consumer  <- FakeConsumer.mk(records, log)
-        dataQueue <- zio.Queue.unbounded[Chunk[(Key, Value)]]
+        dataQueue <- Queue.unbounded[Chunk[(Key, Value)]]
         _ <- Tamer
           .source[Key, Value, State](
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerializer = setupSerdes.stateSerializer,
-            stateDeserializer = setupSerdes.stateDeserializer,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
-            kvChunkQueue = dataQueue,
-            stateRegistryLayer = nullRegistryInfoFor("topic"),
+            queue = dataQueue,
             iterationFunction = (_: State, q: Queue[Chunk[(Key, Value)]]) => q.offer(Chunk((Key(1), Value(2)))) *> Task(State(0)),
             log = log,
             adminClient = mock[AdminClient],
             stateRecovery = ManualRecovery
           )
+          .provideSomeLayer[Clock](Registry.fake)
           .take(1)
           .runCollect
       } yield dataQueue
@@ -59,22 +54,21 @@ object SourceSpec extends DefaultRunnableSpec {
         log        <- log4sFromName.provide("testSource.2")
         stateQueue <- Queue.unbounded[ProducerRecord[StateKey, State]]
         producer   <- FakeProducer.mk[StateKey, State](stateQueue, log)
-        inFlight   <- zio.Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
+        inFlight   <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
         consumer   <- FakeConsumer.mk(stateQueue, inFlight, log)
-        dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
+        dataQueue  <- Queue.unbounded[Chunk[(Key, Value)]]
 
         _ <- Tamer
           .source[Key, Value, State](
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerializer = setupSerdes.stateSerializer,
-            stateDeserializer = setupSerdes.stateDeserializer,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
-            kvChunkQueue = dataQueue,
-            stateRegistryLayer = nullRegistryInfoFor("topic"),
+            queue = dataQueue,
             iterationFunction = (s: State, q: Queue[Chunk[(Key, Value)]]) => {
               val nextState = State(s.state + 1)
               log.info(s"iteration function fakely computing $nextState as next state") *>
@@ -85,6 +79,7 @@ object SourceSpec extends DefaultRunnableSpec {
             adminClient = mock[AdminClient],
             stateRecovery = ManualRecovery
           )
+          .provideSomeLayer[Clock](Registry.fake)
           .take(3)
           .runCollect
       } yield stateQueue
@@ -98,19 +93,18 @@ object SourceSpec extends DefaultRunnableSpec {
         _          <- stateQueue.offer(new ProducerRecord("topic", StateKey("0", "topicGroupId"), State(2)))
         producer   <- FakeProducer.mk[StateKey, State](stateQueue, log)
         consumer   <- FakeConsumer.mk(1, stateQueue, log)
-        dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
+        dataQueue  <- Queue.unbounded[Chunk[(Key, Value)]]
         _ <- Tamer
           .source[Key, Value, State](
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerializer = setupSerdes.stateSerializer,
-            stateDeserializer = setupSerdes.stateDeserializer,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
-            kvChunkQueue = dataQueue,
-            stateRegistryLayer = nullRegistryInfoFor("topic"),
+            queue = dataQueue,
             iterationFunction = (s: State, q: Queue[Chunk[(Key, Value)]]) => {
               val nextState = State(s.state + 1)
               log.info(s"iteration function fakely computing $nextState as next state") *>
@@ -121,6 +115,7 @@ object SourceSpec extends DefaultRunnableSpec {
             adminClient = mock[AdminClient],
             stateRecovery = ManualRecovery
           )
+          .provideSomeLayer[Clock](Registry.fake)
           .take(1)
           .runCollect
       } yield stateQueue
@@ -135,19 +130,18 @@ object SourceSpec extends DefaultRunnableSpec {
         _          <- stateQueue.offer(new ProducerRecord("topic", StateKey("0", "topicGroupId"), State(3)))
         producer   <- FakeProducer.mk[StateKey, State](stateQueue, log)
         consumer   <- FakeConsumer.mk(1, stateQueue, log)
-        dataQueue  <- zio.Queue.unbounded[Chunk[(Key, Value)]]
+        dataQueue  <- Queue.unbounded[Chunk[(Key, Value)]]
         _ <- Tamer
           .source[Key, Value, State](
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerializer = setupSerdes.stateSerializer,
-            stateDeserializer = setupSerdes.stateDeserializer,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
-            kvChunkQueue = dataQueue,
-            stateRegistryLayer = nullRegistryInfoFor("topic"),
+            queue = dataQueue,
             iterationFunction = (s: State, q: Queue[Chunk[(Key, Value)]]) => {
               val nextState = State(s.state + 1)
               log.info(s"iteration function fakely computing $nextState as next state") *>
@@ -158,6 +152,7 @@ object SourceSpec extends DefaultRunnableSpec {
             adminClient = mock[AdminClient],
             stateRecovery = ManualRecovery
           )
+          .provideSomeLayer[Clock](Registry.fake)
           .take(1)
           .runCollect
       } yield stateQueue
@@ -172,7 +167,7 @@ object SourceSpec extends DefaultRunnableSpec {
         producer                  <- FakeProducer.mk[StateKey, State](stateQueue, log)
         inFlight                  <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
         consumer                  <- FakeConsumer.mk(stateQueue, inFlight, log)
-        dataQueue                 <- zio.Queue.unbounded[Chunk[(Key, Value)]]
+        dataQueue                 <- Queue.unbounded[Chunk[(Key, Value)]]
         randomShortDurationMillis <- nextLongBetween(50L, 100L)
 
         sourceFiber <- Tamer
@@ -180,13 +175,12 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerializer = setupSerdes.stateSerializer,
-            stateDeserializer = setupSerdes.stateDeserializer,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
-            kvChunkQueue = dataQueue,
-            stateRegistryLayer = nullRegistryInfoFor("topic"),
+            queue = dataQueue,
             iterationFunction = (s: State, q: Queue[Chunk[(Key, Value)]]) => {
               val nextState = State(s.state + 1)
               log.info(s"iteration function fakely computing $nextState as next state") *>
@@ -197,6 +191,7 @@ object SourceSpec extends DefaultRunnableSpec {
             adminClient = mock[AdminClient],
             stateRecovery = ManualRecovery
           )
+          .provideSomeLayer[Clock](Registry.fake)
           .runDrain
           .fork
         _                <- sleep(Duration.fromMillis(randomShortDurationMillis))
@@ -221,7 +216,7 @@ object SourceSpec extends DefaultRunnableSpec {
         producer                  <- FakeProducer.mk[StateKey, State](stateQueue, log)
         inFlight                  <- Queue.unbounded[(TopicPartition, ProducerRecord[StateKey, State])]
         consumer                  <- FakeConsumer.mk(stateQueue, inFlight, log)
-        dataQueue                 <- zio.Queue.unbounded[Chunk[(Key, Value)]]
+        dataQueue                 <- Queue.unbounded[Chunk[(Key, Value)]]
         randomShortDurationMillis <- nextLongBetween(50L, 100L)
 
         sourceFiber <- Tamer
@@ -229,13 +224,12 @@ object SourceSpec extends DefaultRunnableSpec {
             stateTopic = "topic",
             stateGroupId = "topicGroupId",
             stateHash = 0,
-            stateSerializer = setupSerdes.stateSerializer,
-            stateDeserializer = setupSerdes.stateDeserializer,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
             initialState = State(0),
             stateConsumer = consumer,
             stateProducer = producer,
-            kvChunkQueue = dataQueue,
-            stateRegistryLayer = nullRegistryInfoFor("topic"),
+            queue = dataQueue,
             iterationFunction = (s: State, q: Queue[Chunk[(Key, Value)]]) => {
               val nextState = State(s.state + 1)
               log.info(s"iteration function fakely computing $nextState as next state") *>
@@ -246,6 +240,7 @@ object SourceSpec extends DefaultRunnableSpec {
             adminClient = mock[AdminClient],
             stateRecovery = ManualRecovery
           )
+          .provideSomeLayer[Clock](Registry.fake)
           .runDrain
           .fork
         _                <- sleep(Duration.fromMillis(randomShortDurationMillis))

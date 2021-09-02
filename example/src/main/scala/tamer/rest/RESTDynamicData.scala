@@ -1,9 +1,10 @@
 package tamer
 package rest
 
+import java.time.Instant
+
 import zio._
 
-import java.time.Instant
 import scala.annotation.nowarn
 
 object RESTDynamicData extends App {
