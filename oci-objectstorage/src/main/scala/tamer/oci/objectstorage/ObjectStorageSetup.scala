@@ -5,7 +5,7 @@ import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
 import zio.blocking.Blocking
-import zio.oci.objectstorage.{Limit, ListObjectsOptions, ObjectStorage, getObject, listObjects}
+import zio.oci.objectstorage._
 import zio.stream.ZTransducer
 
 sealed abstract case class ObjectStorageSetup[-R, K, V, S](
@@ -39,13 +39,19 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
 
   private[this] final val logTask = log4sFromName.provide("tamer.oci.objectstorage")
 
-  private[this] final def process(log: LogWriter[Task], currentState: S, queue: Queue[Chunk[(K, V)]]) =
+  private[this] final def process(
+      log: LogWriter[Task],
+      currentState: S,
+      queue: Queue[Chunk[(K, V)]]
+  ): ZIO[R with ObjectStorage with Blocking, Throwable, Unit] =
     objectName(currentState) match {
       case Some(name) =>
-        log.info(s"getting object $name") *> getObject(namespace, bucket, name)
-          .transduce(transducer)
-          .map(value => recordKey(currentState, value) -> value)
-          .foreachChunk(queue.offer)
+        log.info(s"getting object $name") *>
+          getObject(namespace, bucket, name)
+            .transduce(transducer)
+            .mapError(error => TamerError(s"Error while processing object $name: ${error.getMessage}", error))
+            .map(value => recordKey(currentState, value) -> value)
+            .foreachChunk(queue.offer)
       case None =>
         log.debug("no state change")
     }
