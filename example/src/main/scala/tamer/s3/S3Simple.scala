@@ -1,12 +1,12 @@
 package tamer
 package s3
 
+import java.net.URI
+import java.time.{Instant, ZoneId}
+
 import software.amazon.awssdk.regions.Region.AF_SOUTH_1
 import zio._
 import zio.s3._
-
-import java.net.URI
-import java.time.{Instant, ZoneId}
 
 object S3Simple extends App {
   val program: ZIO[ZEnv, RuntimeException, Unit] = S3Setup
