@@ -30,7 +30,7 @@ object FakeKafka {
     fakeKafka    <- ZIO.service[FakeKafka]
   } yield KafkaConfig(
     brokers = fakeKafka.bootstrapServers,
-    schemaRegistryUrl = fakeKafka.schemaRegistryUrl,
+    schemaRegistryUrl = Some(fakeKafka.schemaRegistryUrl),
     closeTimeout = 1.second,
     bufferSize = 5,
     sink = SinkConfig(s"sink.topic.$randomString"),

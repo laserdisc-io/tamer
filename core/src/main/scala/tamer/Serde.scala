@@ -3,57 +3,65 @@ package tamer
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.ByteBuffer
 
-import io.confluent.kafka.schemaregistry.ParsedSchema
-import zio.kafka.serde.{Deserializer, Serializer}
-import zio.{Has, RIO, Task, URIO}
-
-sealed trait Serde[A] extends Any {
-  def isKey: Boolean
-  def schema: ParsedSchema
-  def deserializer: Deserializer[Has[Registry] with Has[TopicName], A]
-  def serializer: Serializer[Has[Registry] with Has[TopicName], A]
-  final def serde: ZSerde[Has[Registry] with Has[TopicName], A] = ZSerde(deserializer)(serializer)
-}
+import org.apache.kafka.common.header.Headers
+import zio.kafka.serde.{Serde => ZSerde}
+import zio.{Has, RIO, Task}
 
 object Serde {
-  private[this] final val Magic: Byte = 0x0
-  private[this] final val intByteSize = 4
+  final def key[A: Codec]   = impl(isKey = true, Codec[A])
+  final def value[A: Codec] = impl(isKey = false, Codec[A])
 
-  final def key[A: Codec]   = new DelegatingSerde[A](isKey = true, Codec[A])
-  final def value[A: Codec] = new DelegatingSerde[A](isKey = false, Codec[A])
+  private[this] def impl[A](isKey: Boolean, codec: Codec[A]): ZSerde[Has[Registry], A] = {
+    val Magic: Byte = 0x0
+    val IntByteSize = 4
 
-  final class DelegatingSerde[A](override val isKey: Boolean, codec: Codec[A]) extends Serde[A] {
-    private[this] def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
-
-    override val schema: ParsedSchema = codec.schema
-
-    override val deserializer: Deserializer[Has[Registry], A] = Deserializer.byteArray.mapM { ba =>
-      val buffer = ByteBuffer.wrap(ba)
-      if (buffer.get() != Magic) RIO.fail(TamerError("Deserialization failed: unknown magic byte!"))
-      else {
-        val id = buffer.getInt()
-        for {
-          _ <- RIO.accessM[Has[Registry]](_.get.verifySchema(id, schema))
-          res <- RIO.fromEither {
-            val length  = buffer.limit() - (intByteSize + 1)
-            val payload = new Array[Byte](length)
-            buffer.get(payload, 0, length)
-            codec.decode(new ByteArrayInputStream(payload))
-          }
-        } yield res
-      }
+    def deserializeSimple(data: Array[Byte]) = Task(codec.decode(new ByteArrayInputStream(data)))
+    def serializeSimple(value: A) = Task {
+      val baos = new ByteArrayOutputStream
+      codec.encode(value, baos)
+      baos.toByteArray
     }
-    override val serializer: Serializer[Has[Registry] with Has[TopicName], A] = Serializer.byteArray.contramapM { a =>
-      for {
-        t  <- URIO.service[TopicName]
-        id <- RIO.accessM[Has[Registry]](_.get.getOrRegisterId(subject(t), schema))
-        arr <- Task {
-          val baos = new ByteArrayOutputStream
-          baos.write(ByteBuffer.allocate(intByteSize + 1).put(Magic).putInt(id).array())
-          codec.encode(a, baos)
-          baos.toByteArray
-        }
-      } yield arr
+    def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
+
+    new ZSerde[Has[Registry], A] {
+      override def configure(props: Map[String, AnyRef], isKey: Boolean): Task[Unit] = Task.unit
+
+      override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[Has[Registry], A] = RIO.serviceWith[Registry] {
+        case Registry.Fake => deserializeSimple(data)
+        case registry =>
+          codec.maybeSchema.fold(deserializeSimple(data)) { schema =>
+            val buffer = ByteBuffer.wrap(data)
+            if (buffer.get() != Magic) Task.fail(TamerError("Deserialization failed: unknown magic byte!"))
+            else {
+              val id = buffer.getInt()
+              for {
+                _ <- registry.verifySchema(id, schema)
+                res <- Task {
+                  val length  = buffer.limit() - (IntByteSize + 1)
+                  val payload = new Array[Byte](length)
+                  buffer.get(payload, 0, length)
+                  codec.decode(new ByteArrayInputStream(payload))
+                }
+              } yield res
+            }
+          }
+      }
+
+      override def serialize(topic: String, headers: Headers, value: A): RIO[Has[Registry], Array[Byte]] = RIO.serviceWith[Registry] {
+        case Registry.Fake => serializeSimple(value)
+        case registry =>
+          codec.maybeSchema.fold(serializeSimple(value)) { schema =>
+            for {
+              id <- registry.getOrRegisterId(subject(topic), schema)
+              arr <- Task {
+                val baos = new ByteArrayOutputStream
+                baos.write(ByteBuffer.allocate(IntByteSize + 1).put(Magic).putInt(id).array())
+                codec.encode(value, baos)
+                baos.toByteArray
+              }
+            } yield arr
+          }
+      }
     }
   }
 }

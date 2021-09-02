@@ -1,12 +1,12 @@
 package tamer
 package db
 
+import java.time.Instant
+
 import doobie.implicits.legacy.instant._
 import doobie.syntax.string._
 import zio._
 import zio.duration._
-
-import java.time.Instant
 
 object DatabaseSimple extends App {
   val program: ZIO[ZEnv, TamerError, Unit] = DbSetup

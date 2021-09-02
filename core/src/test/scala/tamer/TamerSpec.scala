@@ -22,7 +22,7 @@ object TamerSpec extends DefaultRunnableSpec with TamerSpecGen {
 
   val baseTamerLayer = Tamer.live {
     new Setup[Has[Ref[Log]], Key, Value, State] {
-      override final val serdes       = Setup.Serdes[Key, Value, State]
+      override final val serdes       = Setup.mkSerdes[Key, Value, State]
       override final val initialState = State(0)
       override final val stateKey     = 0
       override final val recordKey    = (s: State, _: Value) => Key(s.state + 1)
