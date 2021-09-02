@@ -3,6 +3,7 @@ package oci.objectstorage
 
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
+import tamer.TamerError.fromThrowable
 import zio._
 import zio.blocking.Blocking
 import zio.oci.objectstorage.{Limit, ListObjectsOptions, ObjectStorage, getObject, listObjects}
@@ -19,7 +20,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
     startAfter: S => Option[String],
     objectNameFinder: String => Boolean,
     stateFold: (S, Option[String]) => URIO[R, S],
-    transducer: ZTransducer[R, Throwable, Byte, V]
+    transducer: ZTransducer[R, TamerError, Byte, V]
 ) extends Setup[R with Blocking with ObjectStorage, K, V, S] {
 
   private[this] final val namespaceHash = namespace.hash
@@ -39,16 +40,22 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
 
   private[this] final val logTask = log4sFromName.provide("tamer.oci.objectstorage")
 
-  private[this] final def process(log: LogWriter[Task], currentState: S, queue: Queue[Chunk[(K, V)]]) =
-    objectName(currentState) match {
+  private[this] final def process(
+      log: LogWriter[Task],
+      currentState: S,
+      queue: Queue[Chunk[(K, V)]]
+  ): ZIO[R with ObjectStorage with Blocking, TamerError, Unit] =
+    (objectName(currentState) match {
       case Some(name) =>
-        log.info(s"getting object $name") *> getObject(namespace, bucket, name)
-          .transduce(transducer)
-          .map(value => recordKey(currentState, value) -> value)
-          .foreachChunk(queue.offer)
+        log.info(s"getting object $name") *>
+          getObject(namespace, bucket, name)
+            .transduce(transducer)
+            .mapError(error => TamerError(s"Error while processing object $name: ${error.getMessage}", error))
+            .map(value => recordKey(currentState, value) -> value)
+            .foreachChunk(queue.offer)
       case None =>
         log.debug("no state change")
-    }
+    }).mapError(fromThrowable)
 
   override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R with Blocking with ObjectStorage, S] = for {
     log        <- logTask
@@ -72,7 +79,7 @@ object ObjectStorageSetup {
       startAfter: S => Option[String],
       prefix: Option[String] = None,
       objectNameFinder: String => Boolean = _ => true,
-      transducer: ZTransducer[R, Throwable, Byte, V] = ZTransducer.utf8Decode >>> ZTransducer.splitLines
+      transducer: ZTransducer[R, TamerError, Byte, V] = ZTransducer.utf8Decode >>> ZTransducer.splitLines
   )(
       implicit ev: Codec[Tamer.StateKey]
   ): ObjectStorageSetup[R, K, V, S] = new ObjectStorageSetup(
