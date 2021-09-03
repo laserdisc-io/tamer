@@ -3,6 +3,8 @@ package tamer
 import cats.implicits._
 import ciris._
 import zio._
+import zio.blocking.Blocking
+import zio.clock.Clock
 import zio.duration._
 import zio.interop.catz._
 
@@ -57,7 +59,11 @@ object KafkaConfig {
     kafkaStateConfigValue
   ).mapN(KafkaConfig.apply)
 
-  final val fromEnvironment: Layer[TamerError, Has[KafkaConfig]] = ZLayer.fromEffect {
-    kafkaConfigValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce))
-  }
+  final val fromEnvironment: ZLayer[Blocking with Clock, TamerError, Has[KafkaConfig]] =
+    ZIO
+      .runtime[Clock with Blocking]
+      .flatMap(implicit runtime => kafkaConfigValue.load[Task])
+      .refineToOrDie[ConfigException]
+      .mapError(ce => TamerError(ce.error.redacted.show, ce))
+      .toLayer
 }
