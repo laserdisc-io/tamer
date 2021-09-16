@@ -1,4 +1,5 @@
-import zio.{Has, Layer, URIO, ZIO}
+import zio.{Has, URIO, ZIO, ZLayer}
+import zio.blocking.Blocking
 import zio.clock.Clock
 
 package object tamer {
@@ -9,5 +10,5 @@ package object tamer {
     def hash(implicit A: Hashable[A]): Int = A.hash(_underlying)
   }
 
-  final val kafkaConfigFromEnvironment: Layer[TamerError, Has[KafkaConfig]] = KafkaConfig.fromEnvironment
+  final val kafkaConfigFromEnvironment: ZLayer[Blocking with Clock, TamerError, Has[KafkaConfig]] = KafkaConfig.fromEnvironment
 }
