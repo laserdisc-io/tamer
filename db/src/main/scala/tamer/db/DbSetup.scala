@@ -37,7 +37,7 @@ sealed abstract case class DbSetup[K, V, S: Hashable](
 
   private[this] final val logTask = log4sFromName.provide("tamer.db")
 
-  private[this] final def process(query: Query0[V], chunkSize: Int, tx: Transactor[Task], queue: Queue[Chunk[(K, V)]], state: S) =
+  private[this] final def process(query: Query0[V], chunkSize: Int, tx: Transactor[Task], queue: Enqueue[Chunk[(K, V)]], state: S) =
     query
       .streamWithChunkSize(chunkSize)
       .chunks
@@ -49,7 +49,7 @@ sealed abstract case class DbSetup[K, V, S: Hashable](
       .toList
       .map(values => values -> values.headOption.map(_.pulledAt).getOrElse(System.nanoTime()))
 
-  override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[Has[Transactor[Task]] with Has[QueryConfig], S] = for {
+  override def iteration(currentState: S, queue: Enqueue[Chunk[(K, V)]]): RIO[Has[Transactor[Task]] with Has[QueryConfig], S] = for {
     log            <- logTask
     transactor     <- ZIO.service[Transactor[Task]]
     chunkSize      <- ZIO.service[QueryConfig].map(_.fetchChunkSize)

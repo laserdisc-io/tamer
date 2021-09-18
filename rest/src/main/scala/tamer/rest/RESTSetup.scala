@@ -95,7 +95,7 @@ sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
   // (for example when we are waiting new pages to appear). This has to be combined with an
   // intuitive filtering of the page result and automatic type inference of the state for
   // the page decoder helper functions.
-  override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R with SttpClient with Clock with Has[EphemeralSecretCache], S] = for {
+  override def iteration(currentState: S, queue: Enqueue[Chunk[(K, V)]]): RIO[R with SttpClient with Clock with Has[EphemeralSecretCache], S] = for {
     log         <- logTask
     tokenCache  <- ZIO.service[EphemeralSecretCache]
     decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
@@ -179,7 +179,7 @@ object RESTSetup {
     ) {
       override def iteration(
           currentState: Offset,
-          queue: Queue[Chunk[(K, V)]]
+          queue: Enqueue[Chunk[(K, V)]]
       ): RIO[R with Clock with SttpClient with Has[EphemeralSecretCache], Offset] = for {
         log         <- logTask
         tokenCache  <- ZIO.service[EphemeralSecretCache]
@@ -266,7 +266,7 @@ object RESTSetup {
     ) {
       override def iteration(
           currentState: PeriodicOffset,
-          queue: Queue[Chunk[(K, V)]]
+          queue: Enqueue[Chunk[(K, V)]]
       ): RIO[R with Clock with SttpClient with Has[EphemeralSecretCache], PeriodicOffset] = for {
         log        <- logTask
         tokenCache <- ZIO.service[EphemeralSecretCache]

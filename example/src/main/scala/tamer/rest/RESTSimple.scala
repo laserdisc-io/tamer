@@ -13,7 +13,7 @@ object RESTSimple extends App {
 
   val program: ZIO[ZEnv, TamerError, Unit] = RESTSetup
     .paginated(
-      baseUrl = "http://localhost:9095/finite-pagination",
+      baseUrl = "http://localhost:9395/finite-pagination",
       pageDecoder = pageDecoder
     )(
       recordKey = (_, data) => data,

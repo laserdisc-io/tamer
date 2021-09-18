@@ -115,7 +115,8 @@ sealed class FakeConsumer[IK, IV](
                       .tap { case (partition, value) => log.info(s"consumer fakely removing ($partition -> ${value.value()}) from in-flight") } *>
                     committed.update(_.updated(partition, Some(toCommitOffset)))
                 }
-              } yield ()).unit
+              } yield ()).unit,
+            consumerGroupId = ""
           )
         }
         .zip(ZStream.repeatEffect(nextDouble))

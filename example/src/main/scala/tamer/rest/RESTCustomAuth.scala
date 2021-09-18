@@ -20,7 +20,7 @@ object RESTCustomAuth extends App {
   val authentication: Authentication[SttpClient] = new Authentication[SttpClient] {
     override def addAuthentication(request: SttpRequest, bearerToken: Option[String]): SttpRequest = request.auth.bearer(bearerToken.getOrElse(""))
     override def setSecret(secretRef: Ref[Option[String]]): ZIO[SttpClient, TamerError, Unit] = {
-      val fetchToken = send(basicRequest.get(uri"http://localhost:9095/auth").auth.basic("user", "pass"))
+      val fetchToken = send(basicRequest.get(uri"http://localhost:9395/auth").auth.basic("user", "pass"))
         .flatMap(_.body match {
           case Left(error)  => ZIO.fail(TamerError(error))
           case Right(token) => ZIO.succeed(token)
@@ -35,7 +35,7 @@ object RESTCustomAuth extends App {
 
   val program = RESTSetup
     .paginated(
-      baseUrl = "http://localhost:9095",
+      baseUrl = "http://localhost:9395",
       pageDecoder = pageDecoder,
       authentication = Some(authentication)
     )(

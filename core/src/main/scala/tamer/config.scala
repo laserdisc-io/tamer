@@ -21,6 +21,7 @@ final case class KafkaConfig(
     bufferSize: Int,
     sink: SinkConfig,
     state: StateConfig,
+    transactionalId: String,
     properties: Map[String, AnyRef]
 )
 
@@ -31,7 +32,8 @@ object KafkaConfig {
       closeTimeout: Duration,
       bufferSize: Int,
       sink: SinkConfig,
-      state: StateConfig
+      state: StateConfig,
+      transactionalId: String
   ): KafkaConfig = new KafkaConfig(
     brokers = brokers,
     schemaRegistryUrl = schemaRegistryUrl,
@@ -39,6 +41,7 @@ object KafkaConfig {
     bufferSize = bufferSize,
     sink = sink,
     state = state,
+    transactionalId = transactionalId,
     properties = Map.empty
   )
 
@@ -56,7 +59,8 @@ object KafkaConfig {
     env("KAFKA_CLOSE_TIMEOUT").as[Duration],
     env("KAFKA_BUFFER_SIZE").as[Int],
     kafkaSinkConfigValue,
-    kafkaStateConfigValue
+    kafkaStateConfigValue,
+    env("KAFKA_TRANSACTIONAL_ID").as[String]
   ).mapN(KafkaConfig.apply)
 
   final val fromEnvironment: ZLayer[Blocking with Clock, TamerError, Has[KafkaConfig]] =

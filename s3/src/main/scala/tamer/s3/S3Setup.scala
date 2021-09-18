@@ -84,7 +84,7 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     } yield EphemeralChange(detectedKeyListChanged)
   }
 
-  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: S, queue: Queue[Chunk[(K, V)]]) = for {
+  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: S, queue: Enqueue[Chunk[(K, V)]]) = for {
     log       <- logTask
     nextState <- stateFold(keysR, currentState, keysChangedToken)
     _         <- log.debug(s"next state computed to be $nextState")
@@ -95,7 +95,7 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
       .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
   } yield nextState
 
-  override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R with Clock with S3, S] = for {
+  override def iteration(currentState: S, queue: Enqueue[Chunk[(K, V)]]): RIO[R with Clock with S3, S] = for {
     sourceState <- initialEphemeralState
     token       <- Queue.dropping[Unit](requestedCapacity = 1)
     _ <- updatedSourceState(sourceState, token)

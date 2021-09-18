@@ -11,7 +11,7 @@ abstract class Setup[-R, K, V, S] {
   val stateKey: Int
   val recordKey: (S, V) => K
   val repr: String = "no repr string implemented, if you want a neat description of the source configuration please implement it"
-  def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[R, S]
+  def iteration(currentState: S, queue: Enqueue[Chunk[(K, V)]]): RIO[R, S]
 
   final val run: ZIO[R with Has[KafkaConfig] with Blocking with Clock, TamerError, Unit] =
     runLoop.provideSomeLayer(Tamer.live(this))
