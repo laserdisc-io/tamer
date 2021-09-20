@@ -14,7 +14,7 @@ import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.kafka.consumer._
 import zio.kafka.producer.{ProducerSettings, Transaction, TransactionalProducer, TransactionalProducerSettings}
 import zio.kafka.serde.{Serializer, Serde => ZSerde}
-import zio.stream.{UStream, ZStream}
+import zio.stream.ZStream
 
 trait Tamer {
   def runLoop: ZIO[Clock, TamerError, Unit]
@@ -43,24 +43,23 @@ object Tamer {
   }
 
   private[tamer] final def sink[K, V](
-      stream: UStream[(Transaction, K, V)],
+      queue: Dequeue[(Transaction, Chunk[(K, V)])],
       topic: String,
       keySerializer: Serializer[Has[Registry], K],
       valueSerializer: Serializer[Has[Registry], V],
       log: LogWriter[Task]
   ) =
-    stream
-//      .map { case (k, v) => new ProducerRecord(topic, k, v) }
-      .mapChunksM {
-        case chunk if chunk.nonEmpty && chunk.forall { case (transaction, _, _) => transaction == chunk.head._1 } =>
-          val transaction = chunk.head._1
-          transaction
-            .produceChunk(chunk.map { case (_, k, v) => new ProducerRecord(topic, k, v) }, keySerializer, valueSerializer, None)
-            .tapError(_ => log.debug(s"failed pushing ${chunk.size} messages to $topic"))
-            .retry(tenTimes) <* log.info(s"pushed ${chunk.size} messages to $topic")
-        case emptyChunk if emptyChunk.isEmpty => UIO(emptyChunk)
-        case _                                => ZIO.fail(new RuntimeException("Unexpected error, maybe transactions got mixed in the same chunk?"))
-      }.runDrain
+    ZStream.fromQueueWithShutdown(
+      queue
+        .mapM {
+          case (transaction, chunk) if chunk.nonEmpty =>
+            (transaction
+              .produceChunk(chunk.map { case (k, v) => new ProducerRecord(topic, k, v) }, keySerializer, valueSerializer, None)
+              .tapError(_ => log.debug(s"failed pushing ${chunk.size} messages to $topic"))
+              .retry(tenTimes) <* log.info(s"pushed ${chunk.size} messages to $topic")).unit
+          case _ => UIO.unit <* log.debug(s"received an empty chunk for $topic")
+        }
+    )
 
   // There are at least 4 possible decisions:
   //
@@ -87,10 +86,10 @@ object Tamer {
   // b. more importantly, they would not be able to span our strongly typed producers,
   //    so they would be "limited" to ensuring no state is visible to our consumer until
   //    the previous state offset has been committed.
-  private[tamer] sealed trait Decision                                            extends Product with Serializable
-  private[tamer] final case object Initialize                                     extends Decision
-  private[tamer] final case object Resume                                         extends Decision
-  private[tamer] final case object Die                                            extends Decision
+  private[tamer] sealed trait Decision        extends Product with Serializable
+  private[tamer] final case object Initialize extends Decision
+  private[tamer] final case object Resume     extends Decision
+  private[tamer] final case object Die        extends Decision
 
   private[tamer] def decidedAction(strategy: StateRecoveryStrategy)(
       endOffset: Map[TopicPartition, Long],
@@ -109,11 +108,10 @@ object Tamer {
       stateKeySerde: ZSerde[Has[Registry], StateKey],
       stateValueSerde: ZSerde[Has[Registry], S],
       initialState: S,
-      adminClient: AdminClient,
       consumer: Consumer,
       producer: TransactionalProducer,
       stateRecovery: StateRecoveryStrategy,
-      queue: Queue[Chunk[(Transaction, K, V)]],
+      queue: Enqueue[(Transaction, Chunk[(K, V)])],
       iterationFunction: (S, Enqueue[Chunk[(K, V)]]) => Task[S],
       log: LogWriter[Task]
   ) = {
@@ -163,27 +161,20 @@ object Tamer {
       .plainStream(stateKeySerde, stateValueSerde)
       .mapM {
         case CommittableRecord(record, offset) if record.key == key =>
-          producer.createTransaction.use { t =>
-            val queueDataTrans = ZQueue.bounded[Chunk[(K, V)]](requestedCapacity = 10_000).map(_.map(_.map { case (k, v) => (t, k, v) }))
-            queueDataTrans >>= { qdt =>
-              val streamOfData = ZStream.fromQueue(qdt).tap(queue.offer).runDrain
-              streamOfData <&> log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.info}") *>
-                // we got a valid state to process, invoke the handler
-                log.debug(s"invoking the iteration function under $stateGroupId") *> iterationFunction(record.value, qdt).flatMap { newState =>
-                  //              (qdt.takeAll >>= queue.offerAll)
-                  UIO(()).repeatWhileM(_ => qdt.size.map(_ == 0)) *> qdt.shutdown *>
-                    //              Schedule.recurUntil()
-                    // now that the handler has concluded its job, we've got to commit the offset and push the new state to Kafka
-                    // we should do these two operations within a transactional boundary as there is no guarantee whatsoever that
-                    // both will successfully complete
-                    // here we're chosing to commit first before pushing the new state so we should never lag more than 1 but
-                    // we may repush the last batch when we resume (at least once semantics)
-//                  offset.commitOrRetry(tenTimes) <*
-                    log.debug(s"consumer group $stateGroupId will committ offset ${offset.info}") <*
-                    t.produce(stateTopic, key, newState, stateKeySerde, stateValueSerde, Some(offset))
+          producer.createTransaction.use { transaction =>
+            val enrichedQueue = queue.contramap[Chunk[(K, V)]](chunk => (transaction, chunk))
+            log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.info}") *>
+              // we got a valid state to process, invoke the handler
+              log.debug(s"invoking the iteration function under $stateGroupId") *> iterationFunction(record.value, enrichedQueue).flatMap {
+                newState =>
+                  // now that the handler has concluded its job, we've got to commit the offset and push the new state to Kafka
+                  // we do these two operations within a transactional boundary as there is no guarantee whatsoever that
+                  // both will successfully complete
+                  log.debug(s"consumer group $stateGroupId will committ offset ${offset.info}") <*
+                    transaction
+                      .produce(stateTopic, key, newState, stateKeySerde, stateValueSerde, Some(offset))
                       .tap(rmd => log.debug(s"pushed state $newState to $rmd for $stateGroupId"))
-                }
-            }
+              }
           }
         case CommittableRecord(record, offset) =>
           log.debug(s"consumer group $stateGroupId ignored state (wrong key: ${record.key} != $key) from ${offset.info}") *>
@@ -217,10 +208,7 @@ object Tamer {
     private[this] val stateKeySerde   = serdes.stateKeySerde
     private[this] val stateValueSerde = serdes.stateValueSerde
 
-    private[tamer] def sinkStream(stream: UStream[(Transaction, K, V)], log: LogWriter[Task]) =
-      ZStream.fromEffect(sink(stream, sinkTopic, keySerializer, valueSerializer, log).fork <* log.info("running sink perpetually"))
-
-    private[tamer] def sourceStream(queue: Queue[Chunk[(Transaction, K, V)]], log: LogWriter[Task]) =
+    private[tamer] def sourceStream(queue: Enqueue[(Transaction, Chunk[(K, V)])], log: LogWriter[Task]) =
       source(
         stateTopic,
         stateGroupId,
@@ -228,7 +216,6 @@ object Tamer {
         stateKeySerde,
         stateValueSerde,
         initialState,
-        adminClient,
         consumer,
         producer,
         recoveryStrategy,
@@ -242,25 +229,28 @@ object Tamer {
         consumer.stopConsumption <*
         log.info(s"consumer of topic $stateTopic stopped").ignore
 
-    private[tamer] def drainSink(fiber: Fiber[Throwable, Unit], stream: UStream[(Transaction, K, V)], log: LogWriter[Task]) =
-      log.info(s"stopping producing to $sinkTopic").ignore *>
-        fiber.interrupt *>
-        log.info(s"producer to topic $sinkTopic stopped, running final drain on sink queue").ignore *>
-        sink(stream, sinkTopic, keySerializer, valueSerializer, log).run <*
-        log.info("sink queue drained").ignore
+    private[tamer] def drainSink(sinkFiber: Fiber[Throwable, Unit], queue: Dequeue[(Transaction, Chunk[(K, V)])], log: LogWriter[Task]): URIO[Has[Registry] with Clock, Unit] =
+      for {
+        _ <- log.info(s"stopping producing to $sinkTopic").ignore
+        _ <- sinkFiber.interrupt
+        _ <- log.info(s"producer to topic $sinkTopic stopped, running final drain on sink queue").ignore
+        f <- sink(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.orDie.fork
+        _ <- log.info("sink queue drained").ignore
+        _ <- queue.size.repeatWhile(_ > 0)
+        _ <- queue.shutdown
+      } yield ()
 
-    private[tamer] def runLoop(queue: Queue[Chunk[(Transaction, K, V)]], log: LogWriter[Task]) = for {
-      stream <- ZStream.succeed(ZStream.fromChunkQueueWithShutdown(queue))
-      fiber  <- sinkStream(stream, log) // <-- deve sapere ogni elemento a che transaction appartiene
-      _      <- sourceStream(queue, log).ensuringFirst(stopSource(log)).ensuring(drainSink(fiber, stream, log))
+    private[tamer] def runLoop(queue: Queue[(Transaction, Chunk[(K, V)])], log: LogWriter[Task]) = for {
+      fiber <- sink(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.fork <* log.info("running sink perpetually")
+      _     <- sourceStream(queue, log).ensuringFirst(stopSource(log)).ensuring(drainSink(fiber, queue, log)).runDrain
     } yield ()
 
     override val runLoop: ZIO[Clock, TamerError, Unit] = {
       val logic = for {
         log   <- logTask
         _     <- log.info(s"initializing Tamer with setup: \n$repr")
-        queue <- Queue.bounded[Chunk[(Transaction, K, V)]](config.bufferSize)
-        _     <- runLoop(queue, log).runDrain
+        queue <- Queue.bounded[(Transaction, Chunk[(K, V)])](config.bufferSize)
+        _     <- runLoop(queue, log)
       } yield ()
 
       logic.refineOrDie(tamerErrors).provideSomeLayer[Clock](config.schemaRegistryUrl.map(Registry.live(_)).getOrElse(Registry.fake))

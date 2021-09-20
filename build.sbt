@@ -14,7 +14,6 @@ val V = new {
   val kafka            = "2.7.0"
   val logback          = "1.2.6"
   val `log-effect`     = "0.16.1"
-  val mockito          = "1.0.0-M2"
   val ociSdk           = "2.5.1"
   val postgres         = "42.2.23"
   val `scala-compat`   = "2.5.0"
@@ -24,7 +23,7 @@ val V = new {
   val zio              = "1.0.11"
   val `zio-interop`    = "3.1.1.0"
   val `zio-json`       = "0.1.5"
-  val `zio-kafka`      = "0.16.0"
+  val `zio-kafka`      = "0.16.0+6-892eac50+20210920-2151-SNAPSHOT"
   val `zio-oci-os`     = "0.2.1"
   val `zio-s3`         = "0.3.7"
 }
@@ -113,7 +112,6 @@ lazy val core = project
       "com.sksamuel.avro4s"                   %% "avro4s-core"                  % V.avro4s           % Optional,
       "dev.zio"                               %% "zio-json"                     % V.`zio-json`       % Optional,
       "io.circe"                              %% "circe-parser"                 % V.circe            % Optional,
-      "org.scalatestplus"                     %% "scalatestplus-mockito"        % V.mockito          % Test,
       "ch.qos.logback"                         % "logback-classic"              % V.logback          % Test,
       "com.github.everit-org.json-schema"      % "org.everit.json.schema"       % V.`json-schema`    % Test,
       "io.github.embeddedkafka"               %% "embedded-kafka"               % V.kafka            % Test,

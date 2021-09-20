@@ -3,59 +3,24 @@ package tamer.utils
 import log.effect.LogWriter
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.{Metric, MetricName, TopicPartition}
-import zio.kafka.producer.Producer
+import zio.kafka.consumer.Offset
+import zio.kafka.producer.{Producer, Transaction, TransactionalProducer}
 import zio.kafka.serde.Serializer
-import zio.{Chunk, Queue, RIO, Ref, Task, UIO, ZIO}
+import zio.{Chunk, IO, Queue, RIO, Ref, Task, UIO, ZIO, ZManaged}
 
-sealed class FakeProducer[SK, SV](val produced: Queue[ProducerRecord[SK, SV]], log: LogWriter[Task]) extends Producer {
-  override def produce[R, K, V](
-      record: ProducerRecord[K, V],
-      keySerializer: Serializer[R, K],
-      valueSerializer: Serializer[R, V]
-  ): RIO[R, RecordMetadata] = ???
+class FakeTransactionalProducer[SK, SV](val produced: Queue[ProducerRecord[SK, SV]], log: LogWriter[Task]) extends TransactionalProducer {
+  override def createTransaction: ZManaged[Any, Throwable, Transaction] = ???
 
-  override def produce[R, K, V](
-      topic: String,
-      key: K,
-      value: V,
-      keySerializer: Serializer[R, K],
-      valueSerializer: Serializer[R, V]
-  ): RIO[R, RecordMetadata] = produced.offer(new ProducerRecord(topic, key.asInstanceOf[SK], value.asInstanceOf[SV])) *>
-    log.info(s"producer fakely offered record '$key:$value' to topic '$topic-0'") *>
-    RIO(new RecordMetadata(new TopicPartition(topic, 0), 0, 0, 0, 0, 0, 0))
+  class FakeTransaction extends Transaction {
+    override def produce[R, K, V](topic: String, key: K, value: V, keySerializer: Serializer[R, K], valueSerializer: Serializer[R, V], offset: Option[Offset]): RIO[R, RecordMetadata] = ???
+    override def produce[R, K, V](producerRecord: ProducerRecord[K, V], keySerializer: Serializer[R, K], valueSerializer: Serializer[R, V], offset: Option[Offset]): RIO[R, RecordMetadata] = ???
+    override def produceChunk[R, K, V](records: Chunk[ProducerRecord[K, V]], keySerializer: Serializer[R, K], valueSerializer: Serializer[R, V], offset: Option[Offset]): RIO[R, Chunk[RecordMetadata]] = {
 
-  override def produceAsync[R, K, V](
-      record: ProducerRecord[K, V],
-      keySerializer: Serializer[R, K],
-      valueSerializer: Serializer[R, V]
-  ): RIO[R, Task[RecordMetadata]] = ???
-
-  override def produceAsync[R, K, V](
-      topic: String,
-      key: K,
-      value: V,
-      keySerializer: Serializer[R, K],
-      valueSerializer: Serializer[R, V]
-  ): RIO[R, Task[RecordMetadata]] = ???
-
-  override def produceChunkAsync[R, K, V](
-      records: Chunk[ProducerRecord[K, V]],
-      keySerializer: Serializer[R, K],
-      valueSerializer: Serializer[R, V]
-  ): RIO[R, Task[Chunk[RecordMetadata]]] = ???
-
-  override def produceChunk[R, K, V](
-      records: Chunk[ProducerRecord[K, V]],
-      keySerializer: Serializer[R, K],
-      valueSerializer: Serializer[R, V]
-  ): RIO[R, Chunk[RecordMetadata]] =
-    produced.offerAll(records.asInstanceOf[Chunk[ProducerRecord[SK, SV]]]) *> UIO(
-      Chunk(new RecordMetadata(new TopicPartition("", 0), 0, 0, 0, 0, 0, 0))
-    )
-  override def flush: Task[Unit] = ???
-
-  override def metrics: Task[Map[MetricName, Metric]] = ???
+    }
+    override def abort: IO[TransactionalProducer.UserInitiatedAbort.type, Nothing] = ???
+  }
 }
+
 object FakeProducer {
   def mk[K, V](logWriter: LogWriter[Task]): UIO[FakeProducer[K, V]] =
     Queue.unbounded[ProducerRecord[K, V]].map(new FakeProducer(_, logWriter))

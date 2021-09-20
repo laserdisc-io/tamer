@@ -1,54 +1,53 @@
 package tamer
 
-//import log.effect.zio.ZioLogWriter.log4sFromName
-//import org.apache.kafka.clients.producer.ProducerRecord
-//import org.apache.kafka.common.TopicPartition
-//import org.scalatestplus.mockito.MockitoSugar.mock
-//import tamer.Tamer.StateKey
-//import tamer.utils.{FakeConsumer, FakeProducer}
-//import zio._
-//import zio.clock.{Clock, sleep}
-//import zio.duration.Duration
-//import zio.kafka.admin.AdminClient
-//import zio.random.{Random, nextLongBetween}
-//import zio.test.Assertion._
-//import zio.test.TestAspect.{failing, nonFlaky}
+import log.effect.zio.ZioLogWriter.log4sFromName
+import org.apache.kafka.clients.producer.ProducerRecord
+import org.apache.kafka.common.TopicPartition
+import org.scalatestplus.mockito.MockitoSugar.mock
+import tamer.Tamer.StateKey
+import tamer.utils.{FakeConsumer, FakeProducer}
+import zio._
+import zio.clock.{Clock, sleep}
+import zio.duration.Duration
+import zio.kafka.admin.AdminClient
+import zio.random.{Random, nextLongBetween}
+import zio.test.Assertion._
+import zio.test.TestAspect.{failing, nonFlaky}
 import zio.test._
 
 object SourceSpec extends DefaultRunnableSpec {
   val setupSerdes = Setup.mkSerdes[Key, Value, State]
 
   override final val spec = suite("SourceSpec")(
-//    testM("check that data is present") {
-//      val data = for {
-//        log       <- log4sFromName.provide("testSource.1")
-//        records   <- Queue.unbounded[ProducerRecord[StateKey, State]]
-//        producer  <- FakeProducer.mk[StateKey, State](records, log)
-//        consumer  <- FakeConsumer.mk(records, log)
-//        dataQueue <- Queue.unbounded[Chunk[(Key, Value)]]
-//        _ <- Tamer
-//          .source[Key, Value, State](
-//            stateTopic = "topic",
-//            stateGroupId = "topicGroupId",
-//            stateHash = 0,
-//            stateKeySerde = setupSerdes.stateKeySerde,
-//            stateValueSerde = setupSerdes.stateValueSerde,
-//            initialState = State(0),
-//            consumer = consumer,
-//            producer = producer,
-//            queue = dataQueue,
-//            iterationFunction = (_: State, q: Enqueue[Chunk[(Key, Value)]]) => q.offer(Chunk((Key(1), Value(2)))) *> Task(State(0)),
-//            log = log,
-//            adminClient = mock[AdminClient],
-//            stateRecovery = ManualRecovery
-//          )
-//          .provideSomeLayer[Clock](Registry.fake)
-//          .take(1)
-//          .runCollect
-//      } yield dataQueue
-//
-//      assertM(data.flatMap(_.takeAll))(contains(Chunk((Key(1), Value(2)))))
-//    },
+    testM("check that data is present") {
+      val data = for {
+        log       <- log4sFromName.provide("testSource.1")
+        records   <- Queue.unbounded[ProducerRecord[StateKey, State]]
+        producer  <- FakeProducer.mk[StateKey, State](records, log)
+        consumer  <- FakeConsumer.mk(records, log)
+        dataQueue <- Queue.unbounded[Chunk[(Key, Value)]]
+        _ <- Tamer
+          .source[Key, Value, State](
+            stateTopic = "topic",
+            stateGroupId = "topicGroupId",
+            stateHash = 0,
+            stateKeySerde = setupSerdes.stateKeySerde,
+            stateValueSerde = setupSerdes.stateValueSerde,
+            initialState = State(0),
+            consumer = consumer,
+            producer = producer,
+            queue = dataQueue,
+            iterationFunction = (_: State, q: Enqueue[Chunk[(Key, Value)]]) => q.offer(Chunk((Key(1), Value(2)))) *> Task(State(0)),
+            log = log,
+            stateRecovery = ManualRecovery
+          )
+          .provideSomeLayer[Clock](Registry.fake)
+          .take(1)
+          .runCollect
+      } yield dataQueue
+
+      assertM(data.flatMap(_.takeAll))(contains(Chunk((Key(1), Value(2)))))
+    },
 //    testM("should point to a tape containing only State(3)") {
 //      val tape = for {
 //        log        <- log4sFromName.provide("testSource.2")
