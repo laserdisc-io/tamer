@@ -13,7 +13,7 @@ import zio.kafka.admin.{AdminClient, AdminClientSettings}
 import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.kafka.consumer._
 import zio.kafka.producer.{ProducerSettings, Transaction, TransactionalProducer, TransactionalProducerSettings}
-import zio.kafka.serde.{Serializer, Serde => ZSerde}
+import zio.kafka.serde.{Serde => ZSerde, Serializer}
 import zio.stream.ZStream
 
 trait Tamer {
@@ -229,7 +229,11 @@ object Tamer {
         consumer.stopConsumption <*
         log.info(s"consumer of topic $stateTopic stopped").ignore
 
-    private[tamer] def drainSink(sinkFiber: Fiber[Throwable, Unit], queue: Dequeue[(Transaction, Chunk[(K, V)])], log: LogWriter[Task]): URIO[Has[Registry] with Clock, Unit] =
+    private[tamer] def drainSink(
+        sinkFiber: Fiber[Throwable, Unit],
+        queue: Dequeue[(Transaction, Chunk[(K, V)])],
+        log: LogWriter[Task]
+    ): URIO[Has[Registry] with Clock, Unit] =
       for {
         _ <- log.info(s"stopping producing to $sinkTopic").ignore
         _ <- sinkFiber.interrupt
