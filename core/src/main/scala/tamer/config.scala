@@ -8,12 +8,8 @@ import zio.clock.Clock
 import zio.duration._
 import zio.interop.catz._
 
-sealed trait StateRecoveryStrategy extends Product with Serializable
-case object ManualRecovery         extends StateRecoveryStrategy
-case object AutomaticRecovery      extends StateRecoveryStrategy
-
 final case class SinkConfig(topic: String)
-final case class StateConfig(topic: String, groupId: String, clientId: String, recoveryStrategy: StateRecoveryStrategy = ManualRecovery)
+final case class StateConfig(topic: String, groupId: String, clientId: String)
 final case class KafkaConfig(
     brokers: List[String],
     schemaRegistryUrl: Option[String],
@@ -52,7 +48,7 @@ object KafkaConfig {
 
   private[this] val kafkaSinkConfigValue = env("KAFKA_SINK_TOPIC").map(SinkConfig)
   private[this] val kafkaStateConfigValue =
-    (env("KAFKA_STATE_TOPIC"), env("KAFKA_STATE_GROUP_ID"), env("KAFKA_STATE_CLIENT_ID")).mapN(StateConfig(_, _, _, ManualRecovery))
+    (env("KAFKA_STATE_TOPIC"), env("KAFKA_STATE_GROUP_ID"), env("KAFKA_STATE_CLIENT_ID")).mapN(StateConfig)
   private[this] val kafkaConfigValue = (
     env("KAFKA_BROKERS").as[List[String]],
     env("KAFKA_SCHEMA_REGISTRY_URL").option,

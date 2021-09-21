@@ -90,7 +90,7 @@ object Tamer {
   private[tamer] final case object Resume     extends Decision
   private[tamer] final case object Die        extends Decision
 
-  private[tamer] def decidedAction(strategy: StateRecoveryStrategy)(
+  private[tamer] def decidedAction(
       endOffset: Map[TopicPartition, Long],
       committedOffset: Map[TopicPartition, Long]
   ): Decision =
@@ -109,7 +109,6 @@ object Tamer {
       initialState: S,
       consumer: Consumer,
       producer: TransactionalProducer,
-      stateRecovery: StateRecoveryStrategy,
       queue: Enqueue[(Transaction, Chunk[(K, V)])],
       iterationFunction: (S, Enqueue[Chunk[(K, V)]]) => Task[S],
       log: LogWriter[Task]
@@ -133,7 +132,7 @@ object Tamer {
           }.flatten.toMap
         }
         partitionOffsets.zip(committedPartitionOffsets).map { case (end, committed) =>
-          decidedAction(stateRecovery)(end, committed)
+          decidedAction(end, committed)
         }
       }
 
@@ -198,7 +197,7 @@ object Tamer {
     private[this] val logTask = log4sFromName.provide("tamer.kafka")
 
     private[this] val SinkConfig(sinkTopic)                                      = config.sink
-    private[this] val StateConfig(stateTopic, stateGroupId, _, recoveryStrategy) = config.state
+    private[this] val StateConfig(stateTopic, stateGroupId, _) = config.state
 
     private[this] val keySerializer   = serdes.keySerializer
     private[this] val valueSerializer = serdes.valueSerializer
@@ -216,7 +215,6 @@ object Tamer {
         initialState,
         consumer,
         producer,
-        recoveryStrategy,
         queue,
         iterationFunction,
         log
@@ -270,7 +268,7 @@ object Tamer {
         repr: String
     ): ZManaged[Blocking with Clock, TamerError, Live[K, V, S]] = {
 
-      val KafkaConfig(brokers, _, closeTimeout, _, _, StateConfig(_, groupId, clientId, _), transactionalId, properties) = config
+      val KafkaConfig(brokers, _, closeTimeout, _, _, StateConfig(_, groupId, clientId), transactionalId, properties) = config
 
       val consumerSettings = ConsumerSettings(brokers)
         .withClientId(clientId)
