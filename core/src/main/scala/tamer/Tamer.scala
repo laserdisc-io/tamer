@@ -9,7 +9,6 @@ import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
-import zio.kafka.admin.{AdminClient, AdminClientSettings}
 import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.kafka.consumer._
 import zio.kafka.producer.{ProducerSettings, Transaction, TransactionalProducer, TransactionalProducerSettings}
@@ -42,7 +41,7 @@ object Tamer {
     def info: String = s"${_underlying.topicPartition}@${_underlying.offset}"
   }
 
-  private[tamer] final def sink[K, V](
+  private[tamer] final def sinkStream[K, V](
       queue: Dequeue[(Transaction, Chunk[(K, V)])],
       topic: String,
       keySerializer: Serializer[Has[Registry], K],
@@ -192,7 +191,6 @@ object Tamer {
       stateHash: Int,
       iterationFunction: (S, Enqueue[Chunk[(K, V)]]) => Task[S],
       repr: String,
-      adminClient: AdminClient,
       consumer: Consumer,
       producer: TransactionalProducer
   ) extends Tamer {
@@ -238,14 +236,14 @@ object Tamer {
         _ <- log.info(s"stopping producing to $sinkTopic").ignore
         _ <- sinkFiber.interrupt
         _ <- log.info(s"producer to topic $sinkTopic stopped, running final drain on sink queue").ignore
-        f <- sink(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.orDie.fork
+        _ <- sinkStream(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.orDie.fork
         _ <- log.info("sink queue drained").ignore
         _ <- queue.size.repeatWhile(_ > 0)
         _ <- queue.shutdown
       } yield ()
 
     private[tamer] def runLoop(queue: Queue[(Transaction, Chunk[(K, V)])], log: LogWriter[Task]) = for {
-      fiber <- sink(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.fork <* log.info("running sink perpetually")
+      fiber <- sinkStream(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.fork <* log.info("running sink perpetually")
       _     <- sourceStream(queue, log).ensuringFirst(stopSource(log)).ensuring(drainSink(fiber, queue, log)).runDrain
     } yield ()
 
@@ -274,8 +272,6 @@ object Tamer {
 
       val KafkaConfig(brokers, _, closeTimeout, _, _, StateConfig(_, groupId, clientId, _), transactionalId, properties) = config
 
-      val adminClientSettings = AdminClientSettings(brokers)
-        .withProperties(properties)
       val consumerSettings = ConsumerSettings(brokers)
         .withClientId(clientId)
         .withCloseTimeout(closeTimeout)
@@ -290,11 +286,10 @@ object Tamer {
 
       ZManaged
         .mapN(
-          AdminClient.make(adminClientSettings),
           Consumer.make(transactionalConsumerSettings),
           TransactionalProducer.make(transactionalProducerSettings)
         ) {
-          new Live(config, serdes, initialState, stateKey, iterationFunction, repr, _, _, _)
+          new Live(config, serdes, initialState, stateKey, iterationFunction, repr, _, _)
         }
         .mapError(TamerError("Could not build Kafka client", _))
     }
