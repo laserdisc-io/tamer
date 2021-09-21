@@ -36,15 +36,16 @@ object Codec extends LowPriorityCodecs {
   }
 }
 private[tamer] sealed trait LowPriorityCodecs {
-  implicit final def optionalCirceCodec[A, C[_]: CirceCodec](implicit ca: C[A]): Codec[A] = new Codec[A] {
-    private[this] final val _circeCodec = ca.asInstanceOf[io.circe.Codec[A]]
+  implicit final def optionalCirceCodec[A, D[_]: CirceDecoder, E[_]: CirceEncoder](implicit da: D[A], ea: E[A]): Codec[A] = new Codec[A] {
+    private[this] final val _circeDecoder = da.asInstanceOf[io.circe.Decoder[A]]
+    private[this] final val _circeEncoder = ea.asInstanceOf[io.circe.Encoder[A]]
 
-    override final def decode(is: InputStream): A = io.circe.jawn.decodeChannel(java.nio.channels.Channels.newChannel(is))(_circeCodec) match {
+    override final def decode(is: InputStream): A = io.circe.jawn.decodeChannel(java.nio.channels.Channels.newChannel(is))(_circeDecoder) match {
       case Left(error)  => throw error
       case Right(value) => value
     }
     override final def encode(value: A, os: OutputStream): Unit =
-      new java.io.OutputStreamWriter(os, java.nio.charset.StandardCharsets.UTF_8).append(_circeCodec(value).noSpaces).flush()
+      new java.io.OutputStreamWriter(os, java.nio.charset.StandardCharsets.UTF_8).append(_circeEncoder(value).noSpaces).flush()
     override final val maybeSchema: Option[ParsedSchema] = None
   }
 
@@ -74,8 +75,10 @@ private final abstract class Avro4sEncoder[E[_]]
 private final abstract class Avro4sSchemaFor[SF[_]]
 @nowarn private object Avro4sSchemaFor { @inline implicit final def get: Avro4sSchemaFor[com.sksamuel.avro4s.SchemaFor] = null }
 
-private final abstract class CirceCodec[C[_]]
-@nowarn private object CirceCodec { @inline implicit final def get: CirceCodec[io.circe.Codec] = null }
+private final abstract class CirceDecoder[D[_]]
+@nowarn private object CirceDecoder { @inline implicit final def get: CirceDecoder[io.circe.Decoder] = null }
+private final abstract class CirceEncoder[E[_]]
+@nowarn private object CirceEncoder { @inline implicit final def get: CirceEncoder[io.circe.Encoder] = null }
 
 private final abstract class JsoniterScalaCodec[C[_]]
 @nowarn private object JsoniterScalaCodec {
