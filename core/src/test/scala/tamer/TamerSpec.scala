@@ -3,7 +3,7 @@ package tamer
 import org.apache.kafka.common.TopicPartition
 import zio._
 import zio.blocking.Blocking
-import zio.clock.{Clock}
+import zio.clock.Clock
 import zio.duration._
 import zio.kafka.admin.AdminClient.{TopicPartition => AdminPartition}
 import zio.random.Random

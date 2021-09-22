@@ -95,7 +95,10 @@ sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
   // (for example when we are waiting new pages to appear). This has to be combined with an
   // intuitive filtering of the page result and automatic type inference of the state for
   // the page decoder helper functions.
-  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with SttpClient with Clock with Has[EphemeralSecretCache], S] = for {
+  override def iteration(
+      currentState: S,
+      queue: Enqueue[NonEmptyChunk[(K, V)]]
+  ): RIO[R with SttpClient with Clock with Has[EphemeralSecretCache], S] = for {
     log         <- logTask
     tokenCache  <- ZIO.service[EphemeralSecretCache]
     decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
@@ -280,8 +283,8 @@ object RESTSetup {
             )
         decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log).delay(delayUntilNextPeriod)
         chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
-        _           <- NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)
-        nextState   <- getNextState(decodedPage, currentState)
+        _         <- NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)
+        nextState <- getNextState(decodedPage, currentState)
       } yield nextState
     }
   }

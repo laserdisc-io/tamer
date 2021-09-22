@@ -178,8 +178,8 @@ object Tamer {
                     // we enqueue a transaction delimiter because at this point, since we have a newState, we presume that
                     // the user has finished publishing data to the queue
                     queue.offer((Right(TransactionDelimiter(p)), Chunk.empty)) *>
-                    // whenever we get the transaction delimiter back (via promise) it means that at least production of
-                    // data has been enqueue in the kafka client buffer, so we can proceed with committing the transaction
+                      // whenever we get the transaction delimiter back (via promise) it means that at least production of
+                      // data has been enqueue in the kafka client buffer, so we can proceed with committing the transaction
                       p.await
                   } *>
                     log.debug(s"consumer group $stateGroupId will committ offset ${offset.info}") <*

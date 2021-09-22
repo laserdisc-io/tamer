@@ -51,7 +51,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
             .transduce(transducer)
             .mapError(error => TamerError(s"Error while processing object $name: ${error.getMessage}", error))
             .map(value => recordKey(currentState, value) -> value)
-            .foreachChunk { chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit) }
+            .foreachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit))
       case None =>
         log.debug("no state change")
     }

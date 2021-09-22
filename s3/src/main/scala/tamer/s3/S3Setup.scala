@@ -91,8 +91,12 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     keys      <- keysR.get
     optKey    <- UIO(selectObjectForState(nextState, keys))
     _ <- log.debug(s"will ask for key $optKey") *> optKey
-      .map(getObject(bucket, _).transduce(transducer).map(value => recordKey(nextState, value) -> value)
-        .foreachChunk { chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)})
+      .map(
+        getObject(bucket, _)
+          .transduce(transducer)
+          .map(value => recordKey(nextState, value) -> value)
+          .foreachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit))
+      )
       .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
   } yield nextState
 
