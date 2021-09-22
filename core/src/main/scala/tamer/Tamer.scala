@@ -20,6 +20,9 @@ trait Tamer {
 }
 
 object Tamer {
+  case class TransactionDelimiter(promise: Promise[Nothing, Unit])
+  type TransactionInfo = Either[Transaction, TransactionDelimiter]
+
   final case class StateKey(stateKey: String, groupId: String)
 
   private[tamer] object Lag {
@@ -42,7 +45,7 @@ object Tamer {
   }
 
   private[tamer] final def sinkStream[K, V](
-      queue: Dequeue[(Transaction, Chunk[(K, V)])],
+      queue: Dequeue[(TransactionInfo, Chunk[(K, V)])],
       topic: String,
       keySerializer: Serializer[Has[Registry], K],
       valueSerializer: Serializer[Has[Registry], V],
@@ -51,40 +54,43 @@ object Tamer {
     ZStream.fromQueueWithShutdown(
       queue
         .mapM {
-          case (transaction, chunk) if chunk.nonEmpty =>
+          case (Left(transaction), chunk) if chunk.nonEmpty =>
             (transaction
               .produceChunk(chunk.map { case (k, v) => new ProducerRecord(topic, k, v) }, keySerializer, valueSerializer, None)
               .tapError(_ => log.debug(s"failed pushing ${chunk.size} messages to $topic"))
-              .retry(tenTimes) <* log.info(s"pushed ${chunk.size} messages to $topic")).unit
-          case _ => UIO.unit <* log.debug(s"received an empty chunk for $topic")
+              .retry(tenTimes) <* log.info(s"pushed ${chunk.size} messages to $topic")).unit // TODO: stop trying if the error is transaction related
+          case (Right(TransactionDelimiter(promise)), _) => promise.succeed(()) <* log.debug(s"user implicitly signaled end of data production")
+          case _                                         => UIO.unit <* log.debug(s"received an empty chunk for $topic")
         }
     )
 
-  // There are at least 4 possible decisions:
+  // There are at least 3 possible decisions:
   //
   // 1. logEndOffsets.forAll(_ == 0L)               => initialize
-  // 2. lag(logEndOffsets, currentOffset).sum == 1L => resume
-  // 3. lag(logEndOffsets, currentOffset).sum == 0L => retry
-  // 4. _                                           => fail
+  // 2. lags.values.forall(l => l == 1L || l == 3L) => resume
+  // 3. _                                           => fail
   //
   // Notes:
-  // Point 2 should be further refined, to ensure that the partition offset that is
-  // not in the committed set is also > than the maximum committed offset for the same.
-  // Point 3 is totally arbitrary, and currently implemented in the same manner as point
-  // 4. If the consumer is current but there are (or have been, depending how the state
-  // topic is configured) states in the topic the consumer would stay put forever. The
-  // decision here is to retry, that is shift back offset by 1.
-  // Point 4 is the catch all. Take the case when the committed offsets are lagging
-  // behind more than 1. This should not happen based on the assumption that a state
-  // will not be pushed until the last batch has been put in the queue. Unfortunately,
-  // there's no such guarantee currently, as there is no synchronization between the
-  // fiber that sends the chunks of values to Kafka and the one that sends the new state
-  // to Kafka. This should be addressed by https://github.com/laserdisc-io/tamer/issues/43
-  // Ideally, we should use transactions for this but
-  // a. zio-kafka does not support them yet (https://github.com/zio/zio-kafka/issues/33)
-  // b. more importantly, they would not be able to span our strongly typed producers,
-  //    so they would be "limited" to ensuring no state is visible to our consumer until
-  //    the previous state offset has been committed.
+  // the only valid lag values are 1 and 3.
+  // 1 means the commit is between a message
+  // and a transaction marker for a partition that cannot be used to resume work, this
+  // can happen when the state topic adds new partitions.
+  //                   lag=1
+  //                   ┌┴┐
+  //┌ ─┌ ─┌───┬────┬─┬─┴┐│
+  //   │  │n-1│n-1'│n│n'│
+  //└ ─└ ─└───┴────┴─┴─▲┘
+  //               committed
+  //                offset
+  // 3 means the commit is between the previous message and its transaction marker.
+  // This partition contains the next state.
+  //               lag=3
+  //             ┌───┴───┐
+  //┌ ─┌ ─┌───┬──┴─┬─┬──┐│
+  //   │  │n-1│n-1'│n│n'│
+  //└ ─└ ─└───┴──▲─┴─┴──┘▲
+  //         committed  end
+  //          offset   offset
   private[tamer] sealed trait Decision        extends Product with Serializable
   private[tamer] final case object Initialize extends Decision
   private[tamer] final case object Resume     extends Decision
@@ -109,8 +115,8 @@ object Tamer {
       initialState: S,
       consumer: Consumer,
       producer: TransactionalProducer,
-      queue: Enqueue[(Transaction, Chunk[(K, V)])],
-      iterationFunction: (S, Enqueue[Chunk[(K, V)]]) => Task[S],
+      queue: Enqueue[(TransactionInfo, Chunk[(K, V)])],
+      iterationFunction: (S, Enqueue[NonEmptyChunk[(K, V)]]) => Task[S],
       log: LogWriter[Task]
   ) = {
 
@@ -160,7 +166,7 @@ object Tamer {
       .mapM {
         case CommittableRecord(record, offset) if record.key == key =>
           producer.createTransaction.use { transaction =>
-            val enrichedQueue = queue.contramap[Chunk[(K, V)]](chunk => (transaction, chunk))
+            val enrichedQueue = queue.contramap[NonEmptyChunk[(K, V)]](nonEmptyChunk => (Left(transaction), nonEmptyChunk.toChunk))
             log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.info}") *>
               // we got a valid state to process, invoke the handler
               log.debug(s"invoking the iteration function under $stateGroupId") *> iterationFunction(record.value, enrichedQueue).flatMap {
@@ -168,7 +174,15 @@ object Tamer {
                   // now that the handler has concluded its job, we've got to commit the offset and push the new state to Kafka
                   // we do these two operations within a transactional boundary as there is no guarantee whatsoever that
                   // both will successfully complete
-                  log.debug(s"consumer group $stateGroupId will committ offset ${offset.info}") <*
+                  Promise.make[Nothing, Unit].flatMap { p =>
+                    // we enqueue a transaction delimiter because at this point, since we have a newState, we presume that
+                    // the user has finished publishing data to the queue
+                    queue.offer((Right(TransactionDelimiter(p)), Chunk.empty)) *>
+                    // whenever we get the transaction delimiter back (via promise) it means that at least production of
+                    // data has been enqueue in the kafka client buffer, so we can proceed with committing the transaction
+                      p.await
+                  } *>
+                    log.debug(s"consumer group $stateGroupId will committ offset ${offset.info}") <*
                     transaction
                       .produce(stateTopic, key, newState, stateKeySerde, stateValueSerde, Some(offset))
                       .tap(rmd => log.debug(s"pushed state $newState to $rmd for $stateGroupId"))
@@ -188,7 +202,7 @@ object Tamer {
       serdes: Setup.Serdes[K, V, S],
       initialState: S,
       stateHash: Int,
-      iterationFunction: (S, Enqueue[Chunk[(K, V)]]) => Task[S],
+      iterationFunction: (S, Enqueue[NonEmptyChunk[(K, V)]]) => Task[S],
       repr: String,
       consumer: Consumer,
       producer: TransactionalProducer
@@ -196,7 +210,7 @@ object Tamer {
 
     private[this] val logTask = log4sFromName.provide("tamer.kafka")
 
-    private[this] val SinkConfig(sinkTopic)                                      = config.sink
+    private[this] val SinkConfig(sinkTopic)                    = config.sink
     private[this] val StateConfig(stateTopic, stateGroupId, _) = config.state
 
     private[this] val keySerializer   = serdes.keySerializer
@@ -205,7 +219,7 @@ object Tamer {
     private[this] val stateKeySerde   = serdes.stateKeySerde
     private[this] val stateValueSerde = serdes.stateValueSerde
 
-    private[tamer] def sourceStream(queue: Enqueue[(Transaction, Chunk[(K, V)])], log: LogWriter[Task]) =
+    private[tamer] def sourceStream(queue: Enqueue[(TransactionInfo, Chunk[(K, V)])], log: LogWriter[Task]) =
       source(
         stateTopic,
         stateGroupId,
@@ -227,7 +241,7 @@ object Tamer {
 
     private[tamer] def drainSink(
         sinkFiber: Fiber[Throwable, Unit],
-        queue: Dequeue[(Transaction, Chunk[(K, V)])],
+        queue: Dequeue[(TransactionInfo, Chunk[(K, V)])],
         log: LogWriter[Task]
     ): URIO[Has[Registry] with Clock, Unit] =
       for {
@@ -240,7 +254,7 @@ object Tamer {
         _ <- queue.shutdown
       } yield ()
 
-    private[tamer] def runLoop(queue: Queue[(Transaction, Chunk[(K, V)])], log: LogWriter[Task]) = for {
+    private[tamer] def runLoop(queue: Queue[(TransactionInfo, Chunk[(K, V)])], log: LogWriter[Task]) = for {
       fiber <- sinkStream(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.fork <* log.info("running sink perpetually")
       _     <- sourceStream(queue, log).ensuringFirst(stopSource(log)).ensuring(drainSink(fiber, queue, log)).runDrain
     } yield ()
@@ -249,7 +263,7 @@ object Tamer {
       val logic = for {
         log   <- logTask
         _     <- log.info(s"initializing Tamer with setup: \n$repr")
-        queue <- Queue.bounded[(Transaction, Chunk[(K, V)])](config.bufferSize)
+        queue <- Queue.bounded[(TransactionInfo, Chunk[(K, V)])](config.bufferSize)
         _     <- runLoop(queue, log)
       } yield ()
 
@@ -264,7 +278,7 @@ object Tamer {
         serdes: Setup.Serdes[K, V, S],
         initialState: S,
         stateKey: Int,
-        iterationFunction: (S, Enqueue[Chunk[(K, V)]]) => Task[S],
+        iterationFunction: (S, Enqueue[NonEmptyChunk[(K, V)]]) => Task[S],
         repr: String
     ): ZManaged[Blocking with Clock, TamerError, Live[K, V, S]] = {
 

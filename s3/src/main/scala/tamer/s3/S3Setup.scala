@@ -84,18 +84,19 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     } yield EphemeralChange(detectedKeyListChanged)
   }
 
-  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: S, queue: Enqueue[Chunk[(K, V)]]) = for {
+  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]) = for {
     log       <- logTask
     nextState <- stateFold(keysR, currentState, keysChangedToken)
     _         <- log.debug(s"next state computed to be $nextState")
     keys      <- keysR.get
     optKey    <- UIO(selectObjectForState(nextState, keys))
     _ <- log.debug(s"will ask for key $optKey") *> optKey
-      .map(getObject(bucket, _).transduce(transducer).map(value => recordKey(nextState, value) -> value).foreachChunk(queue.offer))
+      .map(getObject(bucket, _).transduce(transducer).map(value => recordKey(nextState, value) -> value)
+        .foreachChunk { chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)})
       .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
   } yield nextState
 
-  override def iteration(currentState: S, queue: Enqueue[Chunk[(K, V)]]): RIO[R with Clock with S3, S] = for {
+  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with Clock with S3, S] = for {
     sourceState <- initialEphemeralState
     token       <- Queue.dropping[Unit](requestedCapacity = 1)
     _ <- updatedSourceState(sourceState, token)

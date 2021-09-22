@@ -42,7 +42,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
   private[this] final def process(
       log: LogWriter[Task],
       currentState: S,
-      queue: Enqueue[Chunk[(K, V)]]
+      queue: Enqueue[NonEmptyChunk[(K, V)]]
   ): ZIO[R with ObjectStorage with Blocking, Throwable, Unit] =
     objectName(currentState) match {
       case Some(name) =>
@@ -51,12 +51,12 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
             .transduce(transducer)
             .mapError(error => TamerError(s"Error while processing object $name: ${error.getMessage}", error))
             .map(value => recordKey(currentState, value) -> value)
-            .foreachChunk(queue.offer)
+            .foreachChunk { chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit) }
       case None =>
         log.debug("no state change")
     }
 
-  override def iteration(currentState: S, queue: Enqueue[Chunk[(K, V)]]): RIO[R with Blocking with ObjectStorage, S] = for {
+  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with Blocking with ObjectStorage, S] = for {
     log        <- logTask
     _          <- log.debug(s"current state: $currentState")
     options    <- UIO(ListObjectsOptions(prefix, None, startAfter(currentState), Limit.Max))
