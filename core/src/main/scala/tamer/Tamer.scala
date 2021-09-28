@@ -91,10 +91,10 @@ object Tamer {
   //└ ─└ ─└───┴──▲─┴─┴──┘▲
   //         committed  end
   //          offset   offset
-  private[tamer] sealed trait Decision        extends Product with Serializable
-  private[tamer] final case object Initialize extends Decision
-  private[tamer] final case object Resume     extends Decision
-  private[tamer] final case object Die        extends Decision
+  private[tamer] sealed trait Decision                                 extends Product with Serializable
+  private[tamer] final case object Initialize                          extends Decision
+  private[tamer] final case object Resume                              extends Decision
+  private[tamer] final case class Die(lags: Map[TopicPartition, Long]) extends Decision
 
   private[tamer] def decidedAction(
       endOffset: Map[TopicPartition, Long],
@@ -103,7 +103,7 @@ object Tamer {
     (endOffset, committedOffset) match {
       case (po, _) if po.values.forall(_ == 0L)                     => Initialize
       case Lag(lags) if lags.values.forall(l => l == 1L || l == 3L) => Resume
-      case _                                                        => Die
+      case Lag(lags)                                                => Die(lags)
     }
 
   private[tamer] final def source[K, V, S](
@@ -156,8 +156,9 @@ object Tamer {
               .unit
           }
       case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
-      case Die =>
+      case Die(lags) =>
         log.error(s"consumer group $stateGroupId had unexpected lag for one of the $stateTopic partitions, manual intervention required") *>
+          log.error(s"lags: ${lags.mkString(", ")}") *>
           ZIO.fail(TamerError(s"Consumer group $stateGroupId stuck at end of stream"))
     }
 
