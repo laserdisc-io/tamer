@@ -32,8 +32,8 @@ object Tamer {
         case (acc, _)                          => acc
       })
     final def possiblyMigrating(map: Map[TopicPartition, Long]): Boolean =
-      (map.size == 1 && map.head._2 == 1) || // old monopartitioned topic, well behaving
-        (map.size == 1 && map.head._2 == 2)  // this can happen *during* a migration *OR* a first failed transaction!!! How do we cover this case?
+      (map.size == 1 && map.head._2 == 1) || // old mono-partitioned topic, well behaving
+        (map.size == 1 && map.head._2 == 2)  // this can happen *during* a migration *OR* a first failed transaction
     final def canResume(map: Map[TopicPartition, Long]): Boolean =
       map.values.forall(lag => lag == 1L || lag == 3L) && map.values.count(_ == 3L) == 1
   }
@@ -74,7 +74,7 @@ object Tamer {
   // 1. logEndOffsets.forAll(_ == 0L)               => initialize
   // 2. lags.values.forall(l => l == 1L || l == 3L) => resume
   // 3. _                                           => fail
-  // 4. lags.values.forall(l => l == 2L)            => resume
+  // 4. lags.values.forall(l => l == 2L)            => migrating (from non-transactional tamer)
   //
   // Notes:
   // the only valid lag values are 1 and 3. (and 2 for migration)
@@ -88,6 +88,7 @@ object Tamer {
   //└ ─└ ─└───┴────┴─┴─▲┘
   //               committed
   //                offset
+  // 1 can also mean migration when the old topic was behaving correctly
   // 3 means the commit is between the previous message and its transaction marker.
   // This partition contains the next state.
   //               lag=3
@@ -99,7 +100,8 @@ object Tamer {
   //          offset   offset
   // 2 is not depicted here but will happen upon migration from the previous version of tamer
   // if it's restarted after the very first produced state (because of the missing transaction
-  // marker) it should then increase to 3 upon production of the next state
+  // marker) it should then increase to 3 upon production of the next state, it might also happen
+  // upon startup when the previous run aborted the initialization transaction.
   private[tamer] sealed trait Decision                                       extends Product with Serializable
   private[tamer] final case object Initialize                                extends Decision
   private[tamer] final case object Resume                                    extends Decision
@@ -169,10 +171,14 @@ object Tamer {
       case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
       case Migrating(lags) =>
         log.warn(s"consumer group $stateGroupId resuming consumption from possibly legacy topic $stateTopic") *>
-          log.warn(s"lags: ${lags.mkString(", ")}")
+          ZIO.when(lags.values.headOption.contains(2))(
+            log.warn(
+              s"Lag=2 detected in a partition, if $stateGroupId stalls this might mean " +
+                s"that the initialization transaction failed, consider deleting the topic and trying again."
+            )
+          )
       case Die(lags) =>
         log.error(s"consumer group $stateGroupId had unexpected lag for one of the $stateTopic partitions, manual intervention required") *>
-          log.error(s"lags: ${lags.mkString(", ")}") *>
           ZIO.fail(TamerError(s"Consumer group $stateGroupId stuck at end of stream"))
     }
 
