@@ -33,7 +33,7 @@ object Tamer {
       })
     final def possiblyMigrating(map: Map[TopicPartition, Long]): Boolean =
       (map.size == 1 && map.head._2 == 1) || // old monopartitioned topic, well behaving
-        (map.size == 1 && map.head._2 == 2)  // this can happen *during* a migration
+        (map.size == 1 && map.head._2 == 2)  // this can happen *during* a migration *OR* a first failed transaction!!! How do we cover this case?
     final def canResume(map: Map[TopicPartition, Long]): Boolean =
       map.values.forall(lag => lag == 1L || lag == 3L) && map.values.count(_ == 3L) == 1
   }
