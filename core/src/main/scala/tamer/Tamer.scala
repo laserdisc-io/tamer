@@ -31,6 +31,11 @@ object Tamer {
         case (acc, tp) if pair._1.contains(tp) => acc + (tp -> (pair._1(tp) - pair._2.getOrElse(tp, 0L)))
         case (acc, _)                          => acc
       })
+    final def possiblyMigrating(map: Map[TopicPartition, Long]): Boolean =
+      (map.size == 1 && map.head._2 == 1) || // old monopartitioned topic, well behaving
+        (map.size == 1 && map.head._2 == 2)  // this can happen *during* a migration
+    final def canResume(map: Map[TopicPartition, Long]): Boolean =
+      map.values.forall(lag => lag == 1L || lag == 3L) && map.values.count(_ == 3L) == 1
   }
 
   private[this] final val tenTimes = Schedule.recurs(10) && Schedule.exponential(100.milliseconds) //FIXME make configurable
@@ -69,9 +74,10 @@ object Tamer {
   // 1. logEndOffsets.forAll(_ == 0L)               => initialize
   // 2. lags.values.forall(l => l == 1L || l == 3L) => resume
   // 3. _                                           => fail
+  // 4. lags.values.forall(l => l == 2L)            => resume
   //
   // Notes:
-  // the only valid lag values are 1 and 3.
+  // the only valid lag values are 1 and 3. (and 2 for migration)
   // 1 means the commit is between a message
   // and a transaction marker for a partition that cannot be used to resume work, this
   // can happen when the state topic adds new partitions.
@@ -91,19 +97,24 @@ object Tamer {
   //└ ─└ ─└───┴──▲─┴─┴──┘▲
   //         committed  end
   //          offset   offset
-  private[tamer] sealed trait Decision                                 extends Product with Serializable
-  private[tamer] final case object Initialize                          extends Decision
-  private[tamer] final case object Resume                              extends Decision
-  private[tamer] final case class Die(lags: Map[TopicPartition, Long]) extends Decision
+  // 2 is not depicted here but will happen upon migration from the previous version of tamer
+  // if it's restarted after the very first produced state (because of the missing transaction
+  // marker) it should then increase to 3 upon production of the next state
+  private[tamer] sealed trait Decision                                       extends Product with Serializable
+  private[tamer] final case object Initialize                                extends Decision
+  private[tamer] final case object Resume                                    extends Decision
+  private[tamer] final case class Migrating(lags: Map[TopicPartition, Long]) extends Decision
+  private[tamer] final case class Die(lags: Map[TopicPartition, Long])       extends Decision
 
   private[tamer] def decidedAction(
       endOffset: Map[TopicPartition, Long],
       committedOffset: Map[TopicPartition, Long]
   ): Decision =
     (endOffset, committedOffset) match {
-      case (po, _) if po.values.forall(_ == 0L)                     => Initialize
-      case Lag(lags) if lags.values.forall(l => l == 1L || l == 3L) => Resume
-      case Lag(lags)                                                => Die(lags)
+      case (blankPartitionMap, _) if blankPartitionMap.values.forall(_ == 0L) => Initialize
+      case Lag(lags) if Lag.canResume(lags)                                   => Resume
+      case Lag(lags) if Lag.possiblyMigrating(lags)                           => Migrating(lags)
+      case Lag(lags)                                                          => Die(lags)
     }
 
   private[tamer] final def source[K, V, S](
@@ -156,6 +167,9 @@ object Tamer {
               .unit
           }
       case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
+      case Migrating(lags) =>
+        log.warn(s"consumer group $stateGroupId resuming consumption from possibly legacy topic $stateTopic") *>
+          log.warn(s"lags: ${lags.mkString(", ")}")
       case Die(lags) =>
         log.error(s"consumer group $stateGroupId had unexpected lag for one of the $stateTopic partitions, manual intervention required") *>
           log.error(s"lags: ${lags.mkString(", ")}") *>
