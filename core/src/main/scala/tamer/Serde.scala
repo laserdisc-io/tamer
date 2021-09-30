@@ -24,8 +24,6 @@ object Serde {
     def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
 
     new ZSerde[Has[Registry], A] {
-      override def configure(props: Map[String, AnyRef], isKey: Boolean): Task[Unit] = Task.unit
-
       override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[Has[Registry], A] = RIO.serviceWith[Registry] {
         case Registry.Fake => deserializeSimple(data)
         case registry =>

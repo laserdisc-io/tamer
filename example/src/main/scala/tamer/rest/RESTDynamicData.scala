@@ -15,7 +15,7 @@ object RESTDynamicData extends App {
 
   def program(now: Instant): ZIO[ZEnv, TamerError, Unit] = RESTSetup
     .periodicallyPaginated(
-      baseUrl = "http://localhost:9095/dynamic-pagination",
+      baseUrl = "http://localhost:9395/dynamic-pagination",
       pageDecoder = pageDecoder,
       periodStart = now
     )((_, data) => data)

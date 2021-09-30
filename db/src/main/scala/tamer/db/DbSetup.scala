@@ -37,19 +37,22 @@ sealed abstract case class DbSetup[K, V, S: Hashable](
 
   private[this] final val logTask = log4sFromName.provide("tamer.db")
 
-  private[this] final def process(query: Query0[V], chunkSize: Int, tx: Transactor[Task], queue: Queue[Chunk[(K, V)]], state: S) =
+  private[this] final def process(query: Query0[V], chunkSize: Int, tx: Transactor[Task], queue: Enqueue[NonEmptyChunk[(K, V)]], state: S) =
     query
       .streamWithChunkSize(chunkSize)
       .chunks
       .transact(tx)
       .map(ChunkWithMetadata(_))
-      .evalTap(c => queue.offer(Chunk.fromIterable(c.chunk.toStream.map(v => recordKey(state, v) -> v))))
+      .evalTap { c =>
+        val chunk = Chunk.fromIterable(c.chunk.toStream.map(v => recordKey(state, v) -> v))
+        NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)
+      }
       .flatMap(c => Stream.chunk(c.chunk).map(ValueWithMetadata(_, c.pulledAt)))
       .compile
       .toList
       .map(values => values -> values.headOption.map(_.pulledAt).getOrElse(System.nanoTime()))
 
-  override def iteration(currentState: S, queue: Queue[Chunk[(K, V)]]): RIO[Has[Transactor[Task]] with Has[QueryConfig], S] = for {
+  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[Has[Transactor[Task]] with Has[QueryConfig], S] = for {
     log            <- logTask
     transactor     <- ZIO.service[Transactor[Task]]
     chunkSize      <- ZIO.service[QueryConfig].map(_.fetchChunkSize)

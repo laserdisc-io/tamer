@@ -16,6 +16,7 @@ export KAFKA_SINK_TOPIC=sink
 export KAFKA_STATE_TOPIC=state
 export KAFKA_STATE_GROUP_ID=state-group
 export KAFKA_STATE_CLIENT_ID=state-client
+export KAFKA_TRANSACTIONAL_ID=transaction-id
 
 SCRIPT_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit; pwd -P)
 cd "$SCRIPT_PATH"/../.. || exit

@@ -30,7 +30,7 @@ object RESTServer extends App {
   } yield pages
 
   def server(rotatingSecret: Ref[Int], finitePagination: Ref[List[Int]], dynamicPagination: Ref[List[Int]]): Server.Builder[Random] =
-    Server.builder(new InetSocketAddress("0.0.0.0", 9095)).handleSome {
+    Server.builder(new InetSocketAddress("0.0.0.0", 9395)).handleSome {
       case req if req.uri.getPath == "/auth" && req.headers.get("Authorization").contains("Basic dXNlcjpwYXNz") => // user:pass
         rotatingSecret.get.flatMap(currentToken => UIO(Response.plain("validToken" + currentToken))): @nowarn
       case req if req.uri.getPath == "/" =>
