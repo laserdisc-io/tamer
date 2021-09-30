@@ -49,7 +49,7 @@ services:
 
   kafka2:
     container_name: local-kafka2
-    image: confluentinc/cp-kafka:6.2.0
+    image: confluentinc/cp-kafka:6.2.1
     depends_on:
       - zookeeper
     ports:
@@ -66,7 +66,7 @@ services:
 
   kafka3:
     container_name: local-kafka3
-    image: confluentinc/cp-kafka:6.2.0
+    image: confluentinc/cp-kafka:6.2.1
     depends_on:
       - zookeeper
     ports:
