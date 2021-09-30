@@ -73,8 +73,8 @@ object Tamer {
   //
   // 1. logEndOffsets.forAll(_ == 0L)               => initialize
   // 2. lags.values.forall(l => l == 1L || l == 3L) => resume
-  // 3. _                                           => fail
-  // 4. lags.values.forall(l => l == 2L)            => migrating (from non-transactional tamer)
+  // 3. lags.values.forall(l => l == 2L)            => migrating (from non-transactional tamer)
+  // 4. _                                           => fail
   //
   // Notes:
   // the only valid lag values are 1 and 3. (and 2 for migration)
