@@ -69,7 +69,7 @@ object Tamer {
         }
     )
 
-  // There are at least 3 possible decisions:
+  // There are at least 4 possible decisions:
   //
   // 1. logEndOffsets.forAll(_ == 0L)               => initialize
   // 2. lags.values.forall(l => l == 1L || l == 3L) => resume
