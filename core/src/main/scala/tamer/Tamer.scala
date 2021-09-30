@@ -174,7 +174,7 @@ object Tamer {
           ZIO.when(lags.values.headOption.contains(2))(
             log.warn(
               s"Lag=2 detected in a partition, if $stateGroupId stalls this might mean " +
-                 "that the initialization transaction failed, consider deleting the topic and trying again."
+                "that the initialization transaction failed, consider deleting the topic and trying again."
             )
           )
       case Die(lags) =>
