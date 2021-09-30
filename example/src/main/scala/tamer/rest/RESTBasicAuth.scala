@@ -23,7 +23,7 @@ object RESTBasicAuth extends App {
 
   val program: ZIO[ZEnv, TamerError, Unit] = RESTSetup
     .paginated(
-      baseUrl = "http://localhost:9095/basic-auth",
+      baseUrl = "http://localhost:9395/basic-auth",
       pageDecoder = pageDecoder,
       authentication = Some(Authentication.basic("user", "pass")),
       retrySchedule = Some(retrySchedule)

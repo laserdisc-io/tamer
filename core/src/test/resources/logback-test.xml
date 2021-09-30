@@ -17,9 +17,11 @@
     <logger name="io.confluent" level="OFF"/>
     <logger name="org.glassfish.jersey" level="OFF"/>
     <logger name="org.hibernate.validator" level="OFF"/>
-    <logger name="testSource" level="DEBUG"/>
+    <logger name="tamer" level="TRACE"/>
+    <logger name="tamer.registry" level="WARN"/>
+<!--    <logger name="org.apache.kafka.clients.NetworkClient" level="DEBUG"/>-->
 
-    <root level="ERROR">
+    <root level="WARN">
         <appender-ref ref="STDOUT"/>
     </root>
 

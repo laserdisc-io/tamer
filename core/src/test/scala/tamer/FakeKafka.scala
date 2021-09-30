@@ -34,7 +34,8 @@ object FakeKafka {
     closeTimeout = 1.second,
     bufferSize = 5,
     sink = SinkConfig(s"sink.topic.$randomString"),
-    state = StateConfig(s"sink.topic.tape.$randomString", s"embedded.groupid.$randomString", s"embedded.clientid.$randomString")
+    state = StateConfig(s"sink.topic.tape.$randomString", s"embedded.groupid.$randomString", s"embedded.clientid.$randomString"),
+    transactionalId = s"test-transactional-id-$randomString"
   )).toLayer
 
   val embeddedKafkaLayer: TaskLayer[Has[FakeKafka]] = ZLayer.fromManaged {
