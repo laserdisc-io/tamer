@@ -25,19 +25,6 @@ object Tamer {
 
   final case class StateKey(stateKey: String, groupId: String)
 
-  private[tamer] object Lag {
-    final def unapply(pair: (Map[TopicPartition, Long], Map[TopicPartition, Long])): Some[Map[TopicPartition, Long]] =
-      Some((pair._1.keySet ++ pair._2.keySet).foldLeft(Map.empty[TopicPartition, Long]) {
-        case (acc, tp) if pair._1.contains(tp) => acc + (tp -> (pair._1(tp) - pair._2.getOrElse(tp, 0L)))
-        case (acc, _)                          => acc
-      })
-    final def possiblyMigrating(map: Map[TopicPartition, Long]): Boolean =
-      (map.size == 1 && map.head._2 == 1) || // old mono-partitioned topic, well behaving
-        (map.size == 1 && map.head._2 == 2)  // this can happen *during* a migration *OR* a first failed transaction
-    final def canResume(map: Map[TopicPartition, Long]): Boolean =
-      map.values.forall(lag => lag == 1L || lag == 3L) && map.values.count(_ == 3L) == 1
-  }
-
   private[this] final val tenTimes = Schedule.recurs(10) && Schedule.exponential(100.milliseconds) //FIXME make configurable
 
   private[this] final val tamerErrors: PartialFunction[Throwable, TamerError] = {
@@ -69,54 +56,16 @@ object Tamer {
         }
     )
 
-  // There are at least 4 possible decisions:
-  //
-  // 1. logEndOffsets.forAll(_ == 0L)               => initialize
-  // 2. lags.values.forall(l => l == 1L || l == 3L) => resume
-  // 3. lags.values.forall(l => l == 2L)            => migrating (from non-transactional tamer)
-  // 4. _                                           => fail
-  //
-  // Notes:
-  // the only valid lag values are 1 and 3. (and 2 for migration)
-  // 1 means the commit is between a message
-  // and a transaction marker for a partition that cannot be used to resume work, this
-  // can happen when the state topic adds new partitions.
-  //                   lag=1
-  //                   ┌┴┐
-  //┌ ─┌ ─┌───┬────┬─┬─┴┐│
-  //   │  │n-1│n-1'│n│n'│
-  //└ ─└ ─└───┴────┴─┴─▲┘
-  //               committed
-  //                offset
-  // 1 can also mean migration when the old topic was behaving correctly
-  // 3 means the commit is between the previous message and its transaction marker.
-  // This partition contains the next state.
-  //               lag=3
-  //             ┌───┴───┐
-  //┌ ─┌ ─┌───┬──┴─┬─┬──┐│
-  //   │  │n-1│n-1'│n│n'│
-  //└ ─└ ─└───┴──▲─┴─┴──┘▲
-  //         committed  end
-  //          offset   offset
-  // 2 is not depicted here but will happen upon migration from the previous version of tamer
-  // if it's restarted after the very first produced state (because of the missing transaction
-  // marker) it should then increase to 3 upon production of the next state, it might also happen
-  // upon startup when the previous run aborted the initialization transaction.
-  private[tamer] sealed trait Decision                                       extends Product with Serializable
-  private[tamer] final case object Initialize                                extends Decision
-  private[tamer] final case object Resume                                    extends Decision
-  private[tamer] final case class Migrating(lags: Map[TopicPartition, Long]) extends Decision
-  private[tamer] final case class Die(lags: Map[TopicPartition, Long])       extends Decision
+  private[tamer] sealed trait Decision        extends Product with Serializable
+  private[tamer] final case object Initialize extends Decision
+  private[tamer] final case object Resume     extends Decision
 
   private[tamer] def decidedAction(
-      endOffset: Map[TopicPartition, Long],
-      committedOffset: Map[TopicPartition, Long]
+      endOffset: Map[TopicPartition, Long]
   ): Decision =
-    (endOffset, committedOffset) match {
-      case (blankPartitionMap, _) if blankPartitionMap.values.forall(_ == 0L) => Initialize
-      case Lag(lags) if Lag.canResume(lags)                                   => Resume
-      case Lag(lags) if Lag.possiblyMigrating(lags)                           => Migrating(lags)
-      case Lag(lags)                                                          => Die(lags)
+    endOffset match {
+      case blankPartitionMap if blankPartitionMap.values.forall(_ == 0L) => Initialize
+      case _                                                             => Resume
     }
 
   private[tamer] final def source[K, V, S](
@@ -141,24 +90,13 @@ object Tamer {
       .tapError(_ => log.debug(s"still no assignment on $stateGroupId, there are no partitions to process"))
       .retry(tenTimes)
 
-    val decide: Set[TopicPartition] => Task[Decision] =
-      (partitionSet: Set[TopicPartition]) => {
-        val partitionOffsets = consumer.endOffsets(partitionSet)
-        val committedPartitionOffsets = consumer.committed(partitionSet).map {
-          _.map {
-            case (tp, Some(o)) => Some((tp, o.offset()))
-            case _             => None
-          }.flatten.toMap
-        }
-        partitionOffsets.zip(committedPartitionOffsets).map { case (end, committed) =>
-          decidedAction(end, committed)
-        }
-      }
-
     val subscribeAndDecide = log.debug(s"subscribing to $subscription") *>
       consumer.subscribe(subscription) *>
       log.debug("awaiting assignment") *>
-      waitForAssignment.flatMap(a => log.debug(s"received assignment $a") *> decide(a).tap(d => log.debug(s"decided to $d")))
+      waitForAssignment.flatMap(partitionSet =>
+        log.debug(s"received assignment $partitionSet") *>
+          consumer.endOffsets(partitionSet).map(decidedAction).tap(d => log.debug(s"decided to $d"))
+      )
 
     def initialize: RIO[Clock with Has[Registry], Unit] = subscribeAndDecide.flatMap {
       case Initialize =>
@@ -169,17 +107,6 @@ object Tamer {
               .unit
           }
       case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
-      case Migrating(lags) =>
-        log.warn(s"consumer group $stateGroupId resuming consumption from possibly legacy topic $stateTopic") *>
-          ZIO.when(lags.values.headOption.contains(2))(
-            log.warn(
-              s"Lag=2 detected in a partition, if $stateGroupId stalls this might mean " +
-                "that the initialization transaction failed, consider deleting the topic and trying again."
-            )
-          )
-      case Die(lags) =>
-        log.error(s"consumer group $stateGroupId had unexpected lag for one of the $stateTopic partitions, manual intervention required") *>
-          ZIO.fail(TamerError(s"Consumer group $stateGroupId stuck at end of stream"))
     }
 
     val stateStream = consumer
