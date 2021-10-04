@@ -188,24 +188,23 @@ object Tamer {
         log.info(s"consumer of topic $stateTopic stopped").ignore
 
     private[tamer] def drainSink(
-        sinkFiber: Fiber[Throwable, Unit],
         queue: Dequeue[(TransactionInfo, Chunk[(K, V)])],
         log: LogWriter[Task]
     ): URIO[Has[Registry] with Clock, Unit] =
       for {
-        _ <- log.info(s"stopping producing to $sinkTopic").ignore
-        _ <- sinkFiber.interrupt
-        _ <- log.info(s"producer to topic $sinkTopic stopped, running final drain on sink queue").ignore
+        _ <- log.info(s"running final drain on sink queue for topic $sinkTopic").ignore
         _ <- sinkStream(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.orDie.fork
-        _ <- log.info("sink queue drained").ignore
+        _ <- log.info(s"sink queue drained for $sinkTopic").ignore
         _ <- queue.size.repeatWhile(_ > 0)
         _ <- queue.shutdown
       } yield ()
 
-    private[tamer] def runLoop(queue: Queue[(TransactionInfo, Chunk[(K, V)])], log: LogWriter[Task]) = for {
-      fiber <- sinkStream(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.fork <* log.info("running sink perpetually")
-      _     <- sourceStream(queue, log).ensuringFirst(stopSource(log)).ensuring(drainSink(fiber, queue, log)).runDrain
-    } yield ()
+    private[tamer] def runLoop(queue: Queue[(TransactionInfo, Chunk[(K, V)])], log: LogWriter[Task]) = {
+      val runSink = log.info(s"running sink to $sinkTopic perpetually") *> sinkStream(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain
+        .onInterrupt(log.info(s"stopping producing to $sinkTopic").ignore)
+      val runSource = sourceStream(queue, log).ensuringFirst(stopSource(log)).ensuring(drainSink(queue, log)).runDrain
+      runSink <&> runSource
+    }
 
     override val runLoop: ZIO[Clock, TamerError, Unit] = {
       val logic = for {
