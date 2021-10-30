@@ -56,9 +56,9 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
   private final val fetchSchedule = Schedule.exponential(minimumIntervalForBucketFetch) || Schedule.spaced(maximumIntervalForBucketFetch)
 
   private final def updatedSourceState(keysR: KeysR, keysChangedToken: Queue[Unit]) = {
-    val paginationMaxKeys         = 1000L      //FIXME magic
-    val paginationMaxPages        = 1000L      //FIXME magic
-    val defaultTimeoutBucketFetch = 60.seconds //FIXME magic
+    val paginationMaxKeys         = 1000L      // FIXME magic
+    val paginationMaxPages        = 1000L      // FIXME magic
+    val defaultTimeoutBucketFetch = 60.seconds // FIXME magic
     val timeoutForFetchAllKeys =
       if (minimumIntervalForBucketFetch < defaultTimeoutBucketFetch) minimumIntervalForBucketFetch
       else defaultTimeoutBucketFetch
