@@ -25,7 +25,7 @@ object Tamer {
 
   final case class StateKey(stateKey: String, groupId: String)
 
-  private[this] final val tenTimes = Schedule.recurs(10) && Schedule.exponential(100.milliseconds) //FIXME make configurable
+  private[this] final val tenTimes = Schedule.recurs(10) && Schedule.exponential(100.milliseconds) // FIXME make configurable
 
   private[this] final val tamerErrors: PartialFunction[Throwable, TamerError] = {
     case ke: KafkaException => TamerError(ke.getLocalizedMessage, ke)
