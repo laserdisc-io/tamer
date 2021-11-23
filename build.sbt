@@ -3,7 +3,7 @@ val scala_213 = "2.13.7"
 
 val V = new {
   val avro4s           = "4.0.11"
-  val awsSdk           = "2.17.85"
+  val awsSdk           = "2.17.87"
   val cats             = "2.6.1"
   val circe            = "0.14.1"
   val ciris            = "2.2.1"
@@ -18,7 +18,7 @@ val V = new {
   val postgres         = "42.3.1"
   val `scala-compat`   = "2.6.0"
   val slf4j            = "1.7.32"
-  val sttp             = "3.3.16"
+  val sttp             = "3.3.17"
   val uzhttp           = "0.2.8"
   val zio              = "1.0.12"
   val `zio-interop`    = "3.1.1.0"
