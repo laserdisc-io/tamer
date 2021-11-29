@@ -5,6 +5,7 @@ val V = new {
   val avro4s           = "4.0.11"
   val awsSdk           = "2.17.90"
   val cats             = "2.6.1"
+  val `cats-effect`    = "3.2.9"
   val circe            = "0.14.1"
   val ciris            = "2.2.1"
   val confluent        = "7.0.0"
@@ -108,6 +109,7 @@ lazy val core = project
       "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
       "is.cir"                                %% "ciris"                        % V.ciris,
       "org.apache.kafka"                       % "kafka-clients"                % V.kafka,
+      "org.typelevel"                         %% "cats-effect"                  % V.`cats-effect`,
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"          % V.`jsoniter-scala` % Optional,
       "com.sksamuel.avro4s"                   %% "avro4s-core"                  % V.avro4s           % Optional,
       "dev.zio"                               %% "zio-json"                     % V.`zio-json`       % Optional,
