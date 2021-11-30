@@ -4,7 +4,7 @@ val scala_213 = "2.13.7"
 val V = new {
   val avro4s           = "4.0.11"
   val awsSdk           = "2.17.92"
-  val cats             = "2.6.1"
+  val `cats-effect`    = "3.2.9"
   val circe            = "0.14.1"
   val ciris            = "2.2.1"
   val confluent        = "7.0.0"
@@ -21,7 +21,7 @@ val V = new {
   val sttp             = "3.3.17"
   val uzhttp           = "0.2.8"
   val zio              = "1.0.12"
-  val `zio-interop`    = "3.1.1.0"
+  val `zio-interop`    = "3.2.9.0"
   val `zio-json`       = "0.1.5"
   val `zio-kafka`      = "0.17.1"
   val `zio-oci-os`     = "0.3.1"
@@ -108,6 +108,7 @@ lazy val core = project
       "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
       "is.cir"                                %% "ciris"                        % V.ciris,
       "org.apache.kafka"                       % "kafka-clients"                % V.kafka,
+      "org.typelevel"                         %% "cats-effect"                  % V.`cats-effect`,
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"          % V.`jsoniter-scala` % Optional,
       "com.sksamuel.avro4s"                   %% "avro4s-core"                  % V.avro4s           % Optional,
       "dev.zio"                               %% "zio-json"                     % V.`zio-json`       % Optional,
