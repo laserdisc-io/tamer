@@ -57,9 +57,11 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
     }
 
   override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with Blocking with ObjectStorage, S] = for {
-    log        <- logTask
-    _          <- log.debug(s"current state: $currentState")
-    options    <- UIO(ListObjectsOptions(prefix, None, startAfter(currentState), Limit.Max))
+    log <- logTask
+    _   <- log.debug(s"current state: $currentState")
+    options <- UIO(
+      ListObjectsOptions(prefix, None, startAfter(currentState), Limit.Max, Set(ListObjectsOptions.Field.Name, ListObjectsOptions.Field.Size))
+    )
     nextObject <- listObjects(namespace, bucket, options)
     _          <- process(log, currentState, queue)
     newState   <- stateFold(currentState, nextObject.objectSummaries.find(os => objectNameFinder(os.getName)).map(_.getName))
