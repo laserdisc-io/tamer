@@ -18,7 +18,7 @@ val V = new {
   val postgres         = "42.3.1"
   val `scala-compat`   = "2.6.0"
   val slf4j            = "1.7.32"
-  val sttp             = "3.3.18"
+  val sttp             = "3.4.0"
   val uzhttp           = "0.2.8"
   val zio              = "1.0.13"
   val `zio-interop`    = "3.2.9.0"
@@ -165,12 +165,12 @@ lazy val rest = project
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= Seq(
-      "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp,
-      "com.sksamuel.avro4s"           %% "avro4s-core"            % V.avro4s % Test,
-      "io.circe"                      %% "circe-core"             % V.circe  % Test,
-      "io.circe"                      %% "circe-generic"          % V.circe  % Test,
-      "io.circe"                      %% "circe-parser"           % V.circe  % Test,
-      "org.polynote"                  %% "uzhttp"                 % V.uzhttp % Test
+      "com.softwaremill.sttp.client3" %% "httpclient-backend-zio1" % V.sttp,
+      "com.sksamuel.avro4s"           %% "avro4s-core"             % V.avro4s % Test,
+      "io.circe"                      %% "circe-core"              % V.circe  % Test,
+      "io.circe"                      %% "circe-generic"           % V.circe  % Test,
+      "io.circe"                      %% "circe-parser"            % V.circe  % Test,
+      "org.polynote"                  %% "uzhttp"                  % V.uzhttp % Test
     )
   )
 
