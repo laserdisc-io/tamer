@@ -3,22 +3,22 @@ val scala_213 = "2.13.8"
 
 val V = new {
   val avro4s           = "4.0.12"
-  val awsSdk           = "2.17.107"
+  val awsSdk           = "2.17.116"
   val `cats-effect`    = "3.3.4"
   val circe            = "0.14.1"
   val ciris            = "2.3.1"
   val confluent        = "7.0.0"
   val doobie           = "1.0.0-RC1"
   val `json-schema`    = "1.14.0"
-  val `jsoniter-scala` = "2.12.0"
+  val `jsoniter-scala` = "2.12.1"
   val kafka            = "3.0.0"
   val logback          = "1.2.10"
   val `log-effect`     = "0.16.1"
-  val ociSdk           = "2.12.0"
+  val ociSdk           = "2.13.1"
   val postgres         = "42.3.1"
   val `scala-compat`   = "2.6.0"
   val slf4j            = "1.7.32"
-  val sttp             = "3.3.18"
+  val sttp             = "3.4.0"
   val uzhttp           = "0.2.8"
   val zio              = "1.0.13"
   val `zio-interop`    = "3.2.9.0"
@@ -165,12 +165,12 @@ lazy val rest = project
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= Seq(
-      "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp,
-      "com.sksamuel.avro4s"           %% "avro4s-core"            % V.avro4s % Test,
-      "io.circe"                      %% "circe-core"             % V.circe  % Test,
-      "io.circe"                      %% "circe-generic"          % V.circe  % Test,
-      "io.circe"                      %% "circe-parser"           % V.circe  % Test,
-      "org.polynote"                  %% "uzhttp"                 % V.uzhttp % Test
+      "com.softwaremill.sttp.client3" %% "httpclient-backend-zio1" % V.sttp,
+      "com.sksamuel.avro4s"           %% "avro4s-core"             % V.avro4s % Test,
+      "io.circe"                      %% "circe-core"              % V.circe  % Test,
+      "io.circe"                      %% "circe-generic"           % V.circe  % Test,
+      "io.circe"                      %% "circe-parser"            % V.circe  % Test,
+      "org.polynote"                  %% "uzhttp"                  % V.uzhttp % Test
     )
   )
 
