@@ -165,12 +165,12 @@ lazy val rest = project
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= Seq(
-      "com.softwaremill.sttp.client3" %% "httpclient-backend-zio" % V.sttp,
-      "com.sksamuel.avro4s"           %% "avro4s-core"            % V.avro4s % Test,
-      "io.circe"                      %% "circe-core"             % V.circe  % Test,
-      "io.circe"                      %% "circe-generic"          % V.circe  % Test,
-      "io.circe"                      %% "circe-parser"           % V.circe  % Test,
-      "org.polynote"                  %% "uzhttp"                 % V.uzhttp % Test
+      "com.softwaremill.sttp.client3" %% "httpclient-backend-zio1" % V.sttp,
+      "com.sksamuel.avro4s"           %% "avro4s-core"             % V.avro4s % Test,
+      "io.circe"                      %% "circe-core"              % V.circe  % Test,
+      "io.circe"                      %% "circe-generic"           % V.circe  % Test,
+      "io.circe"                      %% "circe-parser"            % V.circe  % Test,
+      "org.polynote"                  %% "uzhttp"                  % V.uzhttp % Test
     )
   )
 
