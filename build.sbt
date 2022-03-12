@@ -11,7 +11,7 @@ val V = new {
   val doobie           = "1.0.0-RC2"
   val `json-schema`    = "1.14.0"
   val `jsoniter-scala` = "2.13.6"
-  val kafka            = "3.0.0"
+  val kafka            = "3.1.0"
   val logback          = "1.2.11"
   val `log-effect`     = "0.16.2"
   val ociSdk           = "2.19.0"
@@ -104,7 +104,7 @@ lazy val core = project
       "dev.zio"                               %% "zio-interop-cats"             % V.`zio-interop`,
       "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka`,
       "dev.zio"                               %% "zio-streams"                  % V.zio,
-      "io.confluent"                           % "kafka-schema-registry-client" % V.confluent,
+      "io.confluent"                           % "kafka-schema-registry-client" % V.confluent excludeAll ("org.apache.kafka", "kafka-clients"),
       "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
       "is.cir"                                %% "ciris"                        % V.ciris,
       "org.apache.kafka"                       % "kafka-clients"                % V.kafka,
