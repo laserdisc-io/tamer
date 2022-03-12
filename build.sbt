@@ -104,7 +104,7 @@ lazy val core = project
       "dev.zio"                               %% "zio-interop-cats"             % V.`zio-interop`,
       "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka`,
       "dev.zio"                               %% "zio-streams"                  % V.zio,
-      "io.confluent"                           % "kafka-schema-registry-client" % V.confluent,
+      "io.confluent"                           % "kafka-schema-registry-client" % V.confluent excludeAll ("org.apache.kafka", "kafka-clients"),
       "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
       "is.cir"                                %% "ciris"                        % V.ciris,
       "org.apache.kafka"                       % "kafka-clients"                % V.kafka,
