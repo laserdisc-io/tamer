@@ -22,7 +22,7 @@ object RESTServer extends App {
   val respondWithRandomData = random.nextInt.map(i => Response.plain(s"""{"rubbish":"...","data":"$i"}""", headers = jsonHeader))
   val finitePagination = for {
     pages <- Ref.make(List(1 to 20: _*))
-    _     <- pages.update(l => l :+ (l.last + 1)).repeat(Schedule.spaced(2.seconds)).fork
+    _     <- pages.update(l => l :+ l.last + 1).repeat(Schedule.spaced(2.seconds)).fork
   } yield pages
   val dynamicPagination = for {
     pages <- Ref.make(List.fill(5)(0))

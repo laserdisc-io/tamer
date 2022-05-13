@@ -244,7 +244,7 @@ object RESTSetup {
           newOffset <-
             if (
               now.isAfter(periodicOffset.periodStart.plus(maxPeriod)) ||
-              (decodedPage.data.isEmpty && now.isAfter(periodicOffset.periodStart.plus(minPeriod)))
+              decodedPage.data.isEmpty && now.isAfter(periodicOffset.periodStart.plus(minPeriod))
             ) {
               UIO(PeriodicOffset(offset = startingOffset, periodStart = now))
             } else if (decodedPage.data.isEmpty) {

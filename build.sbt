@@ -55,7 +55,7 @@ val flags = Seq(
 
 def versionDependent(scalaVersion: String) =
   CrossVersion.partialVersion(scalaVersion) match {
-    case Some((2, major)) if major >= 13 =>
+    case Some(2, major) if major >= 13 =>
       flags ++ Seq(
         "-Wconf:any:error",
         "-Xlint:-byname-implicit",

@@ -25,9 +25,9 @@ package object db {
   }
 
   final val hikariLayer: ZLayer[Blocking with Clock with Has[ConnectionConfig], TamerError, Has[Transactor[Task]]] =
-    (ZManaged
+    ZManaged
       .service[ConnectionConfig]
-      .zip(ZIO.descriptor.map(_.executor.asEC).toManaged_))
+      .zip(ZIO.descriptor.map(_.executor.asEC).toManaged_)
       .flatMap { case (config, ec) => mkTransactor(config, ec) }
       .toLayer
 
@@ -39,5 +39,5 @@ package object db {
       .mapError(sqle => TamerError(sqle.getLocalizedMessage, sqle))
 
   final val dbLayerFromEnvironment: ZLayer[Blocking with Clock, TamerError, Has[ConnectionConfig] with Has[QueryConfig] with Has[Transactor[Task]]] =
-    (ZLayer.requires[Blocking with Clock] ++ DbConfig.fromEnvironment) >+> hikariLayer
+    ZLayer.requires[Blocking with Clock] ++ DbConfig.fromEnvironment >+> hikariLayer
 }

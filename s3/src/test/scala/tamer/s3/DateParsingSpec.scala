@@ -33,7 +33,7 @@ object DateParsingSpec extends DefaultRunnableSpec {
     test("Should parse date in simple case") {
       val prefix    = "myFolder/myPrefix"
       val key       = "myFolder/myPrefix2021-01-01 00:01:44.empty"
-      val formatter = ZonedDateTimeFormatter(new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd HH:mm:ss").toFormatter(), rome)
+      val formatter = ZonedDateTimeFormatter(new DateTimeFormatterBuilder.appendPattern("yyyy-MM-dd HH:mm:ss").toFormatter(), rome)
 
       assert(S3Setup.parseInstantFromKey(key, prefix, formatter))(
         equalTo(ZonedDateTime.parse("2021-01-01T00:01:44+01:00[Europe/Rome]").toInstant)

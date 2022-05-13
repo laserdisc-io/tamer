@@ -14,5 +14,5 @@ object ZonedDateTimeFormatter {
     new ZonedDateTimeFormatter(dateTimeFormatter.withZone(zoneId))
 
   def fromPattern(pattern: String, zoneId: ZoneId): ZonedDateTimeFormatter =
-    apply(new DateTimeFormatterBuilder().appendPattern(pattern).toFormatter, zoneId)
+    apply(new DateTimeFormatterBuilder.appendPattern(pattern).toFormatter, zoneId)
 }
