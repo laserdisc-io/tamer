@@ -3,7 +3,7 @@ val scala_213 = "2.13.8"
 
 val V = new {
   val avro4s             = "4.1.0"
-  val awsSdk             = "2.17.238"
+  val awsSdk             = "2.17.240"
   val `cats-effect`      = "3.3.14"
   val circe              = "0.14.2"
   val ciris              = "2.3.3"
@@ -12,7 +12,7 @@ val V = new {
   val jackson            = "2.12.6"
   val `jackson-databind` = "2.12.6.1"
   val `json-schema`      = "1.14.1"
-  val `jsoniter-scala`   = "2.13.37"
+  val `jsoniter-scala`   = "2.13.38"
   val kafka              = "3.1.0"
   val logback            = "1.2.11"
   val `log-effect`       = "0.16.3"
