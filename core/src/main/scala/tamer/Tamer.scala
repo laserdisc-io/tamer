@@ -214,7 +214,9 @@ object Tamer {
         _     <- runLoop(queue, log)
       } yield ()
 
-      logic.refineOrDie(tamerErrors).provideSomeLayer[Clock](config.schemaRegistryUrl.map(Registry.live(_)).getOrElse(Registry.fake))
+      logic
+        .refineOrDie(tamerErrors)
+        .provideSomeLayer[Clock](config.schemaRegistryUrl.map(Registry.live(_, configuration = config.properties)).getOrElse(Registry.fake))
     }
   }
 
