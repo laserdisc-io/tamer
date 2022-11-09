@@ -16,7 +16,7 @@ val V = new {
   val kafka              = "3.1.0"
   val logback            = "1.4.1"
   val `log-effect`       = "0.16.3"
-  val ociSdk             = "2.43.0"
+  val ociSdk             = "3.0.0"
   val postgres           = "42.5.0"
   val `scala-compat`     = "2.8.1"
   val slf4j              = "2.0.1"
@@ -26,7 +26,7 @@ val V = new {
   val `zio-interop`      = "3.2.9.1"
   val `zio-json`         = "0.1.5"
   val `zio-kafka`        = "0.17.7"
-  val `zio-oci-os`       = "0.4.0"
+  val `zio-oci-os`       = "0.5.0"
   val `zio-s3`           = "0.3.7"
 }
 
