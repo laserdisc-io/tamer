@@ -5,7 +5,7 @@ val V = new {
   val avro4s             = "4.1.0"
   val awsSdk             = "2.19.31"
   val `cats-effect`      = "3.4.6"
-  val circe              = "0.14.3"
+  val circe              = "0.14.4"
   val ciris              = "3.0.0"
   val confluent          = "7.2.2"
   val doobie             = "1.0.0-RC2"
@@ -25,7 +25,7 @@ val V = new {
   val zio                = "1.0.18"
   val `zio-interop`      = "3.2.9.1"
   val `zio-json`         = "0.1.5"
-  val `zio-kafka`        = "0.17.7"
+  val `zio-kafka`        = "0.17.8"
   val `zio-oci-os`       = "0.5.0"
   val `zio-s3`           = "0.3.9"
 }
