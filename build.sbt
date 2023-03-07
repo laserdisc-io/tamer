@@ -15,19 +15,19 @@ val V = new {
   val `jsoniter-scala`   = "2.21.2"
   val kafka              = "3.4.0"
   val logback            = "1.4.5"
-  val `log-effect`       = "0.16.4"
+  val `log-effect`       = "0.17.0"
   val ociSdk             = "3.6.0"
   val postgres           = "42.5.4"
   val `scala-compat`     = "2.9.0"
   val slf4j              = "2.0.6"
-  val sttp               = "3.5.2"
-  val uzhttp             = "0.2.8"
-  val zio                = "1.0.18"
-  val `zio-interop`      = "3.2.9.1"
-  val `zio-json`         = "0.1.5"
-  val `zio-kafka`        = "0.17.8"
-  val `zio-oci-os`       = "0.5.0"
-  val `zio-s3`           = "0.3.9"
+  val sttp               = "3.8.3"
+  val uzhttp             = "0.3.0-RC1"
+  val zio                = "2.0.4"
+  val `zio-interop`      = "3.3.0"
+  val `zio-json`         = "0.3.0"
+  val `zio-kafka`        = "2.0.1"
+  val `zio-oci-os`       = "0.6.0"
+  val `zio-s3`           = "0.4.2.1"
 }
 
 val flags = Seq(
@@ -170,12 +170,12 @@ lazy val rest = project
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= Seq(
-      "com.softwaremill.sttp.client3" %% "httpclient-backend-zio1" % V.sttp,
-      "com.sksamuel.avro4s"           %% "avro4s-core"             % V.avro4s % Test,
-      "io.circe"                      %% "circe-core"              % V.circe  % Test,
-      "io.circe"                      %% "circe-generic"           % V.circe  % Test,
-      "io.circe"                      %% "circe-parser"            % V.circe  % Test,
-      "org.polynote"                  %% "uzhttp"                  % V.uzhttp % Test
+      "com.softwaremill.sttp.client3" %% "zio"           % V.sttp,
+      "com.sksamuel.avro4s"           %% "avro4s-core"   % V.avro4s % Test,
+      "io.circe"                      %% "circe-core"    % V.circe  % Test,
+      "io.circe"                      %% "circe-generic" % V.circe  % Test,
+      "io.circe"                      %% "circe-parser"  % V.circe  % Test,
+      "org.polynote"                  %% "uzhttp"        % V.uzhttp % Test
     )
   )
 

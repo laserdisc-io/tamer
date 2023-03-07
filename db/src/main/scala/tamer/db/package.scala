@@ -6,13 +6,14 @@ import java.time.Instant
 import doobie.hikari.HikariTransactor.newHikariTransactor
 import doobie.util.transactor.Transactor
 import zio._
-import zio.blocking.Blocking
-import zio.clock.Clock
-import zio.duration._
+
+import zio.Clock
+
 import zio.interop.catz._
 
 import scala.concurrent.ExecutionContext
 import scala.math.Ordering.Implicits._
+import zio.managed._
 
 package object db {
   implicit final class InstantOps(private val instant: Instant) extends AnyVal {
@@ -24,10 +25,10 @@ package object db {
     def -(d: Duration): Instant = instant.minus(d)
   }
 
-  final val hikariLayer: ZLayer[Blocking with Clock with Has[ConnectionConfig], TamerError, Has[Transactor[Task]]] =
+  final val hikariLayer: ZLayer[Blocking with Clock with ConnectionConfig, TamerError, Transactor[Task]] =
     ZManaged
       .service[ConnectionConfig]
-      .zip(ZIO.descriptor.map(_.executor.asEC).toManaged_)
+      .zip(ZIO.descriptor.map(_.executor.asExecutionContext).toManaged)
       .flatMap { case (config, ec) => mkTransactor(config, ec) }
       .toLayer
 
@@ -38,6 +39,6 @@ package object db {
       .refineToOrDie[SQLException]
       .mapError(sqle => TamerError(sqle.getLocalizedMessage, sqle))
 
-  final val dbLayerFromEnvironment: ZLayer[Blocking with Clock, TamerError, Has[ConnectionConfig] with Has[QueryConfig] with Has[Transactor[Task]]] =
-    (ZLayer.requires[Blocking with Clock] ++ DbConfig.fromEnvironment) >+> hikariLayer
+  final val dbLayerFromEnvironment: ZLayer[Blocking with Clock, TamerError, ConnectionConfig with QueryConfig with Transactor[Task]] =
+    (ZLayer.service[Blocking with Clock] ++ DbConfig.fromEnvironment) >+> hikariLayer
 }

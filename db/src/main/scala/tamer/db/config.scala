@@ -4,8 +4,8 @@ package db
 import cats.syntax.all._
 import ciris.{ConfigException, env}
 import zio._
-import zio.blocking.Blocking
-import zio.clock.Clock
+
+import zio.Clock
 import zio.interop.catz._
 
 final case class ConnectionConfig(driver: String, uri: String, username: String, password: String)
@@ -20,7 +20,7 @@ object DbConfig {
     (dbConfigValue, queryConfigValue).tupled
   }
 
-  final val fromEnvironment: ZLayer[Blocking with Clock, TamerError, Has[ConnectionConfig] with Has[QueryConfig]] =
+  final val fromEnvironment: ZLayer[Blocking with Clock, TamerError, ConnectionConfig with QueryConfig] =
     ZIO
       .runtime[Clock with Blocking]
       .flatMap(implicit runtime => _configValue.load[Task])

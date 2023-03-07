@@ -9,7 +9,7 @@ import doobie.util.transactor.Transactor
 import fs2.Stream
 import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
-import zio.duration._
+
 import zio.interop.catz._
 
 sealed abstract case class DbSetup[K, V, S: Hashable](
@@ -18,7 +18,7 @@ sealed abstract case class DbSetup[K, V, S: Hashable](
     recordKey: (S, V) => K,
     query: S => Query0[V],
     stateFold: (S, QueryResult[V]) => UIO[S]
-) extends Setup[Has[Transactor[Task]] with Has[QueryConfig], K, V, S] {
+) extends Setup[Transactor[Task] with QueryConfig, K, V, S] {
 
   private[this] final val sql              = query(initialState).sql
   private[this] final val queryHash        = sql.hash
@@ -35,7 +35,7 @@ sealed abstract case class DbSetup[K, V, S: Hashable](
 
   import compat._
 
-  private[this] final val logTask = log4sFromName.provide("tamer.db")
+  private[this] final val logTask = log4sFromName.provideService("tamer.db")
 
   private[this] final def process(query: Query0[V], chunkSize: Int, tx: Transactor[Task], queue: Enqueue[NonEmptyChunk[(K, V)]], state: S) =
     query
@@ -45,20 +45,20 @@ sealed abstract case class DbSetup[K, V, S: Hashable](
       .map(ChunkWithMetadata(_))
       .evalTap { c =>
         val chunk = Chunk.fromIterable(c.chunk.toStream.map(v => recordKey(state, v) -> v))
-        NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)
+        NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit)
       }
       .flatMap(c => Stream.chunk(c.chunk).map(ValueWithMetadata(_, c.pulledAt)))
       .compile
       .toList
       .map(values => values -> values.headOption.map(_.pulledAt).getOrElse(System.nanoTime()))
 
-  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[Has[Transactor[Task]] with Has[QueryConfig], S] = for {
+  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[Transactor[Task] with QueryConfig, S] = for {
     log            <- logTask
     transactor     <- ZIO.service[Transactor[Task]]
     chunkSize      <- ZIO.service[QueryConfig].map(_.fetchChunkSize)
-    query          <- UIO(query(currentState))
+    query          <- ZIO.succeed(query(currentState))
     _              <- log.debug(s"running ${query.sql} with params derived from $currentState")
-    start          <- UIO(System.nanoTime())
+    start          <- ZIO.succeed(System.nanoTime())
     (values, time) <- process(query, chunkSize, transactor, queue, currentState)
     newState       <- stateFold(currentState, QueryResult(ResultMetadata(time - start), values.map(_.value)))
   } yield newState
@@ -89,10 +89,10 @@ object DbSetup {
   ): DbSetup[K, V, Window] = {
     def stateFold(currentWindow: Window, queryResult: QueryResult[V]): UIO[Window] =
       if (queryResult.results.isEmpty) {
-        UIO((currentWindow.to + tumblingStep).orNow(lag)).map(Window(currentWindow.from, _))
+        ZIO.succeed((currentWindow.to + tumblingStep).orNow(lag)).map(Window(currentWindow.from, _))
       } else {
         val mostRecent = queryResult.results.max.timestamp
-        UIO((mostRecent + tumblingStep).orNow(lag)).map(Window(mostRecent, _))
+        ZIO.succeed((mostRecent + tumblingStep).orNow(lag)).map(Window(mostRecent, _))
       }
 
     DbSetup(Window(from, from + tumblingStep))(query)(recordKey, stateFold)

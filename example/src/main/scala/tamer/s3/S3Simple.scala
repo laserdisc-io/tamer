@@ -7,8 +7,9 @@ import java.time.{Instant, ZoneId}
 import software.amazon.awssdk.regions.Region.AF_SOUTH_1
 import zio._
 import zio.s3._
+import zio.ZIOAppDefault
 
-object S3Simple extends App {
+object S3Simple extends ZIOAppDefault {
   val program: ZIO[ZEnv, RuntimeException, Unit] = S3Setup
     .timed(
       bucket = "myBucket",

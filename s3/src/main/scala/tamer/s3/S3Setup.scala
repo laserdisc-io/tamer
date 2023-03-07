@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
-import zio.clock.Clock
+import zio.Clock
 import zio.duration.durationInt
 import zio.s3._
 import zio.stream.ZTransducer
@@ -49,7 +49,7 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
        |parallelism: $parallelism
        |""".stripMargin
 
-  private final val logTask = log4sFromName.provide("tamer.s3")
+  private final val logTask = log4sFromName.provideService("tamer.s3")
 
   private final val initialEphemeralState = Ref.make(List.empty[String])
 
@@ -73,13 +73,13 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
       _                      <- log.info(s"getting list of keys in bucket $bucket with prefix $prefix")
       initialObjListing      <- listObjects(bucket, ListObjectOptions.from(prefix, paginationMaxKeys))
       allObjListings         <- paginate(initialObjListing).take(paginationMaxPages).timeout(timeoutForFetchAllKeys).runCollect.map(_.toList)
-      keyList                <- UIO(allObjListings.flatMap(_.objectSummaries.map(_.key)).sorted)
-      cleanKeyList           <- UIO(keyList.filter(_.startsWith(prefix)))
+      keyList                <- ZIO.succeed(allObjListings.flatMap(_.objectSummaries.map(_.key)).sorted)
+      cleanKeyList           <- ZIO.succeed(keyList.filter(_.startsWith(prefix)))
       _                      <- ZIO.when(keyList.size != cleanKeyList.size)(warnAboutSpuriousKeys(log, keyList))
       _                      <- log.debug(s"current key list has ${cleanKeyList.length} elements")
       _                      <- log.debug(s"the first and last elements are ${cleanKeyList.headOption} and ${cleanKeyList.lastOption}")
       previousListOfKeys     <- keysR.getAndSet(cleanKeyList)
-      detectedKeyListChanged <- UIO(cleanKeyList != previousListOfKeys)
+      detectedKeyListChanged <- ZIO.succeed(cleanKeyList != previousListOfKeys)
       _                      <- ZIO.when(detectedKeyListChanged)(log.debug("detected change in key list") *> keysChangedToken.offer(()))
     } yield EphemeralChange(detectedKeyListChanged)
   }
@@ -89,13 +89,13 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     nextState <- stateFold(keysR, currentState, keysChangedToken)
     _         <- log.debug(s"next state computed to be $nextState")
     keys      <- keysR.get
-    optKey    <- UIO(selectObjectForState(nextState, keys))
+    optKey    <- ZIO.succeed(selectObjectForState(nextState, keys))
     _ <- log.debug(s"will ask for key $optKey") *> optKey
       .map(
         getObject(bucket, _)
           .transduce(transducer)
           .map(value => recordKey(nextState, value) -> value)
-          .foreachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit))
+          .runForeachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit))
       )
       .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
   } yield nextState
@@ -160,7 +160,7 @@ object S3Setup {
       from: Instant,
       keysChangedToken: Queue[Unit]
   ): UIO[Instant] = getNextInstant(keysR, from, prefix, formatter).flatMap {
-    case Some(newInstant) if newInstant > from => UIO(newInstant)
+    case Some(newInstant) if newInstant > from => ZIO.succeed(newInstant)
     case _                                     => keysChangedToken.take *> getNextState(prefix, formatter)(keysR, from, keysChangedToken)
   }
 

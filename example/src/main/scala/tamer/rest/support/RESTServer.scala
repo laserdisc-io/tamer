@@ -9,17 +9,17 @@ import uzhttp.Response
 import uzhttp.server.Server
 import zio._
 import zio.duration.durationInt
-import zio.random.Random
 
 import scala.annotation.nowarn
+import zio.{ Random, Random, ZIOAppDefault }
 
-object RESTServer extends App {
+object RESTServer extends ZIOAppDefault {
   val rotatingSecret = for {
     secret <- Ref.make(0)
     _      <- secret.update(_ + 1).schedule(Schedule.spaced(2.seconds)).delay(2.seconds).fork
   } yield secret
   val jsonHeader            = List("content-type" -> "application/json")
-  val respondWithRandomData = random.nextInt.map(i => Response.plain(s"""{"rubbish":"...","data":"$i"}""", headers = jsonHeader))
+  val respondWithRandomData = Random.nextInt.map(i => Response.plain(s"""{"rubbish":"...","data":"$i"}""", headers = jsonHeader))
   val finitePagination = for {
     pages <- Ref.make(List(1 to 20: _*))
     _     <- pages.update(l => l :+ (l.last + 1)).repeat(Schedule.spaced(2.seconds)).fork
@@ -32,7 +32,7 @@ object RESTServer extends App {
   def server(rotatingSecret: Ref[Int], finitePagination: Ref[List[Int]], dynamicPagination: Ref[List[Int]]): Server.Builder[Random] =
     Server.builder(new InetSocketAddress("0.0.0.0", 9395)).handleSome {
       case req if req.uri.getPath == "/auth" && req.headers.get("Authorization").contains("Basic dXNlcjpwYXNz") => // user:pass
-        rotatingSecret.get.flatMap(currentToken => UIO(Response.plain("validToken" + currentToken))): @nowarn
+        rotatingSecret.get.flatMap(currentToken => ZIO.succeed(Response.plain("validToken" + currentToken))): @nowarn
       case req if req.uri.getPath == "/" =>
         rotatingSecret.get.flatMap { currentToken =>
           if (req.headers.get("Authorization").contains("Bearer validToken" + currentToken)) {

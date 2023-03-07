@@ -60,8 +60,9 @@ private[tamer] sealed trait LowPriorityCodecs {
   implicit final def optionalZioJsonCodec[A, C[_]: ZioJsonCodec](implicit ca: C[A]): Codec[A] = new Codec[A] {
     private[this] final val _zioJsonCodec = ca.asInstanceOf[zio.json.JsonCodec[A]]
 
-    override final def decode(is: InputStream): A =
-      zio.Runtime.default.unsafeRun(_zioJsonCodec.decodeJsonStreamInput(zio.stream.ZStream.fromInputStream(is)))
+    override final def decode(is: InputStream): A = zio.Unsafe.unsafe { implicit unsafe =>
+      zio.Runtime.default.unsafe.run(_zioJsonCodec.decoder.decodeJsonStreamInput(zio.stream.ZStream.fromInputStream(is))).getOrThrowFiberFailure()
+    }
     override final def encode(value: A, os: OutputStream): Unit =
       new java.io.OutputStreamWriter(os).append(_zioJsonCodec.encodeJson(value, None)).flush()
     override final val maybeSchema: Option[ParsedSchema] = None

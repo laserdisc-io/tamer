@@ -4,11 +4,12 @@ package rest
 import zio._
 
 import scala.annotation.nowarn
+import zio.ZIOAppDefault
 
-object RESTSimple extends App {
+object RESTSimple extends ZIOAppDefault {
   @nowarn val pageDecoder: String => Task[DecodedPage[String, Offset]] =
     DecodedPage.fromString { body =>
-      Task(body.split(",").toList.filterNot(_.isBlank))
+      ZIO.attempt(body.split(",").toList.filterNot(_.isBlank))
     }
 
   val program: ZIO[ZEnv, TamerError, Unit] = RESTSetup

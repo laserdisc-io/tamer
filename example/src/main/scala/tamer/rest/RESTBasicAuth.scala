@@ -3,17 +3,18 @@ package rest
 
 import sttp.client3.RetryWhen
 import zio._
-import zio.duration._
 
-object RESTBasicAuth extends App {
+import zio.ZIOAppDefault
+
+object RESTBasicAuth extends ZIOAppDefault {
   case class MyKey(i: Int)
   case class MyData(i: Int)
 
   val dataRegex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] =
     DecodedPage.fromString {
-      case dataRegex(data) => Task(List(MyData(data.toInt)))
-      case pageBody        => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
+      case dataRegex(data) => ZIO.attempt(List(MyData(data.toInt)))
+      case pageBody        => ZIO.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
     }
 
   def retrySchedule(

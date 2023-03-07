@@ -4,7 +4,7 @@ package oci.objectstorage
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
-import zio.blocking.Blocking
+
 import zio.oci.objectstorage._
 import zio.stream.ZTransducer
 
@@ -37,7 +37,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
        |state key:      $stateKey
        |""".stripMargin
 
-  private[this] final val logTask = log4sFromName.provide("tamer.oci.objectstorage")
+  private[this] final val logTask = log4sFromName.provideService("tamer.oci.objectstorage")
 
   private[this] final def process(
       log: LogWriter[Task],
@@ -51,7 +51,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
             .transduce(transducer)
             .mapError(error => TamerError(s"Error while processing object $name: ${error.getMessage}", error))
             .map(value => recordKey(currentState, value) -> value)
-            .foreachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit))
+            .runForeachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit))
       case None =>
         log.debug("no state change")
     }
@@ -59,7 +59,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
   override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with Blocking with ObjectStorage, S] = for {
     log <- logTask
     _   <- log.debug(s"current state: $currentState")
-    options <- UIO(
+    options <- ZIO.succeed(
       ListObjectsOptions(prefix, None, startAfter(currentState), Limit.Max, Set(ListObjectsOptions.Field.Name, ListObjectsOptions.Field.Size))
     )
     nextObject <- listObjects(namespace, bucket, options)

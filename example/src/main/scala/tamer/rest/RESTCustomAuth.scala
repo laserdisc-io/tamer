@@ -6,15 +6,16 @@ import sttp.client3.{UriContext, basicRequest}
 import zio._
 
 import scala.util.matching.Regex
+import zio.ZIOAppDefault
 
-object RESTCustomAuth extends App {
+object RESTCustomAuth extends ZIOAppDefault {
   case class MyKey(i: Int)
   case class MyData(i: Int)
 
   val dataRegex: Regex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] = DecodedPage.fromString {
-    case dataRegex(data) => Task(List(MyData(data.toInt)))
-    case pageBody        => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
+    case dataRegex(data) => ZIO.attempt(List(MyData(data.toInt)))
+    case pageBody        => ZIO.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
   }
 
   val authentication: Authentication[SttpClient] = new Authentication[SttpClient] {

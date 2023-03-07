@@ -3,10 +3,11 @@ package oci.objectstorage
 
 import com.oracle.bmc.Region.US_PHOENIX_1
 import zio._
-import zio.duration._
-import zio.oci.objectstorage._
 
-object OciObjectStorageSimple extends App {
+import zio.oci.objectstorage._
+import zio.ZIOAppDefault
+
+object OciObjectStorageSimple extends ZIOAppDefault {
   case class ObjectsCursor(startAfter: Option[String], current: Option[String])
 
   val program: ZIO[ZEnv, TamerError, Unit] = ObjectStorageSetup(
@@ -16,9 +17,9 @@ object OciObjectStorageSimple extends App {
   )(
     recordKey = (oc, _: String) => oc,
     stateFold = {
-      case (ObjectsCursor(_, _), next @ Some(_)) => UIO(ObjectsCursor(next, next))
-      case (ObjectsCursor(s, Some(_)), None)     => UIO(ObjectsCursor(s, None))
-      case (ObjectsCursor(s, None), None)        => ZIO.sleep(1.minute) *> UIO(ObjectsCursor(s, None))
+      case (ObjectsCursor(_, _), next @ Some(_)) => ZIO.succeed(ObjectsCursor(next, next))
+      case (ObjectsCursor(s, Some(_)), None)     => ZIO.succeed(ObjectsCursor(s, None))
+      case (ObjectsCursor(s, None), None)        => ZIO.sleep(1.minute) *> ZIO.succeed(ObjectsCursor(s, None))
     },
     objectName = _.current,
     startAfter = _.startAfter

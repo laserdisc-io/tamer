@@ -6,9 +6,10 @@ import java.time.Instant
 import doobie.implicits.legacy.instant._
 import doobie.syntax.string._
 import zio._
-import zio.duration._
 
-object DatabaseSimple extends App {
+import zio.ZIOAppDefault
+
+object DatabaseSimple extends ZIOAppDefault {
   val program: ZIO[ZEnv, TamerError, Unit] = DbSetup
     .tumbling(window =>
       sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${window.from} AND modified_at <= ${window.to}""".query[Row]

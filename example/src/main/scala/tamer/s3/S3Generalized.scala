@@ -5,10 +5,11 @@ import java.net.URI
 
 import software.amazon.awssdk.regions.Region.AF_SOUTH_1
 import zio._
-import zio.duration._
-import zio.s3._
 
-object S3Generalized extends App {
+import zio.s3._
+import zio.ZIOAppDefault
+
+object S3Generalized extends ZIOAppDefault {
   object internals {
     val bucketName = "myBucket"
     val prefix     = "myFolder2/myPrefix"
@@ -22,7 +23,7 @@ object S3Generalized extends App {
     def getNextState(keysR: KeysR, afterwards: Long, keysChangedToken: Queue[Unit]): UIO[Long] = {
       val retryAfterWaitingForKeyListChange = keysChangedToken.take *> getNextState(keysR, afterwards, keysChangedToken)
       getNextNumber(keysR, afterwards).flatMap {
-        case Some(number) if number > afterwards => UIO(number)
+        case Some(number) if number > afterwards => ZIO.succeed(number)
         case _                                   => retryAfterWaitingForKeyListChange
       }
     }
