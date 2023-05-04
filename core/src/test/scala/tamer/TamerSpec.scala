@@ -1,12 +1,13 @@
 package tamer
 
 import org.apache.kafka.common.TopicPartition
-import zio._
+import zio.{stream, _}
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
 import zio.kafka.admin.AdminClient.{TopicPartition => AdminPartition}
 import zio.random.Random
+import zio.stream.ZStream
 import zio.test.Assertion.equalTo
 import zio.test.TestAspect.timeout
 import zio.test._
@@ -25,15 +26,19 @@ object TamerSpec extends DefaultRunnableSpec with TamerSpecGen {
       override final val initialState = State(0)
       override final val stateKey     = 0
       override final val recordKey    = (s: State, _: Value) => Key(s.state + 1)
-      override final def iteration(s: State, q: Enqueue[NonEmptyChunk[(Key, Value)]]): ZIO[Has[Ref[Log]], TamerError, State] =
-        ZIO.service[Ref[Log]].flatMap { variable =>
-          val cursor = s.state + 1
-          if (cursor <= 10)
-            variable.update(log => log.copy(log.series ++ Vector(cursor))) *>
-              q.offer(NonEmptyChunk((Key(cursor), Value(cursor)))).as(s.copy(state = cursor))
-          else
-            ZIO.never *> UIO(State(9999))
+      override def iteration(currentState: State): ZStream[Has[Ref[Log]], Throwable, (Option[NonEmptyChunk[(Key, Value)]], State)] = {
+        val cursor = currentState.state + 1
+        if (cursor <= 10) {
+          for {
+            logRef <- ZStream.service[Ref[Log]]
+            _      <- ZStream.fromEffect(logRef.update(log => log.copy(log.series ++ Vector(cursor))))
+            ch = NonEmptyChunk.fromChunk(Chunk(Key(cursor) -> Value(cursor)))
+          } yield (ch, State(cursor))
+
+        } else {
+          ZStream.empty
         }
+      }
     }
   }
 

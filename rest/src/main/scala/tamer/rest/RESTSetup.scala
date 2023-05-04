@@ -13,6 +13,7 @@ import sttp.model.StatusCode.{Forbidden, NotFound, Unauthorized}
 import zio._
 import zio.clock.Clock
 import zio.duration._
+import zio.stream.ZStream
 
 sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
     serdes: Setup.Serdes[K, V, S],
@@ -96,32 +97,35 @@ sealed abstract case class RESTSetup[-R, K, V, S: Hashable](
   // intuitive filtering of the page result and automatic type inference of the state for
   // the page decoder helper functions.
   override def iteration(
-      currentState: S,
-      queue: Enqueue[NonEmptyChunk[(K, V)]]
-  ): RIO[R with SttpClient with Clock with Has[EphemeralSecretCache], S] = for {
-    log         <- logTask
-    tokenCache  <- ZIO.service[EphemeralSecretCache]
-    decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
-    chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
-    _         <- NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)
-    nextState <- stateFold(decodedPage, currentState)
-  } yield nextState
+      currentState: S
+                        ): ZStream[R with SttpClient with Clock with Has[EphemeralSecretCache], Throwable, (Option[NonEmptyChunk[(K, V)]], S)] = {
+    val fetched = for {
+      log <- logTask
+      tokenCache <- ZIO.service[EphemeralSecretCache]
+      decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
+      chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
+      neChunk: Option[NonEmptyChunk[(K, V)]] = NonEmptyChunk.fromChunk(chunk)
+      nextState <- stateFold(decodedPage, currentState)
+    } yield (neChunk, nextState)
+    ZStream.fromEffect(fetched)
+  }
 }
 
 object RESTSetup {
-  def apply[R, K: Codec, V: Codec, S: Codec: Hashable](initialState: S)(
-      query: S => Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets],
-      pageDecoder: String => RIO[R, DecodedPage[V, S]],
-      recordKey: (S, V) => K,
-      stateFold: (DecodedPage[V, S], S) => URIO[R, S],
-      authentication: Option[Authentication[R]] = None,
-      filterPage: (DecodedPage[V, S], S) => List[V] = (dp: DecodedPage[V, S], _: S) => dp.data,
-      retrySchedule: Option[
-        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
-      ] = None
+  def apply[R, K: Codec, V: Codec, S: Codec : Hashable](initialState: S)(
+    query: S => Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets],
+    pageDecoder: String => RIO[R, DecodedPage[V, S]],
+    recordKey: (S, V) => K,
+    stateFold: (DecodedPage[V, S], S) => URIO[R, S],
+    authentication: Option[Authentication[R]] = None,
+    filterPage: (DecodedPage[V, S], S) => List[V] = (dp: DecodedPage[V, S], _: S) => dp.data,
+    stateMonitor: StateMonitor[R, S, (K, V)] = StateMonitor.noOp[R, S, (K, V)],
+    retrySchedule: Option[
+      SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
+    ] = None
   )(
-      implicit ev: Codec[Tamer.StateKey]
-  ): RESTSetup[R, K, V, S] = new RESTSetup(
+                                                         implicit ev: Codec[Tamer.StateKey]
+                                                       ): RESTSetup[R, K, V, S] = new RESTSetup(
     Setup.mkSerdes[K, V, S],
     initialState,
     recordKey,
@@ -131,35 +135,38 @@ object RESTSetup {
     filterPage,
     stateFold,
     retrySchedule
-  ) {}
+  ) {
+    override val monitor: StateMonitor[R, S, (K, V)] = stateMonitor
+  }
 
   def paginated[R, K: Codec, V: Codec](
-      baseUrl: String,
-      pageDecoder: String => RIO[R, DecodedPage[V, Offset]],
-      authentication: Option[Authentication[R]] = None,
-      retrySchedule: Option[
-        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
-      ] = None
-  )(
-      recordKey: (Offset, V) => K,
-      offsetParameterName: String = "page",
-      increment: Int = 1,
-      fixedPageElementCount: Option[Int] = None,
-      readRequestTimeout: Duration = 30.seconds,
-      initialOffset: Offset = Offset(0, 0)
-  )(
-      implicit ev0: Codec[Tamer.StateKey],
-      ev1: Codec[Offset]
-  ): RESTSetup[R with Clock, K, V, Offset] = {
+                                        baseUrl: String,
+                                        pageDecoder: String => RIO[R, DecodedPage[V, Offset]],
+                                        authentication: Option[Authentication[R]] = None,
+                                        stateMonitor: StateMonitor[R, Offset, (K, V)] = StateMonitor.noOp[R, Offset, (K, V)],
+                                        retrySchedule: Option[
+                                          SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
+                                        ] = None
+                                      )(
+                                        recordKey: (Offset, V) => K,
+                                        offsetParameterName: String = "page",
+                                        increment: Int = 1,
+                                        fixedPageElementCount: Option[Int] = None,
+                                        readRequestTimeout: Duration = 30.seconds,
+                                        initialOffset: Offset = Offset(0, 0)
+                                      )(
+                                        implicit ev0: Codec[Tamer.StateKey],
+                                        ev1: Codec[Offset]
+                                      ): RESTSetup[R with Clock, K, V, Offset] = {
     def queryFor(state: Offset) =
       basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala)
 
     def nextPageOrNextIndexIfPageNotComplete(decodedPage: DecodedPage[V, Offset], offset: Offset): URIO[R with Clock, Offset] = {
       val fetchedElementCount = decodedPage.data.length
-      val nextElementIndex    = decodedPage.data.length
+      val nextElementIndex = decodedPage.data.length
       lazy val defaultNextState = fixedPageElementCount match {
         case Some(expectedElemCount) if fetchedElementCount <= expectedElemCount - 1 => UIO(offset.nextIndex(nextElementIndex))
-        case _                                                                       => UIO(offset.incrementedBy(increment))
+        case _ => UIO(offset.incrementedBy(increment))
       }
       decodedPage.nextState.map(UIO(_)).getOrElse(defaultNextState)
     }
@@ -181,59 +188,60 @@ object RESTSetup {
       retrySchedule
     ) {
       override def iteration(
-          currentState: Offset,
-          queue: Enqueue[NonEmptyChunk[(K, V)]]
-      ): RIO[R with Clock with SttpClient with Has[EphemeralSecretCache], Offset] = for {
-        log         <- logTask
-        tokenCache  <- ZIO.service[EphemeralSecretCache]
-        decodedPage <- fetchWaitingNewEntries(currentState, log, tokenCache)
-        chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
-        _         <- NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)
-        nextState <- stateFold(decodedPage, currentState)
-      } yield nextState
+                              currentState: Offset,
+                            ): ZStream[R with Clock with SttpClient with Has[EphemeralSecretCache], Throwable, (Option[NonEmptyChunk[(K, V)]], Offset)] = ZStream.fromEffect {
+        for {
+          log <- logTask
+          tokenCache <- ZIO.service[EphemeralSecretCache]
+          decodedPage <- fetchWaitingNewEntries(currentState, log, tokenCache)
+          chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
+          neChk: Option[NonEmptyChunk[(K, V)]] = NonEmptyChunk.fromChunk(chunk)
+          nextState <- stateFold(decodedPage, currentState)
+        } yield (neChk, nextState)
+      }
 
       private final def fetchWaitingNewEntries(
-          currentState: Offset,
-          log: LogWriter[Task],
-          tokenCache: EphemeralSecretCache
-      ): RIO[R with Clock with SttpClient, DecodedPage[V, Offset]] =
+                                                currentState: Offset,
+                                                log: LogWriter[Task],
+                                                tokenCache: EphemeralSecretCache
+                                              ): RIO[R with Clock with SttpClient, DecodedPage[V, Offset]] =
         fetchAndDecode(currentState, tokenCache, log).repeat(
           Schedule.exponential(500.millis) *> Schedule.recurWhile(_.data.isEmpty) // FIXME this could never return and leaves tamer hanging
         )
 
       private final def fetchAndDecode(
-          currentState: Offset,
-          tokenCache: EphemeralSecretCache,
-          log: LogWriter[Task]
-      ): RIO[R with Clock with SttpClient, DecodedPage[V, Offset]] =
+                                        currentState: Offset,
+                                        tokenCache: EphemeralSecretCache,
+                                        log: LogWriter[Task]
+                                      ): RIO[R with Clock with SttpClient, DecodedPage[V, Offset]] =
         for {
           decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
           dataFromIndex = decodedPage.data.drop(currentState.nextIndex)
-          pageLength    = decodedPage.data.length
+          pageLength = decodedPage.data.length
           _ <- log.debug(s"retrieved ${dataFromIndex.length} new datapoints. ($pageLength total for page ${currentState.offset})")
         } yield decodedPage
     }
   }
 
   def periodicallyPaginated[R, K: Codec, V: Codec](
-      baseUrl: String,
-      pageDecoder: String => RIO[R, DecodedPage[V, PeriodicOffset]],
-      periodStart: Instant,
-      authentication: Option[Authentication[R]] = None,
-      offsetParameterName: String = "page",
-      increment: Int = 1,
-      minPeriod: Duration = 5.minutes,
-      maxPeriod: Duration = 1.hour,
-      readRequestTimeout: Duration = 30.seconds,
-      startingOffset: Int = 0,
-      filterPage: (DecodedPage[V, PeriodicOffset], PeriodicOffset) => List[V] = (dp: DecodedPage[V, PeriodicOffset], _: PeriodicOffset) => dp.data,
-      retrySchedule: Option[
-        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
-      ] = None
-  )(recordKey: (PeriodicOffset, V) => K)(
-      implicit ev0: Codec[Tamer.StateKey],
-      ev1: Codec[PeriodicOffset]
-  ): RESTSetup[R with Clock, K, V, PeriodicOffset] = {
+                                                    baseUrl: String,
+                                                    pageDecoder: String => RIO[R, DecodedPage[V, PeriodicOffset]],
+                                                    periodStart: Instant,
+                                                    authentication: Option[Authentication[R]] = None,
+                                                    offsetParameterName: String = "page",
+                                                    increment: Int = 1,
+                                                    minPeriod: Duration = 5.minutes,
+                                                    maxPeriod: Duration = 1.hour,
+                                                    readRequestTimeout: Duration = 30.seconds,
+                                                    startingOffset: Int = 0,
+                                                    filterPage: (DecodedPage[V, PeriodicOffset], PeriodicOffset) => List[V] = (dp: DecodedPage[V, PeriodicOffset], _: PeriodicOffset) => dp.data,
+                                                    retrySchedule: Option[
+                                                      SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
+                                                    ] = None
+                                                  )(recordKey: (PeriodicOffset, V) => K)(
+                                                    implicit ev0: Codec[Tamer.StateKey],
+                                                    ev1: Codec[PeriodicOffset]
+                                                  ): RESTSetup[R with Clock, K, V, PeriodicOffset] = {
     def queryFor(state: PeriodicOffset) =
       basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala)
 
@@ -244,7 +252,7 @@ object RESTSetup {
           newOffset <-
             if (
               now.isAfter(periodicOffset.periodStart.plus(maxPeriod)) ||
-              (decodedPage.data.isEmpty && now.isAfter(periodicOffset.periodStart.plus(minPeriod)))
+                (decodedPage.data.isEmpty && now.isAfter(periodicOffset.periodStart.plus(minPeriod)))
             ) {
               UIO(PeriodicOffset(offset = startingOffset, periodStart = now))
             } else if (decodedPage.data.isEmpty) {
@@ -268,24 +276,27 @@ object RESTSetup {
       retrySchedule
     ) {
       override def iteration(
-          currentState: PeriodicOffset,
-          queue: Enqueue[NonEmptyChunk[(K, V)]]
-      ): RIO[R with Clock with SttpClient with Has[EphemeralSecretCache], PeriodicOffset] = for {
-        log        <- logTask
-        tokenCache <- ZIO.service[EphemeralSecretCache]
-        now        <- clock.instant
-        delayUntilNextPeriod <-
-          if (currentState.periodStart.isBefore(now))
-            UIO(Duration.Zero)
-          else
-            UIO(Duration.fromInterval(now, currentState.periodStart)).tap(delayUntilNextPeriod =>
-              log.info(s"$baseUrl is going to sleep for ${delayUntilNextPeriod.render}")
-            )
-        decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log).delay(delayUntilNextPeriod)
-        chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
-        _         <- NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)
-        nextState <- getNextState(decodedPage, currentState)
-      } yield nextState
+                              currentState: PeriodicOffset
+                            ): ZStream[R with Clock with SttpClient with Has[EphemeralSecretCache], Throwable, (Option[NonEmptyChunk[(K, V)]], PeriodicOffset)] = {
+        val fetched = for {
+          log <- logTask
+          tokenCache <- ZIO.service[EphemeralSecretCache]
+          now <- clock.instant
+          delayUntilNextPeriod <-
+            if (currentState.periodStart.isBefore(now))
+              UIO(Duration.Zero)
+            else
+              UIO(Duration.fromInterval(now, currentState.periodStart)).tap(delayUntilNextPeriod =>
+                log.info(s"$baseUrl is going to sleep for ${delayUntilNextPeriod.render}")
+              )
+          decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log).delay(delayUntilNextPeriod)
+          chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
+          neChunk: Option[NonEmptyChunk[(K, V)]] = NonEmptyChunk.fromChunk(chunk)
+          nextState <- getNextState(decodedPage, currentState)
+        } yield (neChunk, nextState)
+
+        ZStream.fromEffect(fetched)
+      }
     }
   }
 }

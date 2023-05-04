@@ -259,7 +259,7 @@ object Tamer {
         setup: Setup[R, K, V, S]
     ): ZLayer[R with Blocking with Clock with Has[KafkaConfig], TamerError, Has[Tamer]] =
       ZLayer.fromServiceManaged[KafkaConfig, R with Blocking with Clock, TamerError, Tamer] { config =>
-        val iterationFunctionManaged = ZManaged.environment[R].map(r => Function.untupled((setup.iteration _).tupled.andThen(_.provide(r))))
+        val iterationFunctionManaged = ZManaged.environment[R].map(r => Function.untupled((setup.iteration(_: S, _: Enqueue[NonEmptyChunk[(K, V)]])).tupled.andThen(_.provide(r))))
         iterationFunctionManaged.flatMap(getManaged(config, setup.serdes, setup.initialState, setup.stateKey, _, setup.repr))
       }
   }

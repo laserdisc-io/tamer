@@ -6,7 +6,7 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
 import zio.blocking.Blocking
 import zio.oci.objectstorage._
-import zio.stream.ZTransducer
+import zio.stream.{ZStream, ZTransducer}
 
 sealed abstract case class ObjectStorageSetup[-R, K, V, S](
     serdes: Setup.Serdes[K, V, S],
@@ -40,32 +40,35 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
   private[this] final val logTask = log4sFromName.provide("tamer.oci.objectstorage")
 
   private[this] final def process(
-      log: LogWriter[Task],
-      currentState: S,
-      queue: Enqueue[NonEmptyChunk[(K, V)]]
-  ): ZIO[R with ObjectStorage with Blocking, Throwable, Unit] =
+                                   log: LogWriter[Task],
+                                   currentState: S,
+                                 ): ZStream[ObjectStorage with Blocking with R, Throwable, Option[NonEmptyChunk[(K, V)]]] =
     objectName(currentState) match {
       case Some(name) =>
-        log.info(s"getting object $name") *>
+          ZStream.fromEffect(log.info(s"getting object $name")) *>
           getObject(namespace, bucket, name)
             .transduce(transducer)
-            .mapError(error => TamerError(s"Error while processing object $name: ${error.getMessage}", error))
-            .map(value => recordKey(currentState, value) -> value)
-            .foreachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit))
+            .mapBoth(
+              error => TamerError(s"Error while processing object $name: ${error.getMessage}", error),
+              value => Chunk(recordKey(currentState, value) -> value)
+            ).map(ch => NonEmptyChunk.fromChunk(ch))
       case None =>
-        log.debug("no state change")
+        ZStream.empty
     }
 
-  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with Blocking with ObjectStorage, S] = for {
-    log <- logTask
-    _   <- log.debug(s"current state: $currentState")
-    options <- UIO(
-      ListObjectsOptions(prefix, None, startAfter(currentState), Limit.Max, Set(ListObjectsOptions.Field.Name, ListObjectsOptions.Field.Size))
-    )
-    nextObject <- listObjects(namespace, bucket, options)
-    _          <- process(log, currentState, queue)
-    newState   <- stateFold(currentState, nextObject.objectSummaries.find(os => objectNameFinder(os.getName)).map(_.getName))
-  } yield newState
+  override def iteration(currentState: S): ZStream[R with Blocking with ObjectStorage, Throwable, (Option[NonEmptyChunk[(K, V)]], S)] = {
+    ZStream.fromEffect(logTask).flatMap { logger =>
+      ZStream.fromEffect {
+        val options = ListObjectsOptions(prefix, None, startAfter(currentState), Limit.Max, Set(ListObjectsOptions.Field.Name, ListObjectsOptions.Field.Size))
+        logger.debug(s"current state: $currentState") *> listObjects(namespace, bucket, options)
+      }.flatMap { nextObject =>
+        val newState = stateFold(currentState, nextObject.objectSummaries.find(os => objectNameFinder(os.getName)).map(_.getName))
+        ZStream.fromEffect(newState).flatMap { nState =>
+          process(logger, currentState).map(c => (c, nState))
+        }
+      }
+    }
+  }
 }
 
 object ObjectStorageSetup {

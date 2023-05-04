@@ -13,6 +13,7 @@ import zio.s3._
 import zio.stream.ZTransducer
 
 import scala.math.Ordering.Implicits.infixOrderingOps
+import zio.stream.ZStream
 
 sealed abstract case class S3Setup[R, K, V, S: Hashable](
     serdes: Setup.Serdes[K, V, S],
@@ -25,6 +26,7 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     maximumIntervalForBucketFetch: Duration,
     selectObjectForState: (S, Keys) => Option[String],
     stateFold: (KeysR, S, Queue[Unit]) => UIO[S],
+    stateMonitor: StateMonitor[R, S, (K, V)] = StateMonitor.noOp[R, S, (K, V)],
     transducer: ZTransducer[R, Throwable, Byte, V]
 ) extends Setup[R with Clock with S3, K, V, S] {
 
@@ -84,31 +86,49 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     } yield EphemeralChange(detectedKeyListChanged)
   }
 
-  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]) = for {
+  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: S) = {}
+  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: S) = for {
     log       <- logTask
     nextState <- stateFold(keysR, currentState, keysChangedToken)
     _         <- log.debug(s"next state computed to be $nextState")
     keys      <- keysR.get
     optKey    <- UIO(selectObjectForState(nextState, keys))
-    _ <- log.debug(s"will ask for key $optKey") *> optKey
-      .map(
-        getObject(bucket, _)
-          .transduce(transducer)
-          .map(value => recordKey(nextState, value) -> value)
-          .foreachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit))
-      )
-      .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
-  } yield nextState
+    _         <- log.debug(s"will ask for key $optKey")
+    ch =
+      optKey
+        .map(
+          getObject(bucket, _)
+            .transduce(transducer)
+            .map(value => recordKey(nextState, value) -> value)
+            .mapBoth(
+              err => ZStream.empty,
+              ch => NonEmptyChunk.fromChunk(Chunk(ch))
+            )
+        )
+        .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState")))
+    // FIXME: relies on nextState.toString
+  } yield (ch,nextState)
 
-  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with Clock with S3, S] = for {
-    sourceState <- initialEphemeralState
-    token       <- Queue.dropping[Unit](requestedCapacity = 1)
-    _ <- updatedSourceState(sourceState, token)
-      .scheduleFrom(EphemeralChange.Detected)(Schedule.once ++ fetchSchedule.untilInput(_ == EphemeralChange.Detected))
-      .forever
-      .fork
-    newState <- process(sourceState, token, currentState, queue)
-  } yield newState
+  //  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with Clock with S3, S] = for {
+  //    sourceState <- initialEphemeralState
+  //    token       <- Queue.dropping[Unit](requestedCapacity = 1)
+  //    _ <- updatedSourceState(sourceState, token)
+  //      .scheduleFrom(EphemeralChange.Detected)(Schedule.once ++ fetchSchedule.untilInput(_ == EphemeralChange.Detected))
+  //      .forever
+  //      .fork
+  //    newState <- process(sourceState, token, currentState, queue)
+  //  } yield newState
+  override def iteration(currentState: S): ZStream[R with Clock with S3, Throwable, (Option[NonEmptyChunk[(K, V)]], S)] = {
+    for {
+          sourceState <- initialEphemeralState
+          token       <- Queue.dropping[Unit](requestedCapacity = 1)
+          _ <- updatedSourceState(sourceState, token)
+            .scheduleFrom(EphemeralChange.Detected)(Schedule.once ++ fetchSchedule.untilInput(_ == EphemeralChange.Detected))
+            .forever
+            .fork
+          newState = process(sourceState, token, currentState)
+    }yield newState
+  }
 }
 
 object S3Setup {
@@ -139,8 +159,11 @@ object S3Setup {
     maximumIntervalForBucketFetch,
     selectObjectForState,
     stateFold,
+    StateMonitor.noOp[R, S, (K, V)],
     transducer
-  ) {}
+  ) {
+    override final val monitor = stateMonitor
+  }
 
   private[s3] final def suffixWithoutFileExtension(key: String, prefix: String, formatter: ZonedDateTimeFormatter): String = {
     val dotCountInDate = formatter.format(Instant.EPOCH).count(_ == '.')
@@ -191,6 +214,7 @@ object S3Setup {
     maximumIntervalForBucketFetch,
     selectObjectForInstant(dateTimeFormatter) _,
     getNextState(prefix, dateTimeFormatter) _,
+    StateMonitor.noOp[R, Instant, (K, V)],
     transducer
   ) {}
 }
