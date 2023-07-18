@@ -3,7 +3,7 @@ val scala_213 = "2.13.10"
 
 val V = new {
   val avro4s             = "4.1.1"
-  val awsSdk             = "2.20.101"
+  val awsSdk             = "2.20.104"
   val `cats-effect`      = "3.5.1"
   val circe              = "0.14.5"
   val ciris              = "3.2.0"
@@ -16,7 +16,7 @@ val V = new {
   val kafka              = "3.4.1"
   val logback            = "1.4.8"
   val `log-effect`       = "0.16.4"
-  val ociSdk             = "3.18.0"
+  val ociSdk             = "3.19.0"
   val postgres           = "42.6.0"
   val `scala-compat`     = "2.11.0"
   val slf4j              = "2.0.7"
