@@ -4,7 +4,7 @@ import java.io.{InputStream, OutputStream}
 
 import io.confluent.kafka.schemaregistry.ParsedSchema
 
-import scala.annotation.implicitNotFound
+import scala.annotation.{implicitNotFound, nowarn}
 
 @implicitNotFound(
   "\n" +
@@ -95,21 +95,21 @@ private[tamer] sealed trait LowPriorityCodecs {
 }
 
 private final abstract class Avro4sDecoder[D[_]]
-private object Avro4sDecoder { @inline implicit final def get: Avro4sDecoder[com.sksamuel.avro4s.Decoder] = null }
+@nowarn private object Avro4sDecoder { @inline implicit final def get: Avro4sDecoder[com.sksamuel.avro4s.Decoder] = null }
 private final abstract class Avro4sEncoder[E[_]]
-private object Avro4sEncoder { @inline implicit final def get: Avro4sEncoder[com.sksamuel.avro4s.Encoder] = null }
+@nowarn private object Avro4sEncoder { @inline implicit final def get: Avro4sEncoder[com.sksamuel.avro4s.Encoder] = null }
 private final abstract class Avro4sSchemaFor[SF[_]]
-private object Avro4sSchemaFor { @inline implicit final def get: Avro4sSchemaFor[com.sksamuel.avro4s.SchemaFor] = null }
+@nowarn private object Avro4sSchemaFor { @inline implicit final def get: Avro4sSchemaFor[com.sksamuel.avro4s.SchemaFor] = null }
 
 private final abstract class CirceDecoder[D[_]]
-private object CirceDecoder { @inline implicit final def get: CirceDecoder[io.circe.Decoder] = null }
+@nowarn private object CirceDecoder { @inline implicit final def get: CirceDecoder[io.circe.Decoder] = null }
 private final abstract class CirceEncoder[E[_]]
-private object CirceEncoder { @inline implicit final def get: CirceEncoder[io.circe.Encoder] = null }
+@nowarn private object CirceEncoder { @inline implicit final def get: CirceEncoder[io.circe.Encoder] = null }
 
 private final abstract class JsoniterScalaCodec[C[_]]
-private object JsoniterScalaCodec {
+@nowarn private object JsoniterScalaCodec {
   @inline implicit final def get: JsoniterScalaCodec[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec] = null
 }
 
 private final abstract class ZioJsonCodec[C[_]]
-private object ZioJsonCodec { @inline implicit final def get: ZioJsonCodec[zio.json.JsonCodec] = null }
+@nowarn private object ZioJsonCodec { @inline implicit final def get: ZioJsonCodec[zio.json.JsonCodec] = null }

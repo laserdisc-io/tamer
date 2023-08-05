@@ -5,7 +5,8 @@ import cats.data.NonEmptyList
 import com.comcast.ip4s._
 import fs2.io.net.Network
 import io.circe.syntax._
-import log.effect.zio.ZioLogWriter.log4sFromClass
+import log.effect.LogWriter
+import log.effect.zio.ZioLogWriter.log4sFromName
 import org.http4s._
 import org.http4s.AuthScheme.Bearer
 import org.http4s.Credentials.Token
@@ -18,14 +19,13 @@ import org.http4s.server.middleware.Logger
 import org.typelevel.ci._
 import zio._
 import zio.interop.catz._
-import zio.interop.catz.core._
 import zio.test._
 
 trait HttpServerSupport {
 
   case class ServerLog(lastRequest: Option[Long])
 
-  private[this] def serverBuilder(port: Port, sl: Ref[ServerLog]): EmberServerBuilder[Task] = {
+  private[this] def serverBuilder(port: Port, sl: Ref[ServerLog], log: LogWriter[Task]): EmberServerBuilder[Task] = {
 
     implicit val network = Network.forAsync[Task]
 
@@ -54,18 +54,17 @@ trait HttpServerSupport {
       case GET -> Root / "auth-token"                                     => ZIO.succeed(Response(Forbidden))
     }
 
-    val logger        = log4sFromClass.provideEnvironment(ZEnvironment(this.getClass))
-    val loggingRoutes = Logger.httpRoutes[Task](true, true, _ => false, Some(s => logger.flatMap(_.info(s))))(routes)
+    val loggingRoutes = Logger.httpRoutes[Task](true, true, _ => false, Some(log.info(_)))(routes)
 
     EmberServerBuilder.default[Task].withHost(ipv4"0.0.0.0").withPort(port).withHttpApp(loggingRoutes.orNotFound)
   }
 
   final def withServer(f: (Port, Ref[ServerLog]) => Task[TestResult]): Task[TestResult] = for {
-    log       <- log4sFromClass.provideEnvironment(ZEnvironment(this.getClass))
+    log       <- log4sFromName.provideEnvironment(ZEnvironment("HttpServerSupport"))
     serverLog <- Ref.make(ServerLog(None))
     i         <- Random.nextIntBetween(10000, 50000)
     _         <- log.info(s"trying to start an Ember server on $i")
     port      <- ZIO.fromOption(Port.fromInt(i)).orDieWith(_ => new RuntimeException(s"unable to create port on $i"))
-    out       <- serverBuilder(port, serverLog).build.use(_ => f(port, serverLog))
+    out       <- serverBuilder(port, serverLog, log).build.use(_ => f(port, serverLog))
   } yield out
 }

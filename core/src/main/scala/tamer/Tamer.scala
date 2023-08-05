@@ -154,7 +154,7 @@ object Tamer {
       producer: TransactionalProducer
   ) extends Tamer {
 
-    private[this] val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.kafka"))
+    private[this] val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.LiveTamer"))
 
     private[this] val SinkConfig(sinkTopic)                    = config.sink
     private[this] val StateConfig(stateTopic, stateGroupId, _) = config.state
