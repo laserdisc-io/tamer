@@ -3,9 +3,34 @@ package tamer
 import java.io.{InputStream, OutputStream}
 
 import io.confluent.kafka.schemaregistry.ParsedSchema
-import scala.annotation.{implicitNotFound, nowarn}
 
-@implicitNotFound("Could not find an implicit Codec[${A}] in scope")
+import scala.annotation.implicitNotFound
+
+@implicitNotFound(
+  "\n" +
+    "Could not find or construct a \u001b[36mtamer.Codec\u001b[0m instance for type:\n" +
+    "\n" +
+    "  \u001b[32m${A}\u001b[0m\n" +
+    "\n" +
+    "This can happen for a few reasons, but the most common case is a(/some) missing implicit(/implicits).\n" +
+    "\n" +
+    "Specifically, you need to ensure that wherever you are expected to provide a \u001b[36mtamer.Codec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m:\n" +
+    "  1. If Avro4s is in the classpath, then a \u001b[36mcom.sksamuel.avro4s.Decoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, a \u001b[36mcom.sksamuel.avro4s.Encoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, and a \u001b[36mcom.sksamuel.avro4s.SchemaFor[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too.\n" +
+    "  2. Alternatively, if *either* one of the following is in the classpath:\n" +
+    "    a. Circe\n" +
+    "    b. Jsoniter Scala\n" +
+    "    c. ZIO Json\n" +
+    "    then, respectively:\n" +
+    "    a. An \u001b[36mio.circe.Decoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, and an \u001b[36mio.circe.Encoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too\n" +
+    "    b. A \u001b[36mcom.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too\n" +
+    "    c. A \u001b[36mzio.json.JsonCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too.\n" +
+    "\n" +
+    "Given how implicit resolution works in Scala, and more importantly how these implicits are defined in Tamer, care must be taken to avoid ambiguity when multiple Json libraries are in the classpath concurrently.\n" +
+    "To cater for this scenario, it is sufficient to explicitly summon the expected underlying \u001b[36mtamer.Codec\u001b[0m's instance provider, that is:\n" +
+    "  a. Circe: `import \u001b[36mtamer.Codec.optionalCirceCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
+    "  b. Jsoniter Scala: `import \u001b[36mtamer.Codec.optionalJsoniterScalaCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
+    "  c. ZIO Json: `import \u001b[36mtamer.Codec.optionalZioJsonCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`.\n"
+)
 sealed trait Codec[@specialized A] {
   def decode(is: InputStream): A
   def encode(value: A, os: OutputStream): Unit
@@ -70,21 +95,21 @@ private[tamer] sealed trait LowPriorityCodecs {
 }
 
 private final abstract class Avro4sDecoder[D[_]]
-@nowarn private object Avro4sDecoder { @inline implicit final def get: Avro4sDecoder[com.sksamuel.avro4s.Decoder] = null }
+private object Avro4sDecoder { @inline implicit final def get: Avro4sDecoder[com.sksamuel.avro4s.Decoder] = null }
 private final abstract class Avro4sEncoder[E[_]]
-@nowarn private object Avro4sEncoder { @inline implicit final def get: Avro4sEncoder[com.sksamuel.avro4s.Encoder] = null }
+private object Avro4sEncoder { @inline implicit final def get: Avro4sEncoder[com.sksamuel.avro4s.Encoder] = null }
 private final abstract class Avro4sSchemaFor[SF[_]]
-@nowarn private object Avro4sSchemaFor { @inline implicit final def get: Avro4sSchemaFor[com.sksamuel.avro4s.SchemaFor] = null }
+private object Avro4sSchemaFor { @inline implicit final def get: Avro4sSchemaFor[com.sksamuel.avro4s.SchemaFor] = null }
 
 private final abstract class CirceDecoder[D[_]]
-@nowarn private object CirceDecoder { @inline implicit final def get: CirceDecoder[io.circe.Decoder] = null }
+private object CirceDecoder { @inline implicit final def get: CirceDecoder[io.circe.Decoder] = null }
 private final abstract class CirceEncoder[E[_]]
-@nowarn private object CirceEncoder { @inline implicit final def get: CirceEncoder[io.circe.Encoder] = null }
+private object CirceEncoder { @inline implicit final def get: CirceEncoder[io.circe.Encoder] = null }
 
 private final abstract class JsoniterScalaCodec[C[_]]
-@nowarn private object JsoniterScalaCodec {
+private object JsoniterScalaCodec {
   @inline implicit final def get: JsoniterScalaCodec[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec] = null
 }
 
 private final abstract class ZioJsonCodec[C[_]]
-@nowarn private object ZioJsonCodec { @inline implicit final def get: ZioJsonCodec[zio.json.JsonCodec] = null }
+private object ZioJsonCodec { @inline implicit final def get: ZioJsonCodec[zio.json.JsonCodec] = null }

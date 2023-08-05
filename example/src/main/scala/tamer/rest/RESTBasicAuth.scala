@@ -22,7 +22,7 @@ object RESTBasicAuth extends ZIOAppDefault {
   ): Schedule[Any, FallibleResponse, FallibleResponse] =
     Schedule.spaced(5.seconds) *> Schedule.recurs(3) *> Schedule.recurWhile(response => RetryWhen.Default(request, response))
 
-  val program: ZIO[ZEnv, TamerError, Unit] = RESTSetup
+  override final val run = RESTSetup
     .paginated(
       baseUrl = "http://localhost:9395/basic-auth",
       pageDecoder = pageDecoder,
@@ -33,7 +33,6 @@ object RESTBasicAuth extends ZIOAppDefault {
       offsetParameterName = "offset",
       increment = 2
     )
-    .runWith(restLive() ++ kafkaConfigFromEnvironment)
-
-  override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
+    .runWith(restLive() ++ KafkaConfig.fromEnvironment)
+    .exitCode
 }

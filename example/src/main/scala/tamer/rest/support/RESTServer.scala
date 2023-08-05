@@ -2,62 +2,66 @@ package tamer
 package rest
 package support
 
-import java.net.InetSocketAddress
-
-import uzhttp.HTTPError.Forbidden
-import uzhttp.Response
-import uzhttp.server.Server
+import com.comcast.ip4s._
+import fs2.io.net.Network
+import io.circe.literal._
+import log.effect.zio.ZioLogWriter.log4sFromClass
+import org.http4s._
+import org.http4s.AuthScheme.{Basic, Bearer}
+import org.http4s.Credentials.Token
+import org.http4s.circe._
+import org.http4s.dsl.Http4sDslBinCompat
+import org.http4s.ember.server._
+import org.http4s.headers.Authorization
+import org.http4s.implicits._
+import org.http4s.server.middleware.Logger
 import zio._
-import zio.duration.durationInt
+import zio.interop.catz._
 
+import scala.util.Try
 import scala.annotation.nowarn
-import zio.{ Random, Random, ZIOAppDefault }
 
 object RESTServer extends ZIOAppDefault {
-  val rotatingSecret = for {
-    secret <- Ref.make(0)
-    _      <- secret.update(_ + 1).schedule(Schedule.spaced(2.seconds)).delay(2.seconds).fork
-  } yield secret
-  val jsonHeader            = List("content-type" -> "application/json")
-  val respondWithRandomData = Random.nextInt.map(i => Response.plain(s"""{"rubbish":"...","data":"$i"}""", headers = jsonHeader))
-  val finitePagination = for {
-    pages <- Ref.make(List(1 to 20: _*))
-    _     <- pages.update(l => l :+ (l.last + 1)).repeat(Schedule.spaced(2.seconds)).fork
-  } yield pages
-  val dynamicPagination = for {
-    pages <- Ref.make(List.fill(5)(0))
-    _     <- pages.update(l => l.map(_ + 1)).repeat(Schedule.spaced(2.seconds)).fork
-  } yield pages
+  val randomData = Random.nextInt.map(i => json"""{"rubbish": "...", "data": ${i.toString}}""")
 
-  def server(rotatingSecret: Ref[Int], finitePagination: Ref[List[Int]], dynamicPagination: Ref[List[Int]]): Server.Builder[Random] =
-    Server.builder(new InetSocketAddress("0.0.0.0", 9395)).handleSome {
-      case req if req.uri.getPath == "/auth" && req.headers.get("Authorization").contains("Basic dXNlcjpwYXNz") => // user:pass
-        rotatingSecret.get.flatMap(currentToken => ZIO.succeed(Response.plain("validToken" + currentToken))): @nowarn
-      case req if req.uri.getPath == "/" =>
-        rotatingSecret.get.flatMap { currentToken =>
-          if (req.headers.get("Authorization").contains("Bearer validToken" + currentToken)) {
-            respondWithRandomData
-          } else {
-            ZIO.fail(Forbidden(s"Invalid token presented: ${req.headers.getOrElse("Authorization", "`no token was presented`")}"))
-          }
-        }
-      case req if req.uri.getPath == "/basic-auth" && req.headers.get("Authorization").contains("Basic dXNlcjpwYXNz") => // user:pass
-        respondWithRandomData
-      case req if req.uri.getPath == "/finite-pagination" =>
-        val page  = req.uri.getQuery.dropWhile(c => !c.isDigit).toInt
-        val bodyM = finitePagination.get.map(_.grouped(3).toList.lift(page)).map(_.map(_.mkString(",")).getOrElse(""))
-        bodyM.map(Response.plain(_)) // outputs "1,2,3" "4,5,6" and so on...
-      case req if req.uri.getPath == "/dynamic-pagination" =>
-        val page  = req.uri.getQuery.dropWhile(c => !c.isDigit).toInt
-        val bodyM = dynamicPagination.get.map(_.grouped(3).toList.lift(page)).map(_.map(_.mkString(",")).getOrElse(""))
-        bodyM.map(Response.plain(_))
-      case _ => ZIO.fail(Forbidden(s"You don't have access to this resource."))
+  val rotatingSecret    = Ref.make(0).tap(_.update(_ + 1).schedule(Schedule.spaced(2.seconds)).delay(2.seconds).fork)
+  val finitePagination  = Ref.make(List(1 to 20: _*)).tap(_.update(l => l :+ (l.last + 1)).repeat(Schedule.spaced(2.seconds)).fork)
+  val dynamicPagination = Ref.make(List.fill(5)(0)).tap(_.update(l => l.map(_ + 1)).repeat(Schedule.spaced(2.seconds)).fork)
+
+  object IsInt { def unapply(s: String): Option[Int] = Try(Integer.valueOf(s).toInt).toOption }
+
+  implicit val network = Network.forAsync[Task]
+
+  object TaskDsl extends Http4sDslBinCompat[Task]
+  import TaskDsl._
+
+  def server(rotatingSecret: Ref[Int], finitePagination: Ref[List[Int]], dynamicPagination: Ref[List[Int]]): EmberServerBuilder[Task] = {
+    val forbidden: UIO[Response[Task]] = ZIO.succeed(Response(Forbidden))
+
+    def checkAuth(r: Request[Task], scheme: AuthScheme, token: String) = r.headers.get[Authorization].exists(_.credentials == Token(scheme, token))
+    def checkBasicAuth(r: Request[Task])                               = checkAuth(r, Basic, "dXNlcjpwYXNz") // user:pass in b64
+    def checkBearerAuthZIO(r: Request[Task])                           = rotatingSecret.get.map(ct => checkAuth(r, Bearer, s"validToken$ct"))
+
+    val routes = HttpRoutes.of[Task] {
+      case r @ GET -> Root / "auth" if checkBasicAuth(r)       => rotatingSecret.get.flatMap(currentToken => Ok("validToken" + currentToken))
+      case r @ GET -> Root / "basic-auth" if checkBasicAuth(r) => randomData.flatMap(Ok(_))
+      case r @ GET -> Root                                     => ZIO.ifZIO(checkBearerAuthZIO(r))(randomData.flatMap(Ok(_)), forbidden)
+      case r @ GET -> Root / "finite-pagination" =>
+        @nowarn val Some(page) = r.uri.query.pairs.collectFirst { case (_, Some(IsInt(p))) => p }
+        val bodyZIO            = finitePagination.get.map(_.grouped(3).toList.lift(page)).map(_.map(_.mkString(",")).getOrElse(""))
+        bodyZIO.flatMap(Ok(_)) // outputs "1,2,3" "4,5,6" and so on...
+      case r @ GET -> Root / "dynamic-pagination" =>
+        @nowarn val Some(page) = r.uri.query.pairs.collectFirst { case (_, Some(IsInt(p))) => p }
+        val bodyZIO            = dynamicPagination.get.map(_.grouped(3).toList.lift(page)).map(_.map(_.mkString(",")).getOrElse(""))
+        bodyZIO.flatMap(Ok(_)) // outputs "1,2,3" "4,5,6" and so on...
     }
 
-  override final def run(args: List[String]): URIO[ZEnv, ExitCode] = for {
-    rotatingSecret    <- rotatingSecret
-    finitePagination  <- finitePagination
-    dynamicPagination <- dynamicPagination
-    exit              <- server(rotatingSecret, finitePagination, dynamicPagination).serve.useForever.exitCode
-  } yield exit
+    val logger        = log4sFromClass.provideEnvironment(ZEnvironment(this.getClass))
+    val loggingRoutes = Logger.httpRoutes[Task](true, true, _ => false, Some(s => logger.flatMap(_.info(s))))(routes)
+
+    EmberServerBuilder.default[Task].withHost(ipv4"0.0.0.0").withPort(port"9395").withHttpApp(loggingRoutes.orNotFound)
+  }
+
+  override final val run =
+    (rotatingSecret <&> finitePagination <&> dynamicPagination).flatMap { case (rs, fp, dp) => server(rs, fp, dp).build.useForever.exitCode }
 }

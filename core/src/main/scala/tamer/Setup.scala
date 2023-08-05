@@ -11,9 +11,8 @@ abstract class Setup[-R, K: Tag, V: Tag, S: Tag] {
   val repr: String = "no repr string implemented, if you want a neat description of the source configuration please implement it"
   def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R, S]
 
-  final val run: ZIO[R with KafkaConfig, TamerError, Unit] =
-    runLoop.provideSomeLayer(Tamer.live(this))
-  final def runWith[E >: TamerError, R1: Tag](layer: Layer[E, R1])(implicit ev: R1 <:< R with KafkaConfig): IO[E, Unit] = run.provideSomeLayer(layer)
+  final val run: ZIO[R with KafkaConfig, TamerError, Unit] = runLoop.provideSomeLayer(Tamer.live(this))
+  final def runWith[E >: TamerError, R1](layer: Layer[E, R with KafkaConfig with R1]): ZIO[Scope, E, Unit] = runLoop.provideLayer(layer >>> Tamer.live(this))
 }
 
 object Setup {

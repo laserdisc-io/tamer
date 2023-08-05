@@ -6,9 +6,9 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
 
 import zio.oci.objectstorage._
-import zio.stream.ZTransducer
+import zio.stream.ZPipeline
 
-sealed abstract case class ObjectStorageSetup[-R, K, V, S](
+sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, S: Tag](
     serdes: Setup.Serdes[K, V, S],
     initialState: S,
     recordKey: (S, V) => K,
@@ -19,8 +19,8 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
     startAfter: S => Option[String],
     objectNameFinder: String => Boolean,
     stateFold: (S, Option[String]) => URIO[R, S],
-    transducer: ZTransducer[R, Throwable, Byte, V]
-) extends Setup[R with Blocking with ObjectStorage, K, V, S] {
+    pipeline: ZPipeline[R, Throwable, Byte, V]
+) extends Setup[R with ObjectStorage, K, V, S] {
 
   private[this] final val namespaceHash = namespace.hash
   private[this] final val bucketHash    = bucket.hash
@@ -37,18 +37,18 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
        |state key:      $stateKey
        |""".stripMargin
 
-  private[this] final val logTask = log4sFromName.provideService("tamer.oci.objectstorage")
+  private[this] final val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.oci.objectstorage"))
 
   private[this] final def process(
       log: LogWriter[Task],
       currentState: S,
       queue: Enqueue[NonEmptyChunk[(K, V)]]
-  ): ZIO[R with ObjectStorage with Blocking, Throwable, Unit] =
+  ): RIO[R with ObjectStorage, Unit] =
     objectName(currentState) match {
       case Some(name) =>
         log.info(s"getting object $name") *>
           getObject(namespace, bucket, name)
-            .transduce(transducer)
+            .via(pipeline)
             .mapError(error => TamerError(s"Error while processing object $name: ${error.getMessage}", error))
             .map(value => recordKey(currentState, value) -> value)
             .runForeachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit))
@@ -56,7 +56,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
         log.debug("no state change")
     }
 
-  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with Blocking with ObjectStorage, S] = for {
+  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with ObjectStorage, S] = for {
     log <- logTask
     _   <- log.debug(s"current state: $currentState")
     options <- ZIO.succeed(
@@ -69,7 +69,7 @@ sealed abstract case class ObjectStorageSetup[-R, K, V, S](
 }
 
 object ObjectStorageSetup {
-  def apply[R, K: Codec, V: Codec, S: Codec](
+  def apply[R, K: Tag: Codec, V: Tag: Codec, S: Tag: Codec](
       namespace: String,
       bucket: String,
       initialState: S
@@ -80,7 +80,7 @@ object ObjectStorageSetup {
       startAfter: S => Option[String],
       prefix: Option[String] = None,
       objectNameFinder: String => Boolean = _ => true,
-      transducer: ZTransducer[R, Throwable, Byte, V] = ZTransducer.utf8Decode >>> ZTransducer.splitLines
+      pipeline: ZPipeline[R, Throwable, Byte, V] = ZPipeline.utf8Decode >>> ZPipeline.splitLines
   )(
       implicit ev: Codec[Tamer.StateKey]
   ): ObjectStorageSetup[R, K, V, S] = new ObjectStorageSetup(
@@ -94,6 +94,6 @@ object ObjectStorageSetup {
     startAfter,
     objectNameFinder,
     stateFold,
-    transducer
+    pipeline
   ) {}
 }

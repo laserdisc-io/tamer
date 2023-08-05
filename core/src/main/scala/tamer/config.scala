@@ -4,7 +4,6 @@ import cats.implicits._
 import ciris._
 import zio._
 import zio.interop.catz._
-import zio.interop.catz.implicits._
 
 final case class SinkConfig(topic: String)
 final case class StateConfig(topic: String, groupId: String, clientId: String)
@@ -44,9 +43,8 @@ object KafkaConfig {
   private[this] implicit final val hostListConfigDecoder: ConfigDecoder[String, List[String]] =
     ConfigDecoder.identity[String].map(_.split(",").toList.map(_.trim))
 
-  private[this] val kafkaSinkConfigValue = env("KAFKA_SINK_TOPIC").map(SinkConfig)
-  private[this] val kafkaStateConfigValue =
-    (env("KAFKA_STATE_TOPIC"), env("KAFKA_STATE_GROUP_ID"), env("KAFKA_STATE_CLIENT_ID")).mapN(StateConfig)
+  private[this] val kafkaSinkConfigValue  = env("KAFKA_SINK_TOPIC").map(SinkConfig)
+  private[this] val kafkaStateConfigValue = (env("KAFKA_STATE_TOPIC"), env("KAFKA_STATE_GROUP_ID"), env("KAFKA_STATE_CLIENT_ID")).mapN(StateConfig)
   private[this] val kafkaConfigValue = (
     env("KAFKA_BROKERS").as[List[String]],
     env("KAFKA_SCHEMA_REGISTRY_URL").option,
@@ -57,10 +55,7 @@ object KafkaConfig {
     env("KAFKA_TRANSACTIONAL_ID").as[String]
   ).mapN(KafkaConfig.apply)
 
-  final val fromEnvironment: Layer[TamerError, KafkaConfig] = ZLayer.fromZIO {
-    kafkaConfigValue
-      .load[Task]
-      .refineToOrDie[ConfigException]
-      .mapError(ce => TamerError(ce.error.redacted.show, ce))
+  final val fromEnvironment: Layer[TamerError, KafkaConfig] = ZLayer {
+    kafkaConfigValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce))
   }
 }

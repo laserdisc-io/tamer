@@ -5,9 +5,7 @@ import java.net.URI
 
 import software.amazon.awssdk.regions.Region.AF_SOUTH_1
 import zio._
-
 import zio.s3._
-import zio.ZIOAppDefault
 
 object S3Generalized extends ZIOAppDefault {
   object internals {
@@ -38,7 +36,7 @@ object S3Generalized extends ZIOAppDefault {
     KafkaConfig(List("localhost:9092"), Some("http://localhost:8081"), 10.seconds, 50, kafkaSink, kafkaState, "s3-generalized-id")
   }
 
-  val program = S3Setup(
+  override final val run = S3Setup(
     bucket = internals.bucketName,
     prefix = internals.prefix,
     minimumIntervalForBucketFetch = 1.second,
@@ -48,7 +46,5 @@ object S3Generalized extends ZIOAppDefault {
     recordKey = (l: Long, _: String) => l,
     selectObjectForState = (l: Long, _: Keys) => internals.selectObjectForInstant(l),
     stateFold = internals.getNextState
-  ).runWith(liveM(AF_SOUTH_1, s3.providers.default, Some(new URI("http://localhost:9000"))) ++ myKafkaConfigLayer)
-
-  override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
+  ).runWith(Scope.default >>> (liveZIO(AF_SOUTH_1, s3.providers.default, Some(new URI("http://localhost:9000"))) ++ myKafkaConfigLayer)).exitCode
 }

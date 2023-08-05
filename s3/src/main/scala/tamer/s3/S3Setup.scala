@@ -7,14 +7,12 @@ import java.time.format.DateTimeFormatter
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
-import zio.Clock
-import zio.duration.durationInt
 import zio.s3._
-import zio.stream.ZTransducer
+import zio.stream.ZPipeline
 
 import scala.math.Ordering.Implicits.infixOrderingOps
 
-sealed abstract case class S3Setup[R, K, V, S: Hashable](
+sealed abstract case class S3Setup[R, K: Tag, V: Tag, S: Tag: Hashable](
     serdes: Setup.Serdes[K, V, S],
     initialState: S,
     recordKey: (S, V) => K,
@@ -25,8 +23,8 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     maximumIntervalForBucketFetch: Duration,
     selectObjectForState: (S, Keys) => Option[String],
     stateFold: (KeysR, S, Queue[Unit]) => UIO[S],
-    transducer: ZTransducer[R, Throwable, Byte, V]
-) extends Setup[R with Clock with S3, K, V, S] {
+    pipeline: ZPipeline[R, Throwable, Byte, V]
+) extends Setup[R with S3, K, V, S] {
 
   private[this] sealed trait EphemeralChange extends Product with Serializable
   private[this] final object EphemeralChange {
@@ -49,13 +47,14 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
        |parallelism: $parallelism
        |""".stripMargin
 
-  private final val logTask = log4sFromName.provideService("tamer.s3")
+  private final val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.s3"))
 
   private final val initialEphemeralState = Ref.make(List.empty[String])
 
   private final val fetchSchedule = Schedule.exponential(minimumIntervalForBucketFetch) || Schedule.spaced(maximumIntervalForBucketFetch)
+  private final val ephemeralChangeSchedule = Schedule.once ++ fetchSchedule.untilInput((_: EphemeralChange) == EphemeralChange.Detected)
 
-  private final def updatedSourceState(keysR: KeysR, keysChangedToken: Queue[Unit]) = {
+  private final def updatedSourceState(keysR: KeysR, keysChangedToken: Queue[Unit]): ZIO[S3,Throwable,EphemeralChange] = {
     val paginationMaxKeys         = 1000L      // FIXME magic
     val paginationMaxPages        = 1000L      // FIXME magic
     val defaultTimeoutBucketFetch = 60.seconds // FIXME magic
@@ -93,28 +92,25 @@ sealed abstract case class S3Setup[R, K, V, S: Hashable](
     _ <- log.debug(s"will ask for key $optKey") *> optKey
       .map(
         getObject(bucket, _)
-          .transduce(transducer)
+          .via(pipeline)
           .map(value => recordKey(nextState, value) -> value)
           .runForeachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit))
       )
       .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
   } yield nextState
 
-  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with Clock with S3, S] = for {
+  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with S3, S] = for {
     sourceState <- initialEphemeralState
     token       <- Queue.dropping[Unit](requestedCapacity = 1)
-    _ <- updatedSourceState(sourceState, token)
-      .scheduleFrom(EphemeralChange.Detected)(Schedule.once ++ fetchSchedule.untilInput(_ == EphemeralChange.Detected))
-      .forever
-      .fork
-    newState <- process(sourceState, token, currentState, queue)
+    _           <- updatedSourceState(sourceState, token).scheduleFrom(EphemeralChange.Detected)(ephemeralChangeSchedule).forever.fork
+    newState    <- process(sourceState, token, currentState, queue)
   } yield newState
 }
 
 object S3Setup {
-  private[this] final val defaultTransducer = ZTransducer.utf8Decode >>> ZTransducer.splitLines
+  private[this] final val defaultPipeline = ZPipeline.utf8Decode >>> ZPipeline.splitLines
 
-  def apply[R, K: Codec, V: Codec, S: Codec: Hashable](
+  def apply[R, K: Tag: Codec, V: Tag: Codec, S: Tag: Codec: Hashable](
       bucket: String,
       prefix: String,
       minimumIntervalForBucketFetch: Duration,
@@ -125,7 +121,7 @@ object S3Setup {
       selectObjectForState: (S, Keys) => Option[String],
       stateFold: (KeysR, S, Queue[Unit]) => UIO[S],
       parallelism: Int = 1,
-      transducer: ZTransducer[R, Throwable, Byte, V] = defaultTransducer
+      pipeline: ZPipeline[R, Throwable, Byte, V] = defaultPipeline
   )(
       implicit ev: Codec[Tamer.StateKey]
   ): S3Setup[R, K, V, S] = new S3Setup(
@@ -139,7 +135,7 @@ object S3Setup {
     maximumIntervalForBucketFetch,
     selectObjectForState,
     stateFold,
-    transducer
+    pipeline
   ) {}
 
   private[s3] final def suffixWithoutFileExtension(key: String, prefix: String, formatter: ZonedDateTimeFormatter): String = {
@@ -167,12 +163,12 @@ object S3Setup {
   private final def selectObjectForInstant(formatter: ZonedDateTimeFormatter)(from: Instant, keys: Keys): Option[String] =
     keys.find(_.contains(formatter.format(from)))
 
-  final def timed[R, K: Codec, V: Codec](
+  final def timed[R, K: Tag: Codec, V: Tag: Codec](
       bucket: String,
       prefix: String,
       from: Instant,
       recordKey: (Instant, V) => K = (l: Instant, _: V) => l,
-      transducer: ZTransducer[R, Throwable, Byte, V] = defaultTransducer,
+      pipeline: ZPipeline[R, Throwable, Byte, V] = defaultPipeline,
       parallelism: Int = 1,
       dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
       minimumIntervalForBucketFetch: Duration = 5.minutes,
@@ -191,6 +187,6 @@ object S3Setup {
     maximumIntervalForBucketFetch,
     selectObjectForInstant(dateTimeFormatter) _,
     getNextState(prefix, dateTimeFormatter) _,
-    transducer
+    pipeline
   ) {}
 }

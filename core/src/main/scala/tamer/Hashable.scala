@@ -1,8 +1,8 @@
 package tamer
 
-import scala.util.hashing._
-import scala.util.hashing.MurmurHash3._
 import java.time.Instant
+
+import scala.util.hashing._
 
 trait Hashable[S] {
 
@@ -18,7 +18,7 @@ object Hashable extends HashableInstances0 {
 
 sealed trait HashableInstances0 extends HashableInstances1 {
   implicit final val instantHashable: Hashable[Instant] = i => byteswap64(i.getEpochSecond()).toInt
-  implicit final val stringHashable: Hashable[String]   = stringHash(_)
+  implicit final val stringHashable: Hashable[String]   = MurmurHash3.stringHash(_)
 }
 
 sealed trait HashableInstances1 {

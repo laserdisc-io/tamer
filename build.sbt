@@ -7,8 +7,9 @@ val V = new {
   val `cats-effect`      = "3.5.1"
   val circe              = "0.14.5"
   val ciris              = "3.2.0"
-  val confluent          = "7.2.2"
+  val confluent          = "7.4.1"
   val doobie             = "1.0.0-RC4"
+  val http4s             = "0.23.23"
   val jackson            = "2.15.2"
   val `jackson-databind` = "2.15.2"
   val `json-schema`      = "1.14.2"
@@ -20,14 +21,13 @@ val V = new {
   val postgres           = "42.6.0"
   val `scala-compat`     = "2.11.0"
   val slf4j              = "2.0.7"
-  val sttp               = "3.8.3"
-  val uzhttp             = "0.3.0-RC1"
-  val zio                = "2.0.4"
-  val `zio-interop`      = "3.3.0"
-  val `zio-json`         = "0.3.0"
-  val `zio-kafka`        = "2.0.1"
+  val sttp               = "3.8.16"
+  val zio                = "2.0.15"
+  val `zio-interop`      = "23.0.0.8"
+  val `zio-json`         = "0.6.0"
+  val `zio-kafka`        = "2.4.1"
   val `zio-oci-os`       = "0.6.0"
-  val `zio-s3`           = "0.4.2.1"
+  val `zio-s3`           = "0.4.2.4"
 }
 
 val flags = Seq(
@@ -42,7 +42,7 @@ val flags = Seq(
   "-opt-warnings",
   "-unchecked",
   "-Xfatal-warnings",
-  "-Xlint:_,-type-parameter-shadow",
+  "-Xlint:_,-infer-any,-type-parameter-shadow",
   "-Xlint:constant",
   "-Xsource:2.13",
   "-Yrangepos",
@@ -107,7 +107,7 @@ lazy val core = project
       "com.fasterxml.jackson.core"             % "jackson-core"                 % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-databind"             % V.`jackson-databind`,
       "dev.zio"                               %% "zio-interop-cats"             % V.`zio-interop`,
-      "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka`,
+      "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka` excludeAll ("org.apache.kafka", "kafka-clients"),
       "dev.zio"                               %% "zio-streams"                  % V.zio,
       "io.confluent"                           % "kafka-schema-registry-client" % V.confluent excludeAll ("org.apache.kafka", "kafka-clients"),
       "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
@@ -170,12 +170,14 @@ lazy val rest = project
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= Seq(
-      "com.softwaremill.sttp.client3" %% "zio"           % V.sttp,
-      "com.sksamuel.avro4s"           %% "avro4s-core"   % V.avro4s % Test,
-      "io.circe"                      %% "circe-core"    % V.circe  % Test,
-      "io.circe"                      %% "circe-generic" % V.circe  % Test,
-      "io.circe"                      %% "circe-parser"  % V.circe  % Test,
-      "org.polynote"                  %% "uzhttp"        % V.uzhttp % Test
+      "com.softwaremill.sttp.client3" %% "zio"                 % V.sttp,
+      "com.sksamuel.avro4s"           %% "avro4s-core"         % V.avro4s % Test,
+      "io.circe"                      %% "circe-core"          % V.circe  % Test,
+      "io.circe"                      %% "circe-generic"       % V.circe  % Test,
+      "io.circe"                      %% "circe-parser"        % V.circe  % Test,
+      "org.http4s"                    %% "http4s-circe"        % V.http4s % Test,
+      "org.http4s"                    %% "http4s-ember-server" % V.http4s % Test,
+      "org.http4s"                    %% "http4s-dsl"          % V.http4s % Test
     )
   )
 
@@ -188,7 +190,10 @@ lazy val example = project
     libraryDependencies ++= Seq(
       "ch.qos.logback"          % "logback-classic"         % V.logback,
       "com.sksamuel.avro4s"    %% "avro4s-core"             % V.avro4s,
-      "org.polynote"           %% "uzhttp"                  % V.uzhttp,
+      "io.circe"               %% "circe-literal"           % V.circe,
+      "org.http4s"             %% "http4s-circe"            % V.http4s,
+      "org.http4s"             %% "http4s-ember-server"     % V.http4s,
+      "org.http4s"             %% "http4s-dsl"              % V.http4s,
       "org.postgresql"          % "postgresql"              % V.postgres,
       "org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`
     ),

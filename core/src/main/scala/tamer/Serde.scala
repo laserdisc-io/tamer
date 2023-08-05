@@ -25,7 +25,7 @@ object Serde {
 
     new ZSerde[Registry, A] {
       override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[Registry, A] = ZIO.serviceWithZIO {
-        case Registry.Fake => deserializeSimple(data)
+        case Registry.FakeRegistry => deserializeSimple(data)
         case registry =>
           codec.maybeSchema.fold(deserializeSimple(data)) { schema =>
             val buffer = ByteBuffer.wrap(data)
@@ -46,7 +46,7 @@ object Serde {
       }
 
       override def serialize(topic: String, headers: Headers, value: A): RIO[Registry, Array[Byte]] = ZIO.serviceWithZIO {
-        case Registry.Fake => serializeSimple(value)
+        case Registry.FakeRegistry => serializeSimple(value)
         case registry =>
           codec.maybeSchema.fold(serializeSimple(value)) { schema =>
             for {

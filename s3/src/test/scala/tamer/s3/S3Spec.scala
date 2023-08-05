@@ -22,7 +22,7 @@ object S3Spec extends ZIOSpecDefault {
       val makeQueue = Queue.dropping[Unit](requestedCapacity = 1).tap(_.offer(()))
 
       (makeQueue <*> makeKeys).flatMap { case (keysQ, keysR) =>
-        assertM(S3Setup.getNextState(prefix, formatter)(keysR, from, keysQ))(equalTo(instant))
+        assertZIO(S3Setup.getNextState(prefix, formatter)(keysR, from, keysQ))(equalTo(instant))
       }
     }
   )

@@ -1,32 +1,40 @@
 package tamer
 
 import io.github.embeddedkafka.schemaregistry.{EmbeddedKWithSR, EmbeddedKafka, EmbeddedKafkaConfig}
+import kafka.server.UnboundedControllerMutationQuota
 import zio._
 
 trait FakeKafka {
   def bootstrapServers: List[String]
   def schemaRegistryUrl: String
+  def createTopic(topic: String): Task[Unit]
   def stop(): UIO[Unit]
 }
 
 object FakeKafka {
 
   case class EmbeddedKafkaService(embeddedKWithSR: EmbeddedKWithSR) extends FakeKafka {
-    override def bootstrapServers: List[String] = List(s"localhost:${embeddedKWithSR.config.kafkaPort}")
-    override def schemaRegistryUrl: String      = s"http://localhost:${embeddedKWithSR.config.schemaRegistryPort}"
-    override def stop(): UIO[Unit]              = ZIO.succeed(embeddedKWithSR.stop(true))
+    private[this] final def _createTopic(topic: String) =
+      embeddedKWithSR.broker.autoTopicCreationManager.createTopics(Set(topic), UnboundedControllerMutationQuota, None)
+
+    override def bootstrapServers: List[String]         = List(s"localhost:${embeddedKWithSR.config.kafkaPort}")
+    override def schemaRegistryUrl: String              = s"http://localhost:${embeddedKWithSR.config.schemaRegistryPort}"
+    override def createTopic(topic: String): Task[Unit] = ZIO.attemptBlocking(_createTopic(topic)).unit
+    override def stop(): UIO[Unit]                      = ZIO.attemptBlocking(embeddedKWithSR.stop(true)).ignore
   }
 
   case object DefaultLocal extends FakeKafka {
-    override def bootstrapServers: List[String] = List(s"localhost:9092")
-    override def schemaRegistryUrl: String      = "http://localhost:8081"
-    override def stop(): UIO[Unit]              = ZIO.unit
+    override def bootstrapServers: List[String]         = List(s"localhost:9092")
+    override def schemaRegistryUrl: String              = "http://localhost:8081"
+    override def createTopic(topic: String): Task[Unit] = ZIO.unit
+    override def stop(): UIO[Unit]                      = ZIO.unit
   }
 
   val kafkaConfigLayer: RLayer[FakeKafka, KafkaConfig] = ZLayer {
     for {
       randomString <- Random.nextUUID.map(uuid => s"test-$uuid")
       fakeKafka    <- ZIO.service[FakeKafka]
+      _            <- fakeKafka.createTopic(s"sink.topic.tape.$randomString")
     } yield KafkaConfig(
       brokers = fakeKafka.bootstrapServers,
       schemaRegistryUrl = Some(fakeKafka.schemaRegistryUrl),
@@ -45,7 +53,7 @@ object FakeKafka {
     ZIO.acquireRelease(ZIO.attempt(EmbeddedKafkaService(EmbeddedKafka.start())))(_.stop())
   }
 
-  val embeddedKafkaConfigLayer: RLayer[Random, KafkaConfig] = embeddedKafkaLayer ++ ZLayer.service[Random] >>> kafkaConfigLayer
+  val embeddedKafkaConfigLayer: TaskLayer[KafkaConfig] = embeddedKafkaLayer >>> kafkaConfigLayer
 
   val localKafkaLayer: ULayer[FakeKafka] = ZLayer.succeed(DefaultLocal)
 }

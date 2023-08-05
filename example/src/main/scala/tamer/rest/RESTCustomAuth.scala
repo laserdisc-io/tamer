@@ -34,7 +34,7 @@ object RESTCustomAuth extends ZIOAppDefault {
     }
   }
 
-  val program = RESTSetup
+  override final val run = RESTSetup
     .paginated(
       baseUrl = "http://localhost:9395",
       pageDecoder = pageDecoder,
@@ -44,7 +44,6 @@ object RESTCustomAuth extends ZIOAppDefault {
       offsetParameterName = "offset",
       increment = 2
     )
-    .runWith(restLive() ++ kafkaConfigFromEnvironment)
-
-  override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
+    .runWith(restLive() ++ KafkaConfig.fromEnvironment)
+    .exitCode
 }

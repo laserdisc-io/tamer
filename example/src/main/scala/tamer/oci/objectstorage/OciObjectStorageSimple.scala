@@ -10,7 +10,7 @@ import zio.ZIOAppDefault
 object OciObjectStorageSimple extends ZIOAppDefault {
   case class ObjectsCursor(startAfter: Option[String], current: Option[String])
 
-  val program: ZIO[ZEnv, TamerError, Unit] = ObjectStorageSetup(
+  override final val run = ObjectStorageSetup(
     namespace = "namespace",
     bucket = "bucketName",
     initialState = ObjectsCursor(None, None)
@@ -23,7 +23,5 @@ object OciObjectStorageSimple extends ZIOAppDefault {
     },
     objectName = _.current,
     startAfter = _.startAfter
-  ).runWith(objectStorageLayer(US_PHOENIX_1, ObjectStorageAuth.fromConfigFileDefaultProfile) ++ kafkaConfigFromEnvironment)
-
-  override final def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
+  ).runWith(objectStorageLayer(US_PHOENIX_1, ObjectStorageAuth.fromConfigFileDefaultProfile) ++ KafkaConfig.fromEnvironment).exitCode
 }

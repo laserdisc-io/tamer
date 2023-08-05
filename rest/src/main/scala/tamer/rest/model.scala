@@ -27,7 +27,7 @@ object DecodedPage {
 }
 
 object EphemeralSecretCache {
-  val live: ULayer[EphemeralSecretCache] = Ref.make[Option[String]](None).toLayer
+  val live: ULayer[EphemeralSecretCache] = ZLayer(Ref.make[Option[String]](None))
 }
 
 case class Offset(offset: Int, nextIndex: Int) {

@@ -11,8 +11,7 @@ import zio.kafka.consumer._
 import zio.kafka.producer.{ProducerSettings, Transaction, TransactionalProducer, TransactionalProducerSettings}
 import zio.kafka.serde.{Serde => ZSerde, Serializer}
 import zio.stream.ZStream
-
-import scala.annotation.nowarn
+import org.apache.kafka.clients.consumer.OffsetAndMetadata
 
 trait Tamer {
   def runLoop: IO[TamerError, Unit]
@@ -24,7 +23,7 @@ object Tamer {
 
   final case class StateKey(stateKey: String, groupId: String)
 
-  @nowarn private[this] final val tenTimes = Schedule.recurs(10L) && Schedule.exponential(100.milliseconds) // FIXME make configurable
+  private[this] final val tenTimes = Schedule.recurs(10L) && Schedule.exponential(100.milliseconds) // FIXME make configurable
 
   private[this] final val tamerErrors: PartialFunction[Throwable, TamerError] = {
     case ke: KafkaException => TamerError(ke.getLocalizedMessage, ke)
@@ -58,10 +57,8 @@ object Tamer {
   private[tamer] final case object Initialize extends Decision
   private[tamer] final case object Resume     extends Decision
 
-  private[tamer] def decidedAction(endOffset: Map[TopicPartition, Long]): Decision = endOffset match {
-    case blankPartitionMap if blankPartitionMap.values.forall(_ == 0L) => Initialize
-    case _                                                             => Resume
-  }
+  private[tamer] def decidedAction(committed: Map[TopicPartition, Option[OffsetAndMetadata]]): Decision =
+    if (committed.values.exists(_.isDefined)) Resume else Initialize
 
   private[tamer] final def source[K, V, S](
       stateTopic: String,
@@ -80,28 +77,25 @@ object Tamer {
     val key          = StateKey(stateHash.toHexString, stateGroupId)
     val subscription = Subscription.topics(stateTopic)
 
-    val waitForAssignment: Task[Set[TopicPartition]] = consumer.assignment
-      .flatMap {
-        case set if set.isEmpty => ZIO.fail(TamerError(s"Empty assignment set"))
-        case other              => ZIO.succeed(other)
-      }
-      .tapError(_ => log.debug(s"still no assignment on $stateGroupId, there are no partitions to process"))
-      .retry(tenTimes)
+    val partitionInfo: Task[Set[TopicPartition]] = for {
+      topics <- consumer.listTopics()
+      partitionInfo <- ZIO.fromOption(topics.get(stateTopic)).mapError(_ => TamerError(s"Group $stateGroupId has no permission on topic $stateTopic"))
+    } yield partitionInfo.map(pi => new TopicPartition(pi.topic(), pi.partition())).toSet
 
-    val subscribeAndDecide = log.debug(s"subscribing to $subscription") *>
-      consumer.subscribe(subscription) *>
-      log.debug("awaiting assignment") *>
-      waitForAssignment.flatMap(partitionSet =>
-        log.debug(s"received assignment $partitionSet") *>
-          consumer.endOffsets(partitionSet).map(decidedAction).tap(d => log.debug(s"decided to $d"))
-      )
+    val stateTopicDecision = for {
+      _            <- log.debug(s"obtaining information on $stateTopic")
+      partitionSet <- partitionInfo
+      _            <- log.debug(s"received the following information on $stateTopic: $partitionSet")
+      decision     <- consumer.committed(partitionSet).map(decidedAction)
+      _            <- log.debug(s"decided to $decision")
+    } yield decision
 
-    def initialize: RIO[Registry, Unit] = subscribeAndDecide.flatMap {
+    val initialize = stateTopicDecision.flatMap {
       case Initialize =>
         log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
           ZIO.scoped {
-            producer.createTransaction.flatMap { t =>
-              t.produce(stateTopic, key, initialState, stateKeySerde, stateValueSerde, None)
+            producer.createTransaction.flatMap { tx =>
+              tx.produce(stateTopic, key, initialState, stateKeySerde, stateValueSerde, None)
                 .tap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
                 .unit
             }
@@ -110,15 +104,16 @@ object Tamer {
     }
 
     val stateStream = consumer
-      .plainStream(stateKeySerde, stateValueSerde)
+      .plainStream(subscription, stateKeySerde, stateValueSerde)
       .mapZIO {
-        case CommittableRecord(record, offset) if record.key == key =>
+        case cr if cr.record.key == key =>
           ZIO.scoped {
-            producer.createTransaction.flatMap { transaction =>
-              val enrichedQueue = new EnrichedBoundedEnqueue(queue, (neChunk: NonEmptyChunk[(K, V)]) => (Left(transaction), neChunk.toChunk))
-              log.debug(s"consumer group $stateGroupId consumed state ${record.value} from ${offset.info}") *>
+            val offset = cr.offset
+            producer.createTransaction.flatMap { tx =>
+              val enrichedQueue = new EnrichedBoundedEnqueue(queue, (neChunk: NonEmptyChunk[(K, V)]) => (Left(tx), neChunk.toChunk))
+              log.debug(s"consumer group $stateGroupId consumed state ${cr.record.value} from ${offset.info}") *>
                 // we got a valid state to process, invoke the handler
-                log.debug(s"invoking the iteration function under $stateGroupId") *> iterationFunction(record.value, enrichedQueue).flatMap {
+                log.debug(s"invoking the iteration function under $stateGroupId") *> iterationFunction(cr.record.value, enrichedQueue).flatMap {
                   newState =>
                     // now that the handler has concluded its job, we've got to commit the offset and push the new state to Kafka
                     // we do these two operations within a transactional boundary as there is no guarantee whatsoever that
@@ -132,14 +127,15 @@ object Tamer {
                         p.await
                     } *>
                       log.debug(s"consumer group $stateGroupId will commit offset ${offset.info}") <*
-                      transaction
+                      tx
                         .produce(stateTopic, key, newState, stateKeySerde, stateValueSerde, Some(offset))
                         .tap(rmd => log.debug(s"pushed state $newState to $rmd for $stateGroupId"))
                 }
             }
           }
-        case CommittableRecord(record, offset) =>
-          log.debug(s"consumer group $stateGroupId ignored state (wrong key: ${record.key} != $key) from ${offset.info}") *>
+        case cr =>
+          val offset = cr.offset
+          log.debug(s"consumer group $stateGroupId ignored state (wrong key: ${cr.record.key} != $key) from ${offset.info}") *>
             offset.commitOrRetry(tenTimes) <*
             log.debug(s"consumer group $stateGroupId committed offset ${offset.info}")
       }
@@ -147,7 +143,7 @@ object Tamer {
     ZStream.fromZIO(initialize).drain ++ stateStream
   }
 
-  final class Live[K, V, S](
+  final class LiveTamer[K, V, S](
       config: KafkaConfig,
       serdes: Setup.Serdes[K, V, S],
       initialState: S,
@@ -222,16 +218,16 @@ object Tamer {
     }
   }
 
-  object Live {
+  object LiveTamer {
 
-    private[tamer] final def getManaged[K, V, S](
+    private[tamer] final def getService[K, V, S](
         config: KafkaConfig,
         serdes: Setup.Serdes[K, V, S],
         initialState: S,
         stateKey: Int,
         iterationFunction: (S, Enqueue[NonEmptyChunk[(K, V)]]) => Task[S],
         repr: String
-    ): ZIO[Scope, TamerError, Live[K, V, S]] = {
+    ): ZIO[Scope, TamerError, LiveTamer[K, V, S]] = {
 
       val KafkaConfig(brokers, _, closeTimeout, _, _, StateConfig(_, groupId, clientId), transactionalId, properties) = config
 
@@ -249,7 +245,7 @@ object Tamer {
 
       (Consumer.make(transactionalConsumerSettings) <*> TransactionalProducer.make(transactionalProducerSettings))
         .map { case (consumer, producer) =>
-          new Live(config, serdes, initialState, stateKey, iterationFunction, repr, consumer, producer)
+          new LiveTamer(config, serdes, initialState, stateKey, iterationFunction, repr, consumer, producer)
         }
         .mapError(TamerError("Could not build Kafka client", _))
     }
@@ -261,8 +257,8 @@ object Tamer {
         for {
           config <- ZIO.service[KafkaConfig]
           res <- {
-            val iterationFunctionManaged = ZIO.environment[R].map(r => Function.untupled((setup.iteration _).tupled.andThen(_.provideEnvironment(r))))
-            iterationFunctionManaged.flatMap(getManaged(config, setup.serdes, setup.initialState, setup.stateKey, _, setup.repr))
+            val iterationFunction = ZIO.environment[R].map(r => Function.untupled((setup.iteration _).tupled.andThen(_.provideEnvironment(r))))
+            iterationFunction.flatMap(getService(config, setup.serdes, setup.initialState, setup.stateKey, _, setup.repr))
           }
         } yield res
       }
@@ -270,5 +266,5 @@ object Tamer {
 
   final def live[R, K: Tag, V: Tag, S: Tag](
       setup: Setup[R, K, V, S]
-  ): ZLayer[R with KafkaConfig, TamerError, Tamer] = Live.getLayer(setup)
+  ): ZLayer[R with KafkaConfig, TamerError, Tamer] = LiveTamer.getLayer(setup)
 }
