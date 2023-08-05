@@ -78,7 +78,7 @@ object Tamer {
     val subscription = Subscription.topics(stateTopic)
 
     val partitionInfo: Task[Set[TopicPartition]] = for {
-      topics <- consumer.listTopics()
+      topics        <- consumer.listTopics()
       partitionInfo <- ZIO.fromOption(topics.get(stateTopic)).mapError(_ => TamerError(s"Group $stateGroupId has no permission on topic $stateTopic"))
     } yield partitionInfo.map(pi => new TopicPartition(pi.topic(), pi.partition())).toSet
 

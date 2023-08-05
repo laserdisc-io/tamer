@@ -51,10 +51,10 @@ sealed abstract case class S3Setup[R, K: Tag, V: Tag, S: Tag: Hashable](
 
   private final val initialEphemeralState = Ref.make(List.empty[String])
 
-  private final val fetchSchedule = Schedule.exponential(minimumIntervalForBucketFetch) || Schedule.spaced(maximumIntervalForBucketFetch)
+  private final val fetchSchedule           = Schedule.exponential(minimumIntervalForBucketFetch) || Schedule.spaced(maximumIntervalForBucketFetch)
   private final val ephemeralChangeSchedule = Schedule.once ++ fetchSchedule.untilInput((_: EphemeralChange) == EphemeralChange.Detected)
 
-  private final def updatedSourceState(keysR: KeysR, keysChangedToken: Queue[Unit]): ZIO[S3,Throwable,EphemeralChange] = {
+  private final def updatedSourceState(keysR: KeysR, keysChangedToken: Queue[Unit]): ZIO[S3, Throwable, EphemeralChange] = {
     val paginationMaxKeys         = 1000L      // FIXME magic
     val paginationMaxPages        = 1000L      // FIXME magic
     val defaultTimeoutBucketFetch = 60.seconds // FIXME magic
