@@ -30,7 +30,7 @@ object RESTServer extends ZIOAppDefault {
 
   object IsInt { def unapply(s: String): Option[Int] = Try(Integer.valueOf(s).toInt).toOption }
 
-  implicit val network = Network.forAsync[Task]
+  implicit val network: Network[Task] = Network.forAsync[Task]
 
   object TaskDsl extends Http4sDslBinCompat[Task]
   import TaskDsl._

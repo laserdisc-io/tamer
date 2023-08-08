@@ -27,7 +27,7 @@ trait HttpServerSupport {
 
   private[this] def serverBuilder(port: Port, sl: Ref[ServerLog], log: LogWriter[Task]): EmberServerBuilder[Task] = {
 
-    implicit val network = Network.forAsync[Task]
+    implicit val network: Network[Task] = Network.forAsync[Task]
 
     object TaskDsl extends Http4sDslBinCompat[Task]
     import TaskDsl._
