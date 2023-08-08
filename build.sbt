@@ -104,7 +104,7 @@ lazy val core = project
   .settings(
     name := "tamer-core",
     libraryDependencies ++= Seq(
-      "com.github.fd4s"                       %% "vulcan"                       % V.vulcan % Optional,
+      "com.github.fd4s"                       %% "vulcan"                       % V.vulcan           % Optional,
       "com.fasterxml.jackson.core"             % "jackson-annotations"          % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-core"                 % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-databind"             % V.`jackson-databind`,
