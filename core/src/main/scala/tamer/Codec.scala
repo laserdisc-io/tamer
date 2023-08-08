@@ -17,6 +17,29 @@ sealed trait Codec[@specialized A] {
 object Codec extends LowPriorityCodecs {
   final def apply[A](implicit A: Codec[A]): Codec[A] = A
 
+  implicit final def optionalVulcanCodec[A, C[_]: VulcanCodec](implicit ca: C[A]): Codec[A] = new Codec[A] {
+    private[this] final val _vulcanCodec = ca.asInstanceOf[vulcan.Codec[A]]
+    assert(_vulcanCodec.schema.isRight)
+    private[this] final val _vulcanSchema = _vulcanCodec.schema.getOrElse(???)
+
+    override final def decode(is: InputStream): A = {
+      val decoder = org.apache.avro.io.DecoderFactory.get.binaryDecoder(is, null)
+      val value   = new org.apache.avro.generic.GenericDatumReader[Any](_vulcanSchema).read(null, decoder)
+      _vulcanCodec.decode(value, _vulcanSchema) match {
+        case Left(error)  => throw error.throwable
+        case Right(value) => value
+      }
+    }
+    override final def encode(value: A, os: OutputStream): Unit = _vulcanCodec.encode(value) match {
+      case Left(error) => throw error.throwable
+      case Right(encoded) =>
+        val encoder = org.apache.avro.io.EncoderFactory.get.binaryEncoder(os, null)
+        new org.apache.avro.generic.GenericDatumWriter[Any](_vulcanSchema).write(encoded, encoder)
+        encoder.flush()
+    }
+    override final val maybeSchema: Option[ParsedSchema] = Some(new io.confluent.kafka.schemaregistry.avro.AvroSchema(_vulcanSchema))
+  }
+
   implicit final def optionalAvro4sCodec[A, D[_]: Avro4sDecoder, E[_]: Avro4sEncoder, SF[_]: Avro4sSchemaFor](
       implicit da: D[A],
       ea: E[A],
@@ -67,6 +90,9 @@ private[tamer] sealed trait LowPriorityCodecs {
     override final val maybeSchema: Option[ParsedSchema] = None
   }
 }
+
+private final abstract class VulcanCodec[C[_]]
+@nowarn private object VulcanCodec { @inline implicit final def get: VulcanCodec[vulcan.Codec] = null }
 
 private final abstract class Avro4sDecoder[D[_]]
 @nowarn private object Avro4sDecoder { @inline implicit final def get: Avro4sDecoder[com.sksamuel.avro4s.Decoder] = null }

@@ -22,6 +22,7 @@ val V = new {
   val slf4j              = "2.0.7"
   val sttp               = "3.5.2"
   val uzhttp             = "0.2.8"
+  val vulcan             = "1.9.0"
   val zio                = "1.0.18"
   val `zio-interop`      = "3.2.9.1"
   val `zio-json`         = "0.1.5"
@@ -103,6 +104,7 @@ lazy val core = project
   .settings(
     name := "tamer-core",
     libraryDependencies ++= Seq(
+      "com.github.fd4s"                       %% "vulcan"                       % V.vulcan % Optional,
       "com.fasterxml.jackson.core"             % "jackson-annotations"          % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-core"                 % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-databind"             % V.`jackson-databind`,
@@ -171,7 +173,7 @@ lazy val rest = project
     name := "tamer-rest",
     libraryDependencies ++= Seq(
       "com.softwaremill.sttp.client3" %% "httpclient-backend-zio1" % V.sttp,
-      "com.sksamuel.avro4s"           %% "avro4s-core"             % V.avro4s % Test,
+      "com.github.fd4s"               %% "vulcan-generic"          % V.vulcan % Test,
       "io.circe"                      %% "circe-core"              % V.circe  % Test,
       "io.circe"                      %% "circe-generic"           % V.circe  % Test,
       "io.circe"                      %% "circe-parser"            % V.circe  % Test,
@@ -187,7 +189,7 @@ lazy val example = project
   .settings(
     libraryDependencies ++= Seq(
       "ch.qos.logback"          % "logback-classic"         % V.logback,
-      "com.sksamuel.avro4s"    %% "avro4s-core"             % V.avro4s,
+      "com.github.fd4s"        %% "vulcan-generic"          % V.vulcan,
       "org.polynote"           %% "uzhttp"                  % V.uzhttp,
       "org.postgresql"          % "postgresql"              % V.postgres,
       "org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`

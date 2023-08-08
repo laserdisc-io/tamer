@@ -7,7 +7,7 @@ import zio.duration._
 import zio.oci.objectstorage._
 
 object OciObjectStorageSimple extends App {
-  case class ObjectsCursor(startAfter: Option[String], current: Option[String])
+  import implicits._
 
   val program: ZIO[ZEnv, TamerError, Unit] = ObjectStorageSetup(
     namespace = "namespace",

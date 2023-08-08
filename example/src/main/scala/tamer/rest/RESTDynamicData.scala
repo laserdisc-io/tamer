@@ -8,6 +8,8 @@ import zio._
 import scala.annotation.nowarn
 
 object RESTDynamicData extends App {
+  import implicits._
+
   @nowarn val pageDecoder: String => Task[DecodedPage[String, PeriodicOffset]] = // TODO: select automatically type according to helper method
     DecodedPage.fromString { body =>
       Task(body.split(",").toList.filterNot(_.isBlank))

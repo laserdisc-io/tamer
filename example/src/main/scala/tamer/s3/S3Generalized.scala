@@ -9,6 +9,8 @@ import zio.duration._
 import zio.s3._
 
 object S3Generalized extends App {
+  import implicits._
+
   object internals {
     val bucketName = "myBucket"
     val prefix     = "myFolder2/myPrefix"
