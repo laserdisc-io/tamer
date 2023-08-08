@@ -187,7 +187,7 @@ object RESTSetup {
         log         <- logTask
         tokenCache  <- ZIO.service[EphemeralSecretCache]
         decodedPage <- fetchWaitingNewEntries(currentState, log, tokenCache)
-        chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
+        chunk = Chunk.fromIterable(this.filterPage(decodedPage, currentState).map(value => this.recordKey(currentState, value) -> value))
         _         <- NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)
         nextState <- stateFold(decodedPage, currentState)
       } yield nextState
@@ -207,7 +207,7 @@ object RESTSetup {
           log: LogWriter[Task]
       ): RIO[R with Clock with SttpClient, DecodedPage[V, Offset]] =
         for {
-          decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
+          decodedPage <- fetchAndDecodePage(this.queryFor(currentState), tokenCache, log)
           dataFromIndex = decodedPage.data.drop(currentState.nextIndex)
           pageLength    = decodedPage.data.length
           _ <- log.debug(s"retrieved ${dataFromIndex.length} new datapoints. ($pageLength total for page ${currentState.offset})")
@@ -281,10 +281,10 @@ object RESTSetup {
             UIO(Duration.fromInterval(now, currentState.periodStart)).tap(delayUntilNextPeriod =>
               log.info(s"$baseUrl is going to sleep for ${delayUntilNextPeriod.render}")
             )
-        decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log).delay(delayUntilNextPeriod)
-        chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
+        decodedPage <- fetchAndDecodePage(this.queryFor(currentState), tokenCache, log).delay(delayUntilNextPeriod)
+        chunk = Chunk.fromIterable(this.filterPage(decodedPage, currentState).map(value => this.recordKey(currentState, value) -> value))
         _         <- NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)
-        nextState <- getNextState(decodedPage, currentState)
+        nextState <- this.stateFold(decodedPage, currentState)
       } yield nextState
     }
   }
