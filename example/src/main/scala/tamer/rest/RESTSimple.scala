@@ -4,6 +4,8 @@ package rest
 import zio._
 
 object RESTSimple extends ZIOAppDefault {
+  import implicits._
+
   private[this] final val pageDecoder: String => Task[DecodedPage[String, Offset]] =
     DecodedPage.fromString { body =>
       ZIO.attempt(body.split(",").toList.filterNot(_.isBlank))

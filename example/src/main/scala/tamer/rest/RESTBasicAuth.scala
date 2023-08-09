@@ -4,11 +4,8 @@ package rest
 import sttp.client3.RetryWhen
 import zio._
 
-import zio.ZIOAppDefault
-
 object RESTBasicAuth extends ZIOAppDefault {
-  case class MyKey(i: Int)
-  case class MyData(i: Int)
+  import implicits._
 
   val dataRegex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] =

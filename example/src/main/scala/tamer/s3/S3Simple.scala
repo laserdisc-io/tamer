@@ -9,6 +9,8 @@ import zio._
 import zio.s3._
 
 object S3Simple extends ZIOAppDefault {
+  import implicits._
+
   override final val run = S3Setup
     .timed(
       bucket = "myBucket",

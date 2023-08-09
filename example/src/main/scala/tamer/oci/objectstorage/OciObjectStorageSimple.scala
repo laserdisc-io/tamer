@@ -5,10 +5,9 @@ import com.oracle.bmc.Region.US_PHOENIX_1
 import zio._
 
 import zio.oci.objectstorage._
-import zio.ZIOAppDefault
 
 object OciObjectStorageSimple extends ZIOAppDefault {
-  case class ObjectsCursor(startAfter: Option[String], current: Option[String])
+  import implicits._
 
   override final val run = ObjectStorageSetup(
     namespace = "namespace",

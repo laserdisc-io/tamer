@@ -6,11 +6,9 @@ import sttp.client3.{UriContext, basicRequest}
 import zio._
 
 import scala.util.matching.Regex
-import zio.ZIOAppDefault
 
 object RESTCustomAuth extends ZIOAppDefault {
-  case class MyKey(i: Int)
-  case class MyData(i: Int)
+  import implicits._
 
   val dataRegex: Regex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] = DecodedPage.fromString {
