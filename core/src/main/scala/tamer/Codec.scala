@@ -15,21 +15,28 @@ import scala.annotation.{implicitNotFound, nowarn}
     "This can happen for a few reasons, but the most common case is a(/some) missing implicit(/implicits).\n" +
     "\n" +
     "Specifically, you need to ensure that wherever you are expected to provide a \u001b[36mtamer.Codec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m:\n" +
-    "  1. If Avro4s is in the classpath, then a \u001b[36mcom.sksamuel.avro4s.Decoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, a \u001b[36mcom.sksamuel.avro4s.Encoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, and a \u001b[36mcom.sksamuel.avro4s.SchemaFor[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too.\n" +
+    "  1. If *either* one of the following Avro libraries is in the classpath:\n" +
+    "    a. Vulcan\n" +
+    "    b. Avro4s\n" +
+    "  then, respectively:\n" +
+    "    a. A \u001b[36mvulcan.Codec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too\n" +
+    "    b. A \u001b[36mcom.sksamuel.avro4s.Decoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, a \u001b[36mcom.sksamuel.avro4s.Encoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, and a \u001b[36mcom.sksamuel.avro4s.SchemaFor[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too.\n" +
     "  2. Alternatively, if *either* one of the following is in the classpath:\n" +
-    "    a. Circe\n" +
-    "    b. Jsoniter Scala\n" +
-    "    c. ZIO Json\n" +
+    "    c. Circe\n" +
+    "    d. Jsoniter Scala\n" +
+    "    e. ZIO Json\n" +
     "    then, respectively:\n" +
-    "    a. An \u001b[36mio.circe.Decoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, and an \u001b[36mio.circe.Encoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too\n" +
-    "    b. A \u001b[36mcom.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too\n" +
-    "    c. A \u001b[36mzio.json.JsonCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too.\n" +
+    "    c. An \u001b[36mio.circe.Decoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, and an \u001b[36mio.circe.Encoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too\n" +
+    "    d. A \u001b[36mcom.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too\n" +
+    "    e. A \u001b[36mzio.json.JsonCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too.\n" +
     "\n" +
-    "Given how implicit resolution works in Scala, and more importantly how these implicits are defined in Tamer, care must be taken to avoid ambiguity when multiple Json libraries are in the classpath concurrently.\n" +
+    "Given how implicit resolution works in Scala, and more importantly how these implicits are defined in Tamer, care must be taken to avoid ambiguity when multiple Avro or Json libraries are in the classpath concurrently.\n" +
     "To cater for this scenario, it is sufficient to explicitly summon the expected underlying \u001b[36mtamer.Codec\u001b[0m's instance provider, that is:\n" +
-    "  a. Circe: `import \u001b[36mtamer.Codec.optionalCirceCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
-    "  b. Jsoniter Scala: `import \u001b[36mtamer.Codec.optionalJsoniterScalaCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
-    "  c. ZIO Json: `import \u001b[36mtamer.Codec.optionalZioJsonCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`.\n"
+    "  a. Vulcan: `import \u001b[36mtamer.Codec.optionalVulcanCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
+    "  b. Avro4s: `import \u001b[36mtamer.Codec.optionalAvro4sCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
+    "  c. Circe: `import \u001b[36mtamer.Codec.optionalCirceCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
+    "  d. Jsoniter Scala: `import \u001b[36mtamer.Codec.optionalJsoniterScalaCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
+    "  e. ZIO Json: `import \u001b[36mtamer.Codec.optionalZioJsonCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`.\n"
 )
 sealed trait Codec[@specialized A] {
   def decode(is: InputStream): A
