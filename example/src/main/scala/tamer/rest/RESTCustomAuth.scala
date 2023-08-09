@@ -8,8 +8,7 @@ import zio._
 import scala.util.matching.Regex
 
 object RESTCustomAuth extends App {
-  case class MyKey(i: Int)
-  case class MyData(i: Int)
+  import implicits._
 
   val dataRegex: Regex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] = DecodedPage.fromString {

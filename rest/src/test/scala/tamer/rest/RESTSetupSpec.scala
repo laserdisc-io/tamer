@@ -5,6 +5,8 @@ import io.circe.parser
 import log.effect.zio.ZioLogWriter.log4sFromName
 import sttp.client3._
 import sttp.client3.httpclient.zio._
+import vulcan.Codec
+import vulcan.generic._
 import zio._
 import zio.clock.Clock
 import zio.duration._
@@ -17,6 +19,8 @@ import zio.test.environment.TestEnvironment
 import scala.annotation.unused
 
 object RESTSetupSpec extends DefaultRunnableSpec with UzHttpServerSupport {
+  implicit final val stateKeyVulcanCodec: Codec[Tamer.StateKey] = Codec.derive[Tamer.StateKey]
+
   case class Log(count: Int)
   object Log {
     val layer: ULayer[Has[Ref[Log]]] = Ref.make(Log(0)).toLayer

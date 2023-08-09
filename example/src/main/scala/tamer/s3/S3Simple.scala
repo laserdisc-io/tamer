@@ -9,6 +9,8 @@ import zio._
 import zio.s3._
 
 object S3Simple extends App {
+  import implicits._
+
   val program: ZIO[ZEnv, RuntimeException, Unit] = S3Setup
     .timed(
       bucket = "myBucket",

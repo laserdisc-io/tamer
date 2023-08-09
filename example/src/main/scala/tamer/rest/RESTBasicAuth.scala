@@ -6,8 +6,7 @@ import zio._
 import zio.duration._
 
 object RESTBasicAuth extends App {
-  case class MyKey(i: Int)
-  case class MyData(i: Int)
+  import implicits._
 
   val dataRegex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] =

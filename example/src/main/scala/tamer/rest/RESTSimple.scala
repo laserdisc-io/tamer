@@ -6,6 +6,8 @@ import zio._
 import scala.annotation.nowarn
 
 object RESTSimple extends App {
+  import implicits._
+
   @nowarn val pageDecoder: String => Task[DecodedPage[String, Offset]] =
     DecodedPage.fromString { body =>
       Task(body.split(",").toList.filterNot(_.isBlank))
