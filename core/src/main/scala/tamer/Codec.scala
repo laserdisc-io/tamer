@@ -19,7 +19,7 @@ object Codec extends LowPriorityCodecs {
 
   implicit final def optionalVulcanCodec[A, C[_]: VulcanCodec](implicit ca: C[A]): Codec[A] = new SchemaAwareCodec[A] {
     private[this] final val _vulcanCodec = ca.asInstanceOf[vulcan.Codec[A]]
-    
+
     override final val schema: org.apache.avro.Schema =
       _vulcanCodec.schema.getOrElse(throw new ExceptionInInitializerError(s"Schema is not valid"))
 
@@ -88,7 +88,7 @@ private[tamer] sealed trait LowPriorityCodecs extends LowestPriorityCodecs {
   }
 }
 private[tamer] sealed trait LowestPriorityCodecs {
-    private[tamer] sealed abstract class SchemaAwareCodec[@specialized A] extends Codec[A] {
+  private[tamer] sealed abstract class SchemaAwareCodec[@specialized A] extends Codec[A] {
     override final type S = org.apache.avro.Schema
     def schema: S
     override final def maybeSchema: Option[S] = Some(schema)
