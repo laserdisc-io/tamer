@@ -109,7 +109,7 @@ lazy val core = project
       "com.fasterxml.jackson.core"             % "jackson-core"                 % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-databind"             % V.`jackson-databind`,
       "dev.zio"                               %% "zio-interop-cats"             % V.`zio-interop`,
-      "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka` excludeAll ("org.apache.kafka", "kafka-clients"),
+      "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka`,
       "dev.zio"                               %% "zio-streams"                  % V.zio,
       "io.confluent"                           % "kafka-schema-registry-client" % V.confluent excludeAll ("org.apache.kafka", "kafka-clients"),
       "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
