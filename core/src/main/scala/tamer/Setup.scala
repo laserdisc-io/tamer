@@ -1,11 +1,9 @@
 package tamer
 
 import zio._
-import zio.blocking.Blocking
-import zio.clock.Clock
 import zio.kafka.serde.{Serde => ZSerde, Serializer}
 
-abstract class Setup[-R, K, V, S] {
+abstract class Setup[-R, K: Tag, V: Tag, S: Tag] {
   val serdes: Setup.Serdes[K, V, S]
   val initialState: S
   val stateKey: Int
@@ -13,20 +11,17 @@ abstract class Setup[-R, K, V, S] {
   val repr: String = "no repr string implemented, if you want a neat description of the source configuration please implement it"
   def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R, S]
 
-  final val run: ZIO[R with Has[KafkaConfig] with Blocking with Clock, TamerError, Unit] =
-    runLoop.provideSomeLayer(Tamer.live(this))
-  final def runWith[E >: TamerError, R1 <: Has[_]](layer: ZLayer[ZEnv, E, R1])(
-      implicit ev: ZEnv with R1 <:< R with Has[KafkaConfig] with Blocking with Clock,
-      tagged: Tag[R1]
-  ): ZIO[ZEnv, E, Unit] = run.provideCustomLayer(layer)
+  final val run: ZIO[R with KafkaConfig, TamerError, Unit] = runLoop.provideSomeLayer(Tamer.live(this))
+  final def runWith[E >: TamerError, R1](layer: Layer[E, R with KafkaConfig with R1]): ZIO[Scope, E, Unit] =
+    runLoop.provideLayer(layer >>> Tamer.live(this))
 }
 
 object Setup {
   sealed abstract class Serdes[-K, -V, S](
-      val keySerializer: Serializer[Has[Registry], K],
-      val valueSerializer: Serializer[Has[Registry], V],
-      val stateKeySerde: ZSerde[Has[Registry], Tamer.StateKey],
-      val stateValueSerde: ZSerde[Has[Registry], S]
+      val keySerializer: Serializer[Registry, K],
+      val valueSerializer: Serializer[Registry, V],
+      val stateKeySerde: ZSerde[Registry, Tamer.StateKey],
+      val stateValueSerde: ZSerde[Registry, S]
   )
 
   def mkSerdes[K: Codec, V: Codec, S: Codec](implicit ev: Codec[Tamer.StateKey]): Serdes[K, V, S] =

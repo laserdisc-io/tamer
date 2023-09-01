@@ -10,7 +10,7 @@ import scala.annotation.unused
 trait Authentication[-R] {
   def addAuthentication(request: SttpRequest, supplementalSecret: Option[String]): SttpRequest
 
-  def setSecret(@unused secretRef: Ref[Option[String]]): RIO[R, Unit] = UIO.unit
+  def setSecret(@unused secretRef: Ref[Option[String]]): RIO[R, Unit] = ZIO.unit
   // TODO: could return the value to set instead of unit
 
   def refreshSecret(secretRef: Ref[Option[String]]): RIO[R, Unit] = setSecret(secretRef)
@@ -27,7 +27,7 @@ object DecodedPage {
 }
 
 object EphemeralSecretCache {
-  val live: ULayer[Has[EphemeralSecretCache]] = Ref.make[Option[String]](None).toLayer
+  val live: ULayer[EphemeralSecretCache] = ZLayer(Ref.make[Option[String]](None))
 }
 
 case class Offset(offset: Int, nextIndex: Int) {

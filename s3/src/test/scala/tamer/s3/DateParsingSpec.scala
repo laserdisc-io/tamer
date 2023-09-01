@@ -9,7 +9,7 @@ import java.util.Locale.{GERMANY, ITALY}
 import zio.test._
 import zio.test.Assertion._
 
-object DateParsingSpec extends DefaultRunnableSpec {
+object DateParsingSpec extends ZIOSpecDefault {
 
   private[this] final val rome = ZoneId.of("Europe/Rome")
 

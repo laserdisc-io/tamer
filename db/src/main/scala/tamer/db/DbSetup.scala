@@ -9,16 +9,15 @@ import doobie.util.transactor.Transactor
 import fs2.Stream
 import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
-import zio.duration._
 import zio.interop.catz._
 
-sealed abstract case class DbSetup[K, V, S: Hashable](
+sealed abstract case class DbSetup[K: Tag, V: Tag, S: Tag: Hashable](
     serdes: Setup.Serdes[K, V, S],
     initialState: S,
     recordKey: (S, V) => K,
     query: S => Query0[V],
     stateFold: (S, QueryResult[V]) => UIO[S]
-) extends Setup[Has[Transactor[Task]] with Has[QueryConfig], K, V, S] {
+) extends Setup[Transactor[Task] with DbConfig, K, V, S] {
 
   private[this] final val sql              = query(initialState).sql
   private[this] final val queryHash        = sql.hash
@@ -35,7 +34,7 @@ sealed abstract case class DbSetup[K, V, S: Hashable](
 
   import compat._
 
-  private[this] final val logTask = log4sFromName.provide("tamer.db")
+  private[this] final val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.db"))
 
   private[this] final def process(query: Query0[V], chunkSize: Int, tx: Transactor[Task], queue: Enqueue[NonEmptyChunk[(K, V)]], state: S) =
     query
@@ -45,27 +44,28 @@ sealed abstract case class DbSetup[K, V, S: Hashable](
       .map(ChunkWithMetadata(_))
       .evalTap { c =>
         val chunk = Chunk.fromIterable(c.chunk.toStream.map(v => recordKey(state, v) -> v))
-        NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(UIO.unit)
+        NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit)
       }
       .flatMap(c => Stream.chunk(c.chunk).map(ValueWithMetadata(_, c.pulledAt)))
       .compile
       .toList
-      .map(values => values -> values.headOption.map(_.pulledAt).getOrElse(System.nanoTime()))
+      .map(values => values -> values.headOption.map(_.pulledAt).getOrElse(java.lang.System.nanoTime()))
 
-  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[Has[Transactor[Task]] with Has[QueryConfig], S] = for {
-    log            <- logTask
-    transactor     <- ZIO.service[Transactor[Task]]
-    chunkSize      <- ZIO.service[QueryConfig].map(_.fetchChunkSize)
-    query          <- UIO(query(currentState))
-    _              <- log.debug(s"running ${query.sql} with params derived from $currentState")
-    start          <- UIO(System.nanoTime())
-    (values, time) <- process(query, chunkSize, transactor, queue, currentState)
-    newState       <- stateFold(currentState, QueryResult(ResultMetadata(time - start), values.map(_.value)))
+  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[Transactor[Task] with DbConfig, S] = for {
+    log        <- logTask
+    transactor <- ZIO.service[Transactor[Task]]
+    chunkSize  <- ZIO.service[DbConfig].map(_.fetchChunkSize)
+    query      <- ZIO.succeed(query(currentState))
+    _          <- log.debug(s"running ${query.sql} with params derived from $currentState")
+    start      <- Clock.nanoTime
+    tuple      <- process(query, chunkSize, transactor, queue, currentState)
+    (values, time) = tuple
+    newState <- stateFold(currentState, QueryResult(ResultMetadata(time - start), values.map(_.value)))
   } yield newState
 }
 
 object DbSetup {
-  final def apply[K: Codec, V: Codec, S: Codec: Hashable](
+  final def apply[K: Tag: Codec, V: Tag: Codec, S: Tag: Codec: Hashable](
       initialState: S
   )(
       query: S => Query0[V]
@@ -76,7 +76,7 @@ object DbSetup {
       implicit ev: Codec[Tamer.StateKey]
   ): DbSetup[K, V, S] = new DbSetup(Setup.mkSerdes[K, V, S], initialState, recordKey, query, stateFold) {}
 
-  final def tumbling[K: Codec, V <: Timestamped: Ordering: Codec](
+  final def tumbling[K: Tag: Codec, V <: Timestamped: Tag: Ordering: Codec](
       query: Window => Query0[V]
   )(
       recordKey: (Window, V) => K,
@@ -89,10 +89,10 @@ object DbSetup {
   ): DbSetup[K, V, Window] = {
     def stateFold(currentWindow: Window, queryResult: QueryResult[V]): UIO[Window] =
       if (queryResult.results.isEmpty) {
-        UIO((currentWindow.to + tumblingStep).orNow(lag)).map(Window(currentWindow.from, _))
+        Clock.instant.map(now => Window(currentWindow.from, (currentWindow.to + tumblingStep).or(now, lag)))
       } else {
         val mostRecent = queryResult.results.max.timestamp
-        UIO((mostRecent + tumblingStep).orNow(lag)).map(Window(mostRecent, _))
+        Clock.instant.map(now => Window(mostRecent, (mostRecent + tumblingStep).or(now, lag)))
       }
 
     DbSetup(Window(from, from + tumblingStep))(query)(recordKey, stateFold)
