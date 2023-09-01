@@ -212,9 +212,9 @@ object Tamer {
         _     <- runLoop(queue, log)
       } yield ()
 
-      logic
-        .refineOrDie(tamerErrors)
-        .provide(config.schemaRegistryUrl.map(Registry.live(_, configuration = config.properties)).getOrElse(Registry.fake))
+      val registryLayer = config.schemaRegistryUrl.map(Registry.live(_, configuration = config.properties)).getOrElse(Registry.fake)
+
+      logic.refineOrDie(tamerErrors).provide(registryLayer)
     }
   }
 
