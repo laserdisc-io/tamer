@@ -3,9 +3,41 @@ package tamer
 import java.io.{InputStream, OutputStream}
 
 import io.confluent.kafka.schemaregistry.ParsedSchema
+
 import scala.annotation.{implicitNotFound, nowarn}
 
-@implicitNotFound("Could not find an implicit Codec[${A}] in scope")
+@implicitNotFound(
+  "\n" +
+    "Could not find or construct a \u001b[36mtamer.Codec\u001b[0m instance for type:\n" +
+    "\n" +
+    "  \u001b[32m${A}\u001b[0m\n" +
+    "\n" +
+    "This can happen for a few reasons, but the most common case is a(/some) missing implicit(/implicits).\n" +
+    "\n" +
+    "Specifically, you need to ensure that wherever you are expected to provide a \u001b[36mtamer.Codec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m:\n" +
+    "  1. If *either* one of the following Avro libraries is in the classpath:\n" +
+    "    a. Vulcan\n" +
+    "    b. Avro4s\n" +
+    "  then, respectively:\n" +
+    "    a. A \u001b[36mvulcan.Codec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too\n" +
+    "    b. A \u001b[36mcom.sksamuel.avro4s.Decoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, a \u001b[36mcom.sksamuel.avro4s.Encoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, and a \u001b[36mcom.sksamuel.avro4s.SchemaFor[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too.\n" +
+    "  2. Alternatively, if *either* one of the following is in the classpath:\n" +
+    "    c. Circe\n" +
+    "    d. Jsoniter Scala\n" +
+    "    e. ZIO Json\n" +
+    "    then, respectively:\n" +
+    "    c. An \u001b[36mio.circe.Decoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m, and an \u001b[36mio.circe.Encoder[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too\n" +
+    "    d. A \u001b[36mcom.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too\n" +
+    "    e. A \u001b[36mzio.json.JsonCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m must be in scope too.\n" +
+    "\n" +
+    "Given how implicit resolution works in Scala, and more importantly how these implicits are defined in Tamer, care must be taken to avoid ambiguity when multiple Avro or Json libraries are in the classpath concurrently.\n" +
+    "To cater for this scenario, it is sufficient to explicitly summon the expected underlying \u001b[36mtamer.Codec\u001b[0m's instance provider, that is:\n" +
+    "  a. Vulcan: `import \u001b[36mtamer.Codec.optionalVulcanCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
+    "  b. Avro4s: `import \u001b[36mtamer.Codec.optionalAvro4sCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
+    "  c. Circe: `import \u001b[36mtamer.Codec.optionalCirceCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
+    "  d. Jsoniter Scala: `import \u001b[36mtamer.Codec.optionalJsoniterScalaCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
+    "  e. ZIO Json: `import \u001b[36mtamer.Codec.optionalZioJsonCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`.\n"
+)
 sealed trait Codec[@specialized A] {
   def decode(is: InputStream): A
   def encode(value: A, os: OutputStream): Unit
@@ -83,8 +115,9 @@ private[tamer] sealed trait LowPriorityCodecs {
   implicit final def optionalZioJsonCodec[A, C[_]: ZioJsonCodec](implicit ca: C[A]): Codec[A] = new Codec[A] {
     private[this] final val _zioJsonCodec = ca.asInstanceOf[zio.json.JsonCodec[A]]
 
-    override final def decode(is: InputStream): A =
-      zio.Runtime.default.unsafeRun(_zioJsonCodec.decodeJsonStreamInput(zio.stream.ZStream.fromInputStream(is)))
+    override final def decode(is: InputStream): A = zio.Unsafe.unsafe { implicit unsafe =>
+      zio.Runtime.default.unsafe.run(_zioJsonCodec.decoder.decodeJsonStreamInput(zio.stream.ZStream.fromInputStream(is))).getOrThrowFiberFailure()
+    }
     override final def encode(value: A, os: OutputStream): Unit =
       new java.io.OutputStreamWriter(os).append(_zioJsonCodec.encodeJson(value, None)).flush()
     override final val maybeSchema: Option[ParsedSchema] = None

@@ -7,13 +7,13 @@ import zio._
 
 import scala.util.matching.Regex
 
-object RESTCustomAuth extends App {
+object RESTCustomAuth extends ZIOAppDefault {
   import implicits._
 
   val dataRegex: Regex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] = DecodedPage.fromString {
-    case dataRegex(data) => Task(List(MyData(data.toInt)))
-    case pageBody        => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
+    case dataRegex(data) => ZIO.attempt(List(MyData(data.toInt)))
+    case pageBody        => ZIO.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
   }
 
   val authentication: Authentication[SttpClient] = new Authentication[SttpClient] {
@@ -32,7 +32,7 @@ object RESTCustomAuth extends App {
     }
   }
 
-  val program = RESTSetup
+  override final val run = RESTSetup
     .paginated(
       baseUrl = "http://localhost:9395",
       pageDecoder = pageDecoder,
@@ -42,7 +42,6 @@ object RESTCustomAuth extends App {
       offsetParameterName = "offset",
       increment = 2
     )
-    .runWith(restLive() ++ kafkaConfigFromEnvironment)
-
-  override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
+    .runWith(restLive() ++ KafkaConfig.fromEnvironment)
+    .exitCode
 }

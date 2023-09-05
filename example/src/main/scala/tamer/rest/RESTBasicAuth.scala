@@ -3,16 +3,15 @@ package rest
 
 import sttp.client3.RetryWhen
 import zio._
-import zio.duration._
 
-object RESTBasicAuth extends App {
+object RESTBasicAuth extends ZIOAppDefault {
   import implicits._
 
   val dataRegex = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] =
     DecodedPage.fromString {
-      case dataRegex(data) => Task(List(MyData(data.toInt)))
-      case pageBody        => Task.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
+      case dataRegex(data) => ZIO.attempt(List(MyData(data.toInt)))
+      case pageBody        => ZIO.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
     }
 
   def retrySchedule(
@@ -20,7 +19,7 @@ object RESTBasicAuth extends App {
   ): Schedule[Any, FallibleResponse, FallibleResponse] =
     Schedule.spaced(5.seconds) *> Schedule.recurs(3) *> Schedule.recurWhile(response => RetryWhen.Default(request, response))
 
-  val program: ZIO[ZEnv, TamerError, Unit] = RESTSetup
+  override final val run = RESTSetup
     .paginated(
       baseUrl = "http://localhost:9395/basic-auth",
       pageDecoder = pageDecoder,
@@ -31,7 +30,6 @@ object RESTBasicAuth extends App {
       offsetParameterName = "offset",
       increment = 2
     )
-    .runWith(restLive() ++ kafkaConfigFromEnvironment)
-
-  override def run(args: List[String]): URIO[ZEnv, ExitCode] = program.exitCode
+    .runWith(restLive() ++ KafkaConfig.fromEnvironment)
+    .exitCode
 }

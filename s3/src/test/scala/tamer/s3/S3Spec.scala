@@ -8,12 +8,12 @@ import zio.test.Assertion._
 import java.time.format.DateTimeFormatterBuilder
 import java.time.{ZoneId, ZonedDateTime}
 
-object S3Spec extends DefaultRunnableSpec {
+object S3Spec extends ZIOSpecDefault {
 
   private[this] final val rome = ZoneId.of("Europe/Rome")
 
   override final val spec = suite("S3Spec")(
-    testM("Should be able to compute next state") {
+    test("Should be able to compute next state") {
       val from      = ZonedDateTime.parse("2021-01-01T00:01:43+01:00[Europe/Rome]").toInstant
       val formatter = ZonedDateTimeFormatter(new DateTimeFormatterBuilder().appendPattern("yyyy-MM-dd HH:mm:ss").toFormatter(), rome)
       val prefix    = "myFolder/myPrefix"
@@ -22,7 +22,7 @@ object S3Spec extends DefaultRunnableSpec {
       val makeQueue = Queue.dropping[Unit](requestedCapacity = 1).tap(_.offer(()))
 
       (makeQueue <*> makeKeys).flatMap { case (keysQ, keysR) =>
-        assertM(S3Setup.getNextState(prefix, formatter)(keysR, from, keysQ))(equalTo(instant))
+        assertZIO(S3Setup.getNextState(prefix, formatter)(keysR, from, keysQ))(equalTo(instant))
       }
     }
   )

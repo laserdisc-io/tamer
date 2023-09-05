@@ -7,28 +7,28 @@ val V = new {
   val `cats-effect`      = "3.5.1"
   val circe              = "0.14.6"
   val ciris              = "3.2.0"
-  val confluent          = "7.2.2"
+  val confluent          = "7.5.0"
   val doobie             = "1.0.0-RC4"
+  val http4s             = "0.23.23"
   val jackson            = "2.15.2"
   val `jackson-databind` = "2.15.2"
   val `json-schema`      = "1.14.2"
   val `jsoniter-scala`   = "2.23.3"
-  val kafka              = "3.4.1"
+  val kafka              = "3.5.1"
   val logback            = "1.4.11"
-  val `log-effect`       = "0.16.4"
+  val `log-effect`       = "0.17.0"
   val ociSdk             = "3.24.0"
   val postgres           = "42.6.0"
   val `scala-compat`     = "2.11.0"
   val slf4j              = "2.0.7"
-  val sttp               = "3.5.2"
-  val uzhttp             = "0.2.8"
+  val sttp               = "3.8.16"
   val vulcan             = "1.9.0"
-  val zio                = "1.0.18"
-  val `zio-interop`      = "3.2.9.1"
-  val `zio-json`         = "0.1.5"
-  val `zio-kafka`        = "0.17.8"
-  val `zio-oci-os`       = "0.5.0"
-  val `zio-s3`           = "0.3.9"
+  val zio                = "2.0.16"
+  val `zio-interop`      = "23.0.0.8"
+  val `zio-json`         = "0.6.1"
+  val `zio-kafka`        = "2.4.2"
+  val `zio-oci-os`       = "0.6.0"
+  val `zio-s3`           = "0.4.2.4"
 }
 
 val flags = Seq(
@@ -43,7 +43,7 @@ val flags = Seq(
   "-opt-warnings",
   "-unchecked",
   "-Xfatal-warnings",
-  "-Xlint:_,-type-parameter-shadow",
+  "-Xlint:_,-infer-any,-type-parameter-shadow",
   "-Xlint:constant",
   "-Xsource:2.13",
   "-Yrangepos",
@@ -172,12 +172,14 @@ lazy val rest = project
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= Seq(
-      "com.softwaremill.sttp.client3" %% "httpclient-backend-zio1" % V.sttp,
-      "com.github.fd4s"               %% "vulcan-generic"          % V.vulcan % Test,
-      "io.circe"                      %% "circe-core"              % V.circe  % Test,
-      "io.circe"                      %% "circe-generic"           % V.circe  % Test,
-      "io.circe"                      %% "circe-parser"            % V.circe  % Test,
-      "org.polynote"                  %% "uzhttp"                  % V.uzhttp % Test
+      "com.softwaremill.sttp.client3" %% "zio"                 % V.sttp,
+      "com.github.fd4s"               %% "vulcan-generic"      % V.vulcan % Test,
+      "io.circe"                      %% "circe-core"          % V.circe  % Test,
+      "io.circe"                      %% "circe-generic"       % V.circe  % Test,
+      "io.circe"                      %% "circe-parser"        % V.circe  % Test,
+      "org.http4s"                    %% "http4s-circe"        % V.http4s % Test,
+      "org.http4s"                    %% "http4s-ember-server" % V.http4s % Test,
+      "org.http4s"                    %% "http4s-dsl"          % V.http4s % Test
     )
   )
 
@@ -190,7 +192,10 @@ lazy val example = project
     libraryDependencies ++= Seq(
       "ch.qos.logback"          % "logback-classic"         % V.logback,
       "com.github.fd4s"        %% "vulcan-generic"          % V.vulcan,
-      "org.polynote"           %% "uzhttp"                  % V.uzhttp,
+      "io.circe"               %% "circe-literal"           % V.circe,
+      "org.http4s"             %% "http4s-circe"            % V.http4s,
+      "org.http4s"             %% "http4s-ember-server"     % V.http4s,
+      "org.http4s"             %% "http4s-dsl"              % V.http4s,
       "org.postgresql"          % "postgresql"              % V.postgres,
       "org.scala-lang.modules" %% "scala-collection-compat" % V.`scala-compat`
     ),
