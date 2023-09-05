@@ -37,12 +37,11 @@ object TamerSpec extends ZIOSpecDefault with TamerSpecGen {
 
   override final val spec = suite("TamerSpec")(
     test("should successfully run the iteration function 10 times") {
-      val x = for {
+      for {
         outputVector <- ZIO.service[Ref[Log]]
         _            <- runLoop.timeout(7.seconds)
         result       <- outputVector.get
       } yield assert(result.series)(equalTo(Vector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)))
-      x
     } @@ timeout(20.seconds)
   ).provideSomeLayerShared[TestEnvironment](embeddedKafkaTamerLayer ++ Log.layer) @@ withLiveClock
 
