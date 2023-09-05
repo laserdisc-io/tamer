@@ -24,7 +24,7 @@ object FakeKafka {
   }
 
   case object DefaultLocal extends FakeKafka {
-    override def bootstrapServers: List[String]         = List(s"localhost:9092")
+    override def bootstrapServers: List[String]         = List("localhost:9092")
     override def schemaRegistryUrl: String              = "http://localhost:8081"
     override def createTopic(topic: String): Task[Unit] = ZIO.unit
     override def stop(): UIO[Unit]                      = ZIO.unit
