@@ -6,7 +6,6 @@ val V = new {
   val awsSdk             = "2.20.138"
   val `cats-effect`      = "3.5.1"
   val circe              = "0.14.6"
-  val ciris              = "3.2.0"
   val confluent          = "7.5.0"
   val doobie             = "1.0.0-RC4"
   val http4s             = "0.23.23"
@@ -29,6 +28,7 @@ val V = new {
   val `zio-kafka`        = "2.4.2"
   val `zio-oci-os`       = "0.6.0"
   val `zio-s3`           = "0.4.2.4"
+  val `zio-config`       = "3.0.7"
 }
 
 val flags = Seq(
@@ -110,10 +110,10 @@ lazy val core = project
       "com.fasterxml.jackson.core"             % "jackson-databind"             % V.`jackson-databind`,
       "dev.zio"                               %% "zio-interop-cats"             % V.`zio-interop`,
       "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka`,
+      "dev.zio"                               %% "zio-config"                   % V.`zio-config`,
       "dev.zio"                               %% "zio-streams"                  % V.zio,
       "io.confluent"                           % "kafka-schema-registry-client" % V.confluent excludeAll ("org.apache.kafka", "kafka-clients"),
       "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
-      "is.cir"                                %% "ciris"                        % V.ciris,
       "org.apache.kafka"                       % "kafka-clients"                % V.kafka,
       "org.typelevel"                         %% "cats-effect"                  % V.`cats-effect`,
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"          % V.`jsoniter-scala` % Optional,

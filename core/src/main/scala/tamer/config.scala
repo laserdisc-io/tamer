@@ -1,12 +1,25 @@
 package tamer
 
-import cats.implicits._
-import ciris._
-import zio._
-import zio.interop.catz._
+import zio.{Duration, Layer}
+import zio.config.{ConfigDescriptor, ZConfig}
 
 final case class SinkConfig(topic: String)
+
+object SinkConfig {
+  val configDescriptor: ConfigDescriptor[SinkConfig] = ConfigDescriptor.string("KAFKA_SINK_TOPIC").to[SinkConfig]
+}
+
 final case class StateConfig(topic: String, groupId: String, clientId: String)
+
+object StateConfig {
+  val configDescriptor: ConfigDescriptor[StateConfig] =
+    (
+      ConfigDescriptor.string("KAFKA_STATE_TOPIC") zip
+        ConfigDescriptor.string("KAFKA_STATE_GROUP_ID") zip
+        ConfigDescriptor.string("KAFKA_STATE_CLIENT_ID")
+    ).to[StateConfig]
+}
+
 final case class KafkaConfig(
     brokers: List[String],
     schemaRegistryUrl: Option[String],
@@ -38,24 +51,21 @@ object KafkaConfig {
     properties = Map.empty
   )
 
-  private[this] implicit final val durationConfigDecoder: ConfigDecoder[String, Duration] =
-    ConfigDecoder.stringFiniteDurationConfigDecoder.map(Duration.fromScala)
-  private[this] implicit final val hostListConfigDecoder: ConfigDecoder[String, List[String]] =
-    ConfigDecoder.identity[String].map(_.split(",").toList.map(_.trim))
+  val configDescriptor: ConfigDescriptor[KafkaConfig] =
+    (
+      ConfigDescriptor.list("KAFKA_BROKERS")(ConfigDescriptor.string) zip
+        ConfigDescriptor.string("KAFKA_SCHEMA_REGISTRY_URL").optional zip
+        ConfigDescriptor.duration("KAFKA_CLOSE_TIMEOUT").map(Duration.fromScala) zip
+        ConfigDescriptor.int("KAFKA_BUFFER_SIZE") zip
+        SinkConfig.configDescriptor zip
+        StateConfig.configDescriptor zip
+        ConfigDescriptor.string("KAFKA_TRANSACTIONAL_ID")
+    ).transform(
+      { case ((brokers, schemaRegistryUrl, closeTimeout, bufferSize, sink, state, transactionalId)) =>
+        KafkaConfig(brokers, schemaRegistryUrl, closeTimeout, bufferSize, sink, state, transactionalId)
+      },
+      a => (a.brokers, a.schemaRegistryUrl, a.closeTimeout, a.bufferSize, a.sink, a.state, a.transactionalId)
+    )
 
-  private[this] val kafkaSinkConfigValue  = env("KAFKA_SINK_TOPIC").map(SinkConfig)
-  private[this] val kafkaStateConfigValue = (env("KAFKA_STATE_TOPIC"), env("KAFKA_STATE_GROUP_ID"), env("KAFKA_STATE_CLIENT_ID")).mapN(StateConfig)
-  private[this] val kafkaConfigValue = (
-    env("KAFKA_BROKERS").as[List[String]],
-    env("KAFKA_SCHEMA_REGISTRY_URL").option,
-    env("KAFKA_CLOSE_TIMEOUT").as[Duration],
-    env("KAFKA_BUFFER_SIZE").as[Int],
-    kafkaSinkConfigValue,
-    kafkaStateConfigValue,
-    env("KAFKA_TRANSACTIONAL_ID").as[String]
-  ).mapN(KafkaConfig.apply)
-
-  final val fromEnvironment: Layer[TamerError, KafkaConfig] = ZLayer {
-    kafkaConfigValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce))
-  }
+  final val fromEnvironment: Layer[TamerError, KafkaConfig] = ZConfig.fromSystemEnv(configDescriptor).mapError(e => TamerError(e.prettyPrint(), e))
 }
