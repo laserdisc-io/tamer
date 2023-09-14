@@ -8,19 +8,19 @@ import zio._
 
 import scala.jdk.CollectionConverters._
 
-trait Registry {
-  def getOrRegisterId(subject: String, schema: ParsedSchema): Task[Int]
-  def verifySchema(id: Int, schema: ParsedSchema): Task[Unit]
+trait Registry[-A] {
+  def getOrRegisterId(subject: String, schema: A): Task[Int]
+  def verifySchema(id: Int, schema: A): Task[Unit]
 }
 
 object Registry {
-  final object FakeRegistry extends Registry {
-    override def getOrRegisterId(subject: String, schema: ParsedSchema): Task[Int] = ZIO.succeed(-1)
-    override def verifySchema(id: Int, schema: ParsedSchema): Task[Unit]           = ZIO.unit
+  final object FakeRegistry extends Registry[Nothing] {
+    override def getOrRegisterId(subject: String, schema: Nothing): Task[Int] = ZIO.succeed(-1)
+    override def verifySchema(id: Int, schema: Nothing): Task[Unit]           = ZIO.unit
   }
 
-  final case class LiveRegistry(private val client: SchemaRegistryClient) extends Registry {
-    private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provideEnvironment(ZEnvironment("tamer.LiveRegistry"))
+  final case class LiveConfluentRegistry(private val client: SchemaRegistryClient) extends Registry[ParsedSchema] {
+    private[this] final val logTask: Task[LogWriter[Task]] = log4sFromName.provideEnvironment(ZEnvironment("tamer.LiveConfluentRegistry"))
     private[this] final def getId(subject: String, schema: ParsedSchema, log: LogWriter[Task]): Task[Int] =
       ZIO.attemptBlocking(client.getId(subject, schema)).tap(id => log.debug(s"retrieved existing writer schema id: $id"))
     private[this] final def register(subject: String, schema: ParsedSchema, log: LogWriter[Task]): Task[Int] =
@@ -46,12 +46,12 @@ object Registry {
     } yield ()
   }
 
-  def live(url: String, size: Int = 1000, configuration: Map[String, Any] = Map.empty): Layer[TamerError, Registry] = ZLayer {
+  def liveConfluent(url: String, size: Int = 1000, configuration: Map[String, Any] = Map.empty): Layer[TamerError, Registry[ParsedSchema]] = ZLayer {
     ZIO
       .attemptBlocking(new CachedSchemaRegistryClient(url, size, configuration.asJava))
       .mapError(TamerError("Cannot construct registry client", _))
-      .map(LiveRegistry)
+      .map(LiveConfluentRegistry)
   }
 
-  val fake: ULayer[Registry] = ZLayer.succeed(FakeRegistry)
+  val fake: ULayer[Registry[Nothing]] = ZLayer.succeed(FakeRegistry)
 }

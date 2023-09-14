@@ -4,22 +4,22 @@ import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.ByteBuffer
 
 import org.apache.kafka.common.header.Headers
-import zio.{RIO, ZIO}
+import zio.{RIO, Tag, ZIO}
 import zio.kafka.serde.{Serde => ZSerde}
 
-import scala.util.Try
-
 object Serde {
-  final def key[A: Codec]   = impl(isKey = true, Codec[A])
-  final def value[A: Codec] = impl(isKey = false, Codec[A])
+  sealed abstract class MkSerdePartiallyApplied[A] {
+    final def key[S, RS: Tag](implicit codec: Codec.Aux[A, S], resolver: SchemaResolver[S, RS]) =
+      impl(isKey = true, codec, codec.maybeSchema.flatMap(resolver.resolve))
+    final def value[S, RS: Tag](implicit codec: Codec.Aux[A, S], resolver: SchemaResolver[S, RS]) =
+      impl(isKey = false, codec, codec.maybeSchema.flatMap(resolver.resolve))
+  }
 
-  private[this] def impl[A](isKey: Boolean, codec: Codec[A]): ZSerde[Registry, A] = {
+  final def apply[A] = new MkSerdePartiallyApplied[A] {}
+
+  private[this] def impl[A, RS: Tag](isKey: Boolean, codec: Codec[A], maybeResolvedSchema: Option[RS]): ZSerde[Registry[RS], A] = {
     val Magic: Byte = 0x0
     val IntByteSize = 4
-    val maybeSchema = codec match {
-      case sac: Codec.SchemaAwareCodec[_] => Try(new io.confluent.kafka.schemaregistry.avro.AvroSchema(sac.schema)).toOption
-      case _                              => None
-    }
 
     def deserializeSimple(data: Array[Byte]) = ZIO.attempt(codec.decode(new ByteArrayInputStream(data)))
     def serializeSimple(value: A) = ZIO.attempt {
@@ -29,11 +29,11 @@ object Serde {
     }
     def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
 
-    new ZSerde[Registry, A] {
-      override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[Registry, A] = ZIO.serviceWithZIO {
+    new ZSerde[Registry[RS], A] {
+      override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[Registry[RS], A] = ZIO.serviceWithZIO {
         case Registry.FakeRegistry => deserializeSimple(data)
         case registry =>
-          maybeSchema.fold(deserializeSimple(data)) { schema =>
+          maybeResolvedSchema.fold(deserializeSimple(data)) { schema =>
             val buffer = ByteBuffer.wrap(data)
             if (buffer.get() != Magic) ZIO.fail(TamerError("Deserialization failed: unknown magic byte!"))
             else {
@@ -51,10 +51,10 @@ object Serde {
           }
       }
 
-      override def serialize(topic: String, headers: Headers, value: A): RIO[Registry, Array[Byte]] = ZIO.serviceWithZIO {
+      override def serialize(topic: String, headers: Headers, value: A): RIO[Registry[RS], Array[Byte]] = ZIO.serviceWithZIO {
         case Registry.FakeRegistry => serializeSimple(value)
         case registry =>
-          maybeSchema.fold(serializeSimple(value)) { schema =>
+          maybeResolvedSchema.fold(serializeSimple(value)) { schema =>
             for {
               id <- registry.getOrRegisterId(subject(topic), schema)
               arr <- ZIO.attempt {

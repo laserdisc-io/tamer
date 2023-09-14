@@ -15,6 +15,7 @@ val V = new {
   val `json-schema`      = "1.14.2"
   val `jsoniter-scala`   = "2.23.4"
   val kafka              = "3.5.1"
+  val `kind-projector`   = "0.13.2"
   val logback            = "1.4.11"
   val `log-effect`       = "0.17.0"
   val ociSdk             = "3.25.1"
@@ -90,7 +91,8 @@ lazy val commonSettings = baseSettings ++ Seq(
   libraryDependencies ++= Seq(
     "dev.zio" %% "zio"          % V.zio,
     "dev.zio" %% "zio-test"     % V.zio % Test,
-    "dev.zio" %% "zio-test-sbt" % V.zio % Test
+    "dev.zio" %% "zio-test-sbt" % V.zio % Test,
+    compilerPlugin("org.typelevel" %% "kind-projector" % V.`kind-projector` cross CrossVersion.full)
   ),
   testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
   Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
