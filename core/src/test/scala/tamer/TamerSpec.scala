@@ -16,7 +16,6 @@ object TamerSpec extends ZIOSpecDefault with TamerSpecGen {
 
   val baseTamerLayer = Tamer.live {
     new Setup[Ref[Log], Key, Value, State] {
-      override final val mkSerdes       = Setup.forTypes[Key, Value, State].make
       override final val initialState = State(0)
       override final val stateKey     = 0
       override final val recordKey    = (s: State, _: Value) => Key(s.state + 1)

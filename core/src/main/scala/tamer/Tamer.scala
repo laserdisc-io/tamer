@@ -144,7 +144,7 @@ object Tamer {
 
   final class LiveTamer[K, V, SV](
       config: KafkaConfig,
-      serdes: Setup.Serdes[K, V, SV],
+      serdes: Serdes[K, V, SV],
       initialState: SV,
       stateHash: Int,
       iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
@@ -219,7 +219,7 @@ object Tamer {
 
     private[tamer] final def getService[K, V, SV](
         config: KafkaConfig,
-        mkSerdes: Setup.MkSerdes[K, V, SV],
+        mkSerdes: MkSerdes[K, V, SV],
         initialState: SV,
         stateKey: Int,
         iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
