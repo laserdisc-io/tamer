@@ -13,7 +13,7 @@ import sttp.model.StatusCode.{Forbidden, NotFound, Unauthorized}
 import zio._
 
 sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, S: Tag: Hashable](
-    serdes: Setup.Serdes[K, V, S],
+    io: Setup.IO[K, V, S],
     initialState: S,
     recordKey: (S, V) => K,
     authentication: Option[Authentication[R]],
@@ -120,7 +120,7 @@ object RESTSetup {
   )(
       implicit ev: Codec[Tamer.StateKey]
   ): RESTSetup[R, K, V, S] = new RESTSetup(
-    Setup.mkSerdes[K, V, S],
+    Setup.forTypes[K, V, S].make,
     initialState,
     recordKey,
     authentication,

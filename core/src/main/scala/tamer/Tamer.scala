@@ -10,7 +10,7 @@ import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.kafka.consumer._
 import zio.kafka.producer.{ProducerSettings, Transaction, TransactionalProducer, TransactionalProducerSettings}
 import zio.kafka.serde.{Serde => ZSerde, Serializer}
-import zio.stream.ZStream
+import zio.stream.{Stream, ZStream}
 
 trait Tamer {
   def runLoop: IO[TamerError, Unit]
@@ -33,13 +33,13 @@ object Tamer {
     def info: String = s"${_underlying.topicPartition}@${_underlying.offset}"
   }
 
-  private[tamer] final def sinkStream[K, V, RS](
+  private[tamer] final def sinkStream[K, V](
       queue: Dequeue[(TransactionInfo, Chunk[(K, V)])],
       topic: String,
-      keySerializer: Serializer[Registry[RS], K],
-      valueSerializer: Serializer[Registry[RS], V],
+      keySerializer: Serializer[Any, K],
+      valueSerializer: Serializer[Any, V],
       log: LogWriter[Task]
-  ) =
+  ): Stream[Throwable,Unit] =
     ZStream
       .fromQueueWithShutdown(queue)
       .mapZIO {
@@ -48,7 +48,7 @@ object Tamer {
             .produceChunk(chunk.map { case (k, v) => new ProducerRecord(topic, k, v) }, keySerializer, valueSerializer, None)
             .tapError(_ => log.debug(s"failed pushing ${chunk.size} messages to $topic"))
             .retry(tenTimes) <* log.info(s"pushed ${chunk.size} messages to $topic")).unit // TODO: stop trying if the error is transaction related
-        case (Right(TransactionDelimiter(promise)), _) => promise.succeed(()) <* log.debug(s"user implicitly signalled end of data production")
+        case (Right(TransactionDelimiter(promise)), _) => promise.succeed(()).unit <* log.debug(s"user implicitly signalled end of data production")
         case _                                         => ZIO.unit <* log.debug(s"received an empty chunk for $topic")
       }
 
@@ -59,19 +59,19 @@ object Tamer {
   private[tamer] def decidedAction(committed: Map[TopicPartition, Option[OffsetAndMetadata]]): Decision =
     if (committed.values.exists(_.isDefined)) Resume else Initialize
 
-  private[tamer] final def source[K, V, SV, RS](
+  private[tamer] final def source[K, V, SV](
       stateTopic: String,
       stateGroupId: String,
       stateHash: Int,
-      stateKeySerde: ZSerde[Registry[RS], StateKey],
-      stateValueSerde: ZSerde[Registry[RS], SV],
+      stateKeySerde: ZSerde[Any, StateKey],
+      stateValueSerde: ZSerde[Any, SV],
       initialState: SV,
       consumer: Consumer,
       producer: TransactionalProducer,
       queue: Enqueue[(TransactionInfo, Chunk[(K, V)])],
       iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
       log: LogWriter[Task]
-  ) = {
+  ): Stream[Throwable,Unit] = {
 
     val key          = StateKey(stateHash.toHexString, stateGroupId)
     val subscription = Subscription.topics(stateTopic)
@@ -81,7 +81,7 @@ object Tamer {
       partitionInfo <- ZIO.fromOption(topics.get(stateTopic)).mapError(_ => TamerError(s"Group $stateGroupId has no permission on topic $stateTopic"))
     } yield partitionInfo.map(pi => new TopicPartition(pi.topic(), pi.partition())).toSet
 
-    val stateTopicDecision = for {
+    val stateTopicDecision: Task[Decision] = for {
       _            <- log.debug(s"obtaining information on $stateTopic")
       partitionSet <- partitionInfo
       _            <- log.debug(s"received the following information on $stateTopic: $partitionSet")
@@ -89,7 +89,7 @@ object Tamer {
       _            <- log.debug(s"decided to $decision")
     } yield decision
 
-    val initialize = stateTopicDecision.flatMap {
+    val initialize: Task[Unit] = stateTopicDecision.flatMap {
       case Initialize =>
         log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
           ZIO.scoped {
@@ -102,7 +102,7 @@ object Tamer {
       case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
     }
 
-    val stateStream = consumer
+    val stateStream: Stream[Throwable, Unit] = consumer
       .plainStream(subscription, stateKeySerde, stateValueSerde)
       .mapZIO {
         case cr if cr.record.key == key =>
@@ -142,16 +142,15 @@ object Tamer {
     ZStream.fromZIO(initialize).drain ++ stateStream
   }
 
-  final class LiveTamer[K, V, SV, RS](
+  final class LiveTamer[K, V, SV](
       config: KafkaConfig,
-      serdes: Setup.Serdes[K, V, SV, RS],
+      serdes: Setup.Serdes[K, V, SV],
       initialState: SV,
       stateHash: Int,
       iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
       repr: String,
       consumer: Consumer,
-      producer: TransactionalProducer,
-      registry: Registry[RS]
+      producer: TransactionalProducer
   ) extends Tamer {
 
     private[this] val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.LiveTamer"))
@@ -178,7 +177,7 @@ object Tamer {
         queue,
         iterationFunction,
         log
-      ).provideLayer(registry)
+      )
 
     private[this] def stopSource(log: LogWriter[Task]) =
       log.info(s"stopping consuming of topic $stateTopic").ignore *>
@@ -188,7 +187,7 @@ object Tamer {
     private[tamer] def drainSink(
         queue: Dequeue[(TransactionInfo, Chunk[(K, V)])],
         log: LogWriter[Task]
-    ): URIO[Registry[RS], Unit] =
+    ): UIO[Unit] =
       for {
         _ <- log.info(s"running final drain on sink queue for topic $sinkTopic").ignore
         _ <- sinkStream(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.orDie.fork
@@ -212,22 +211,20 @@ object Tamer {
         _     <- runLoop(queue, log)
       } yield ()
 
-      val registryLayer = config.schemaRegistryUrl.map(Registry.live(_, configuration = config.properties)).getOrElse(Registry.fake)
-
-      logic.refineOrDie(tamerErrors).provide(registryLayer)
+      logic.refineOrDie(tamerErrors)
     }
   }
 
   object LiveTamer {
 
-    private[tamer] final def getService[K, V, SV, RS](
+    private[tamer] final def getService[K, V, SV](
         config: KafkaConfig,
-        serdes: Setup.Serdes[K, V, SV, RS],
+        mkSerdes: Setup.MkSerdes[K, V, SV],
         initialState: SV,
         stateKey: Int,
         iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
         repr: String
-    ): ZIO[Scope, TamerError, LiveTamer[K, V, SV, RS]] = {
+    ): ZIO[Scope, TamerError, LiveTamer[K, V, SV]] = {
 
       val KafkaConfig(brokers, _, closeTimeout, _, _, StateConfig(_, groupId, clientId), transactionalId, properties) = config
 
@@ -243,28 +240,28 @@ object Tamer {
         .withProperties(properties)
       val transactionalProducerSettings = TransactionalProducerSettings(producerSettings, transactionalId)
 
-      (Consumer.make(transactionalConsumerSettings) <*> TransactionalProducer.make(transactionalProducerSettings))
-        .map { case (consumer, producer) =>
+      (Consumer.make(transactionalConsumerSettings) <*> TransactionalProducer.make(transactionalProducerSettings) <*> mkSerdes.using(config.maybeRegistry))
+        .map { case (consumer, producer, serdes) =>
           new LiveTamer(config, serdes, initialState, stateKey, iterationFunction, repr, consumer, producer)
         }
         .mapError(TamerError("Could not build Kafka client", _))
     }
 
-    private[tamer] final def getLayer[R, K: Tag, V: Tag, SV: Tag, RS: Tag](
-        setup: Setup[R, K, V, SV, RS]
+    private[tamer] final def getLayer[R, K: Tag, V: Tag, SV: Tag](
+        setup: Setup[R, K, V, SV]
     ): ZLayer[R with KafkaConfig, TamerError, Tamer] =
       ZLayer.scoped[R with KafkaConfig] {
         for {
           config <- ZIO.service[KafkaConfig]
           res <- {
             val iterationFunction = ZIO.environment[R].map(r => Function.untupled((setup.iteration _).tupled.andThen(_.provideEnvironment(r))))
-            iterationFunction.flatMap(getService(config, setup.serdes, setup.initialState, setup.stateKey, _, setup.repr))
+            iterationFunction.flatMap(getService(config, setup.mkSerdes, setup.initialState, setup.stateKey, _, setup.repr))
           }
         } yield res
       }
   }
 
-  final def live[R, K: Tag, V: Tag, SV: Tag, RS: Tag](
-      setup: Setup[R, K, V, SV, RS]
+  final def live[R, K: Tag, V: Tag, SV: Tag](
+      setup: Setup[R, K, V, SV]
   ): ZLayer[R with KafkaConfig, TamerError, Tamer] = LiveTamer.getLayer(setup)
 }

@@ -37,7 +37,7 @@ object FakeKafka {
       _            <- fakeKafka.createTopic(s"sink.topic.tape.$randomString")
     } yield KafkaConfig(
       brokers = fakeKafka.bootstrapServers,
-      schemaRegistryUrl = Some(fakeKafka.schemaRegistryUrl),
+      maybeRegistry = Some(RegistryConfig(fakeKafka.schemaRegistryUrl, 1000)),
       closeTimeout = 1.second,
       bufferSize = 5,
       sink = SinkConfig(s"sink.topic.$randomString"),

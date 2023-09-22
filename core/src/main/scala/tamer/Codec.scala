@@ -46,18 +46,20 @@ sealed trait Codec[@specialized A] {
 // The series of tricks used to summon implicit instances using optional dependencies
 // was proposed by Kai and Pavel Shirshov in https://blog.7mind.io/no-more-orphans.html
 object Codec extends LowPriorityCodecs {
-  final def apply[A](implicit A: Codec[A]): Codec[A] = A
+  final def apply[A](implicit A: Codec[A]): Codec.Aux[A, A.S] = A
 
-  implicit final def optionalVulcanCodec[A, C[_]: VulcanCodec](implicit ca: C[A]): Codec[A] = new AvroCodec[A] {
+  implicit final def optionalVulcanCodec[A, C[_]: VulcanCodec](implicit ca: C[A]): Codec.Aux[A, org.apache.avro.Schema] = new AvroCodec[A] {
     private[this] final val _vulcanCodec = ca.asInstanceOf[vulcan.Codec[A]]
 
     override final val schema: org.apache.avro.Schema =
       _vulcanCodec.schema.getOrElse(throw new ExceptionInInitializerError(s"Schema is not valid"))
 
+    private[this] final val _genericDatumReader = new org.apache.avro.generic.GenericDatumReader[Any](schema)
+    private[this] final val _genericDatumWriter = new org.apache.avro.generic.GenericDatumWriter[Any](schema)
+
     override final def decode(is: InputStream): A = {
       val decoder = org.apache.avro.io.DecoderFactory.get.binaryDecoder(is, null)
-      val value   = new org.apache.avro.generic.GenericDatumReader[Any](schema).read(null, decoder)
-      _vulcanCodec.decode(value, schema) match {
+      _vulcanCodec.decode(_genericDatumReader.read(null, decoder), schema) match {
         case Left(error)  => throw error.throwable
         case Right(value) => value
       }
@@ -66,7 +68,7 @@ object Codec extends LowPriorityCodecs {
       case Left(error) => throw error.throwable
       case Right(encoded) =>
         val encoder = org.apache.avro.io.EncoderFactory.get.binaryEncoder(os, null)
-        new org.apache.avro.generic.GenericDatumWriter[Any](schema).write(encoded, encoder)
+        _genericDatumWriter.write(encoded, encoder)
         encoder.flush()
     }
   }
@@ -75,7 +77,7 @@ object Codec extends LowPriorityCodecs {
       implicit da: D[A],
       ea: E[A],
       sfa: SF[A]
-  ): Codec[A] = new AvroCodec[A] {
+  ): Codec.Aux[A, org.apache.avro.Schema] = new AvroCodec[A] {
     private[this] final val _avroDecoderBuilder = com.sksamuel.avro4s.AvroInputStream.binary(da.asInstanceOf[com.sksamuel.avro4s.Decoder[A]])
     private[this] final val _avroEncoderBuilder = com.sksamuel.avro4s.AvroOutputStream.binary(ea.asInstanceOf[com.sksamuel.avro4s.Encoder[A]])
 
@@ -90,7 +92,7 @@ object Codec extends LowPriorityCodecs {
   }
 }
 private[tamer] sealed trait LowPriorityCodecs extends LowestPriorityCodecs {
-  implicit final def optionalCirceCodec[A, D[_]: CirceDecoder, E[_]: CirceEncoder](implicit da: D[A], ea: E[A]): Codec[A] = new SchemalessCodec[A] {
+  implicit final def optionalCirceCodec[A, D[_]: CirceDecoder, E[_]: CirceEncoder](implicit da: D[A], ea: E[A]): Codec.Aux[A, Nothing] = new SchemalessCodec[A] {
     private[this] final val _circeDecoder = da.asInstanceOf[io.circe.Decoder[A]]
     private[this] final val _circeEncoder = ea.asInstanceOf[io.circe.Encoder[A]]
 
@@ -102,14 +104,14 @@ private[tamer] sealed trait LowPriorityCodecs extends LowestPriorityCodecs {
       new java.io.OutputStreamWriter(os, java.nio.charset.StandardCharsets.UTF_8).append(_circeEncoder(value).noSpaces).flush()
   }
 
-  implicit final def optionalJsoniterScalaCodec[@specialized A, C[_]: JsoniterScalaCodec](implicit ca: C[A]): Codec[A] = new SchemalessCodec[A] {
+  implicit final def optionalJsoniterScalaCodec[@specialized A, C[_]: JsoniterScalaCodec](implicit ca: C[A]): Codec.Aux[A, Nothing] = new SchemalessCodec[A] {
     private[this] final val _jsoniterCodec = ca.asInstanceOf[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[A]]
 
     override final def decode(is: InputStream): A               = com.github.plokhotnyuk.jsoniter_scala.core.readFromStream(is)(_jsoniterCodec)
     override final def encode(value: A, os: OutputStream): Unit = com.github.plokhotnyuk.jsoniter_scala.core.writeToStream(value, os)(_jsoniterCodec)
   }
 
-  implicit final def optionalZioJsonCodec[A, C[_]: ZioJsonCodec](implicit ca: C[A]): Codec[A] = new SchemalessCodec[A] {
+  implicit final def optionalZioJsonCodec[A, C[_]: ZioJsonCodec](implicit ca: C[A]): Codec.Aux[A, Nothing] = new SchemalessCodec[A] {
     private[this] final val _zioJsonCodec = ca.asInstanceOf[zio.json.JsonCodec[A]]
 
     override final def decode(is: InputStream): A = zio.Unsafe.unsafe { implicit unsafe =>

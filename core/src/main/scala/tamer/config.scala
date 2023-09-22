@@ -7,9 +7,10 @@ import zio.interop.catz._
 
 final case class SinkConfig(topic: String)
 final case class StateConfig(topic: String, groupId: String, clientId: String)
+final case class RegistryConfig(url: String, cacheSize: Int)
 final case class KafkaConfig(
     brokers: List[String],
-    schemaRegistryUrl: Option[String],
+    maybeRegistry: Option[RegistryConfig],
     closeTimeout: Duration,
     bufferSize: Int,
     sink: SinkConfig,
@@ -21,7 +22,7 @@ final case class KafkaConfig(
 object KafkaConfig {
   def apply(
       brokers: List[String],
-      schemaRegistryUrl: Option[String],
+      maybeRegistry: Option[RegistryConfig],
       closeTimeout: Duration,
       bufferSize: Int,
       sink: SinkConfig,
@@ -29,7 +30,7 @@ object KafkaConfig {
       transactionalId: String
   ): KafkaConfig = new KafkaConfig(
     brokers = brokers,
-    schemaRegistryUrl = schemaRegistryUrl,
+    maybeRegistry = maybeRegistry,
     closeTimeout = closeTimeout,
     bufferSize = bufferSize,
     sink = sink,
@@ -45,9 +46,14 @@ object KafkaConfig {
 
   private[this] val kafkaSinkConfigValue  = env("KAFKA_SINK_TOPIC").map(SinkConfig)
   private[this] val kafkaStateConfigValue = (env("KAFKA_STATE_TOPIC"), env("KAFKA_STATE_GROUP_ID"), env("KAFKA_STATE_CLIENT_ID")).mapN(StateConfig)
+  private[this] val kafkaRegistryConfigValue =
+    (env("KAFKA_SCHEMA_REGISTRY_URL").option, env("KAFKA_SCHEMA_REGISTRY_CACHE_SIZE").as[Int].default(1000)).mapN {
+      case (Some(url), cacheSize) => Some(RegistryConfig(url, cacheSize))
+      case _                      => None
+    }
   private[this] val kafkaConfigValue = (
     env("KAFKA_BROKERS").as[List[String]],
-    env("KAFKA_SCHEMA_REGISTRY_URL").option,
+    kafkaRegistryConfigValue,
     env("KAFKA_CLOSE_TIMEOUT").as[Duration],
     env("KAFKA_BUFFER_SIZE").as[Int],
     kafkaSinkConfigValue,
