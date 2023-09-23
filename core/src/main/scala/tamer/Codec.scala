@@ -49,6 +49,7 @@ sealed trait Codec[@sp A] {
 // The series of tricks used to summon implicit instances using optional dependencies
 // was proposed by Kai and Pavel Shirshov in https://blog.7mind.io/no-more-orphans.html
 object Codec extends LowPriorityCodecs {
+  final def apply[A](implicit A: Codec[A]): Codec.Aux[A, A.S] = A
 
   // Vulcan
   implicit final def optionalVulcanCodec[A, C[_]: VulcanCodec](implicit ca: C[A]): Codec.Aux[A, org.apache.avro.Schema] = new AvroCodec[A] {

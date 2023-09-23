@@ -4,7 +4,7 @@ import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
 
-import scala.annotation.nowarn
+import scala.annotation.{implicitNotFound, nowarn}
 import scala.jdk.CollectionConverters._
 
 trait Registry[-S] {
@@ -48,9 +48,18 @@ object Registry {
   private[tamer] final def fakeRegistryZIO[RS]: ZIO[Scope, TamerError, Registry[RS]] = ZIO.succeed(Registry.FakeRegistry)
 }
 
+@implicitNotFound(
+  "\n" +
+    "Could not find or construct a \u001b[36mtamer.RegistryProvider\u001b[0m instance for type:\n" +
+    "\n" +
+    "  \u001b[32m${S}\u001b[0m\n" +
+    "\n" +
+    "There are a few provided OOTB, but consider creating one for the above types, if appropriate.\n"
+)
 sealed abstract case class RegistryProvider[S](from: RegistryConfig => ZIO[Scope, TamerError, Registry[S]])
 
 object RegistryProvider extends LowPriorityRegistryProvider {
+  final def apply[S](implicit S: RegistryProvider[S]): RegistryProvider[S] = S
 
   implicit final def confluentRegistryProvider[A: ConfluentSchemaRegistryClient]: RegistryProvider[io.confluent.kafka.schemaregistry.ParsedSchema] =
     new RegistryProvider(config =>
