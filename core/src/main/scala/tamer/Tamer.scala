@@ -39,7 +39,7 @@ object Tamer {
       keySerializer: Serializer[Any, K],
       valueSerializer: Serializer[Any, V],
       log: LogWriter[Task]
-  ): Stream[Throwable,Unit] =
+  ): Stream[Throwable, Unit] =
     ZStream
       .fromQueueWithShutdown(queue)
       .mapZIO {
@@ -71,7 +71,7 @@ object Tamer {
       queue: Enqueue[(TransactionInfo, Chunk[(K, V)])],
       iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
       log: LogWriter[Task]
-  ): Stream[Throwable,Unit] = {
+  ): Stream[Throwable, Unit] = {
 
     val key          = StateKey(stateHash.toHexString, stateGroupId)
     val subscription = Subscription.topics(stateTopic)
@@ -219,7 +219,7 @@ object Tamer {
 
     private[tamer] final def getService[K, V, SV](
         config: KafkaConfig,
-        mkSerdes: MkSerdes[K, V, SV],
+        serdesProvider: SerdesProvider[K, V, SV],
         initialState: SV,
         stateKey: Int,
         iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
@@ -234,14 +234,18 @@ object Tamer {
         .withGroupId(groupId)
         .withOffsetRetrieval(OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest))
         .withProperties(properties)
-      val transactionalConsumerSettings = consumerSettings.withProperty(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed")
+        .withProperty(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed")
       val producerSettings = ProducerSettings(brokers)
         .withCloseTimeout(closeTimeout)
         .withProperties(properties)
-      val transactionalProducerSettings = TransactionalProducerSettings(producerSettings, transactionalId)
+      val txProducerSettings = TransactionalProducerSettings(producerSettings, transactionalId)
 
-      (Consumer.make(transactionalConsumerSettings) <*> TransactionalProducer.make(transactionalProducerSettings) <*> mkSerdes.using(config.maybeRegistry))
-        .map { case (consumer, producer, serdes) =>
+      val serdes   = serdesProvider.using(config.maybeRegistry)
+      val consumer = Consumer.make(consumerSettings)
+      val producer = TransactionalProducer.make(txProducerSettings)
+
+      (serdes <*> consumer <*> producer)
+        .map { case (serdes, consumer, producer) =>
           new LiveTamer(config, serdes, initialState, stateKey, iterationFunction, repr, consumer, producer)
         }
         .mapError(TamerError("Could not build Kafka client", _))
@@ -255,7 +259,7 @@ object Tamer {
           config <- ZIO.service[KafkaConfig]
           res <- {
             val iterationFunction = ZIO.environment[R].map(r => Function.untupled((setup.iteration _).tupled.andThen(_.provideEnvironment(r))))
-            iterationFunction.flatMap(getService(config, setup.mkSerdes, setup.initialState, setup.stateKey, _, setup.repr))
+            iterationFunction.flatMap(getService(config, setup.serdesProvider, setup.initialState, setup.stateKey, _, setup.repr))
           }
         } yield res
       }

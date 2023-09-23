@@ -7,7 +7,7 @@ import org.apache.kafka.common.header.Headers
 import zio._
 import zio.kafka.serde.{Serde => ZSerde}
 
-sealed abstract case class Serde[+RS, A](isKey: Boolean, codec: Codec[A], maybeResolvedSchema: Option[RS]) extends ZSerde[Registry.Aux[RS], A] {
+sealed abstract case class Serde[PS: Tag, A](isKey: Boolean, codec: Codec[A], maybeResolvedSchema: Option[PS]) extends ZSerde[Registry[PS], A] {
   self =>
   final val Magic: Byte = 0x0
   final val IntByteSize = 4
@@ -20,7 +20,7 @@ sealed abstract case class Serde[+RS, A](isKey: Boolean, codec: Codec[A], maybeR
   }
   final def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
 
-  override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[Registry.Aux[RS], A] = ZIO.serviceWithZIO {
+  override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[Registry[PS], A] = ZIO.serviceWithZIO {
     case Registry.FakeRegistry => deserialize(data)
     case registry =>
       maybeResolvedSchema.fold(deserialize(data)) { schema =>
@@ -41,7 +41,7 @@ sealed abstract case class Serde[+RS, A](isKey: Boolean, codec: Codec[A], maybeR
       }
   }
 
-  override def serialize(topic: String, headers: Headers, value: A): RIO[Registry.Aux[RS], Array[Byte]] = ZIO.serviceWithZIO {
+  override def serialize(topic: String, headers: Headers, value: A): RIO[Registry[PS], Array[Byte]] = ZIO.serviceWithZIO {
     case Registry.FakeRegistry => serialize(value)
     case registry =>
       maybeResolvedSchema.fold(serialize(value)) { schema =>
@@ -57,7 +57,8 @@ sealed abstract case class Serde[+RS, A](isKey: Boolean, codec: Codec[A], maybeR
       }
   }
 
-  final def eraseLayer(layer: ULayer[Registry.Aux[RS]]): ZSerde[Any, A] = new ZSerde[Any, A] {
+  final def erase(registry: Registry[PS]): ZSerde[Any, A] = new ZSerde[Any, A] {
+    private final val layer = ZLayer.succeed(registry)
     override def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[A] =
       self.deserialize(topic, headers, data).provideLayer(layer)
     override def serialize(topic: String, headers: Headers, value: A): Task[Array[Byte]] =
@@ -66,8 +67,8 @@ sealed abstract case class Serde[+RS, A](isKey: Boolean, codec: Codec[A], maybeR
 }
 
 object Serde {
-  final def key[A, S, RS: Tag](codec: Codec.Aux[A, S], schemaResolver: SchemaResolver[S, RS]): Serde[RS, A] =
-    new Serde(isKey = true, codec, codec.maybeSchema.flatMap(schemaResolver.resolve)) {}
-  final def value[A, S, RS: Tag](codec: Codec.Aux[A, S], schemaResolver: SchemaResolver[S, RS]): Serde[RS, A] =
-    new Serde(isKey = false, codec, codec.maybeSchema.flatMap(schemaResolver.resolve)) {}
+  final def key[A, S, PS: Tag](codec: Codec.Aux[A, S], schemaParser: SchemaParser[S, PS]): Serde[PS, A] =
+    new Serde(isKey = true, codec, codec.maybeSchema.flatMap(schemaParser.parse)) {}
+  final def value[A, S, PS: Tag](codec: Codec.Aux[A, S], schemaParser: SchemaParser[S, PS]): Serde[PS, A] =
+    new Serde(isKey = false, codec, codec.maybeSchema.flatMap(schemaParser.parse)) {}
 }

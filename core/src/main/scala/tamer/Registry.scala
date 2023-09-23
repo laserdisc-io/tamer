@@ -7,33 +7,31 @@ import zio._
 import scala.annotation.nowarn
 import scala.jdk.CollectionConverters._
 
-trait Registry {
-  type S
-
+trait Registry[-S] {
   def getOrRegisterId(subject: String, schema: S): Task[Int]
   def verifySchema(id: Int, schema: S): Task[Unit]
 }
 
 object Registry {
-  final type Aux[-S0] = Registry { type S >: S0 }
-
-  final case class ConfluentRegistry(client: io.confluent.kafka.schemaregistry.client.SchemaRegistryClient, log: LogWriter[Task]) extends Registry {
-    override type S = io.confluent.kafka.schemaregistry.ParsedSchema
-
-    override final def getOrRegisterId(subject: String, schema: S): Task[Int] =
+  sealed abstract case class ConfluentRegistry(client: io.confluent.kafka.schemaregistry.client.SchemaRegistryClient, log: LogWriter[Task])
+      extends Registry[io.confluent.kafka.schemaregistry.ParsedSchema] {
+    override final def getOrRegisterId(subject: String, schema: io.confluent.kafka.schemaregistry.ParsedSchema): Task[Int] =
       getId(subject, schema) <> register(subject, schema)
-    override final def verifySchema(id: Int, schema: S): Task[Unit] =
+    override final def verifySchema(id: Int, schema: io.confluent.kafka.schemaregistry.ParsedSchema): Task[Unit] =
       get(id).flatMap(verify(schema, _)).unit
 
-    private[this] final def getId(subject: String, schema: S): Task[Int] =
+    private[this] final def getId(subject: String, schema: io.confluent.kafka.schemaregistry.ParsedSchema): Task[Int] =
       ZIO.attemptBlocking(client.getId(subject, schema)).tap(id => log.debug(s"retrieved existing writer schema id: $id"))
-    private[this] final def register(subject: String, schema: S): Task[Int] =
+    private[this] final def register(subject: String, schema: io.confluent.kafka.schemaregistry.ParsedSchema): Task[Int] =
       ZIO
         .attemptBlocking(client.register(subject, schema))
         .tap(id => log.info(s"registered with id $id new subject $subject writer schema $schema"))
-    private[this] final def get(id: Int): Task[S] =
+    private[this] final def get(id: Int): Task[io.confluent.kafka.schemaregistry.ParsedSchema] =
       ZIO.attemptBlocking(client.getSchemaById(id)).tap(_ => log.debug(s"retrieved writer schema id: $id"))
-    private[this] final def verify(schema: S, writerSchema: S): Task[Unit] =
+    private[this] final def verify(
+        schema: io.confluent.kafka.schemaregistry.ParsedSchema,
+        writerSchema: io.confluent.kafka.schemaregistry.ParsedSchema
+    ): Task[Unit] =
       ZIO
         .attemptBlocking(schema.isBackwardCompatible(writerSchema).asScala)
         .filterOrElseWith(_.isEmpty) { errors =>
@@ -42,17 +40,15 @@ object Registry {
         .unit
   }
 
-  final object FakeRegistry extends Registry {
-    override type S = Any
-
-    override final def getOrRegisterId(subject: String, schema: S): Task[Int] = ZIO.succeed(-1)
-    override final def verifySchema(id: Int, schema: S): Task[Unit]           = ZIO.unit
+  final object FakeRegistry extends Registry[Any] {
+    override final def getOrRegisterId(subject: String, schema: Any): Task[Int] = ZIO.succeed(-1)
+    override final def verifySchema(id: Int, schema: Any): Task[Unit]           = ZIO.unit
   }
 
-  final def fakeRegistryZIO[RS]: ZIO[Scope, TamerError, Registry.Aux[RS]] = ZIO.succeed(Registry.FakeRegistry)
+  private[tamer] final def fakeRegistryZIO[RS]: ZIO[Scope, TamerError, Registry[RS]] = ZIO.succeed(Registry.FakeRegistry)
 }
 
-sealed abstract case class RegistryProvider[S](from: RegistryConfig => ZIO[Scope, TamerError, Registry.Aux[S]])
+sealed abstract case class RegistryProvider[S](from: RegistryConfig => ZIO[Scope, TamerError, Registry[S]])
 
 object RegistryProvider extends LowPriorityRegistryProvider {
 
@@ -60,14 +56,14 @@ object RegistryProvider extends LowPriorityRegistryProvider {
     new RegistryProvider(config =>
       ZIO
         .fromAutoCloseable(ZIO.attemptBlocking(new io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient(config.url, config.cacheSize)))
-        .zip(log4sFromName.provideEnvironment(ZEnvironment("tamer.LiveConfluentRegistry")))
+        .zip(log4sFromName.provideEnvironment(ZEnvironment("tamer.ConfluentRegistry")))
         .mapError(TamerError("Cannot construct registry client", _))
-        .map { case (client, log) => new Registry.ConfluentRegistry(client, log) }
+        .map { case (client, log) => new Registry.ConfluentRegistry(client, log) {} }
     ) {}
 }
 
 sealed trait LowPriorityRegistryProvider {
-  implicit final def fakeRegistryProvider[A]: RegistryProvider[Any] = new RegistryProvider(_ => Registry.fakeRegistryZIO) {}
+  implicit final def fakeRegistryProvider[A]: RegistryProvider[Any] = new RegistryProvider(_ => ZIO.succeed(Registry.FakeRegistry)) {}
 }
 
 private final abstract class ConfluentSchemaRegistryClient[SRC]

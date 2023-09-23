@@ -8,6 +8,12 @@ import zio.interop.catz._
 final case class SinkConfig(topic: String)
 final case class StateConfig(topic: String, groupId: String, clientId: String)
 final case class RegistryConfig(url: String, cacheSize: Int)
+object RegistryConfig {
+  def apply(url: String): RegistryConfig = RegistryConfig(
+    url = url,
+    cacheSize = 1000
+  )
+}
 final case class KafkaConfig(
     brokers: List[String],
     maybeRegistry: Option[RegistryConfig],
@@ -18,7 +24,6 @@ final case class KafkaConfig(
     transactionalId: String,
     properties: Map[String, AnyRef]
 )
-
 object KafkaConfig {
   def apply(
       brokers: List[String],

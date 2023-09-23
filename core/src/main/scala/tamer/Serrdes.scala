@@ -10,39 +10,47 @@ sealed trait Serdes[K, V, SV] {
   def stateValueSerde: ZSerde[Any, SV]
 }
 
-sealed trait MkSerdes[K, V, SV] {
+sealed trait SerdesProvider[K, V, SV] {
   def using(maybeRegistryConfig: Option[RegistryConfig]): ZIO[Scope, TamerError, Serdes[K, V, SV]]
 }
 
-object MkSerdes {
-  sealed abstract case class MkSerdesImpl[K, V, SV, RS](
-      keySerde: Serde[RS, K],
-      valueSerde: Serde[RS, V],
-      stateKeySerde: Serde[RS, Tamer.StateKey],
-      stateValueSerde: Serde[RS, SV],
-      registryProvider: RegistryProvider[RS]
-  ) extends MkSerdes[K, V, SV] { self =>
-    override final def using(maybeRegistryConfig: Option[RegistryConfig]): ZIO[Scope, TamerError, Serdes[K, V, SV]] = {
-      val registryZIO = maybeRegistryConfig.fold(Registry.fakeRegistryZIO[RS])(registryProvider.from(_))
-      registryZIO.map { registry =>
-        val registryLayer = ZLayer.succeed(registry)
+object SerdesProvider {
+  sealed abstract case class SerdesProviderImpl[K, V, SV, PS](
+      keySerde: Serde[PS, K],
+      valueSerde: Serde[PS, V],
+      stateKeySerde: Serde[PS, Tamer.StateKey],
+      stateValueSerde: Serde[PS, SV],
+      registryProvider: RegistryProvider[PS]
+  ) extends SerdesProvider[K, V, SV] { self =>
+    override final def using(maybeRegistryConfig: Option[RegistryConfig]): ZIO[Scope, TamerError, Serdes[K, V, SV]] =
+      maybeRegistryConfig.fold(Registry.fakeRegistryZIO[PS])(registryProvider.from(_)).map { registry =>
         new Serdes[K, V, SV] {
-          override final val keySerializer: Serializer[Any, K]          = self.keySerde.eraseLayer(registryLayer)
-          override final val valueSerializer: Serializer[Any, V]        = self.valueSerde.eraseLayer(registryLayer)
-          override final val stateKeySerde: ZSerde[Any, Tamer.StateKey] = self.stateKeySerde.eraseLayer(registryLayer)
-          override final val stateValueSerde: ZSerde[Any, SV]           = self.stateValueSerde.eraseLayer(registryLayer)
+          override final val keySerializer: Serializer[Any, K]          = self.keySerde.erase(registry)
+          override final val valueSerializer: Serializer[Any, V]        = self.valueSerde.erase(registry)
+          override final val stateKeySerde: ZSerde[Any, Tamer.StateKey] = self.stateKeySerde.erase(registry)
+          override final val stateValueSerde: ZSerde[Any, SV]           = self.stateValueSerde.erase(registry)
         }
       }
-    }
   }
 
-  implicit final def mkSerdesFromCodecs[K, V, SV, S, RS](
+  implicit final def SerdesProviderFromCodecs[K, V, SV, S, PS](
       implicit K: Codec.Aux[K, S],
       V: Codec.Aux[V, S],
       SK: Codec.Aux[Tamer.StateKey, S],
       SV: Codec.Aux[SV, S],
-      RS: SchemaResolver[S, RS],
-      registryProvider: RegistryProvider[RS],
-      ev: Tag[RS]
-  ): MkSerdes[K, V, SV] = new MkSerdesImpl(Serde.key(K, RS), Serde.value(V, RS), Serde.key(SK, RS), Serde.value(SV, RS), registryProvider) {}
+      PS: SchemaParser[S, PS],
+      registryProvider: RegistryProvider[PS],
+      ev: Tag[PS]
+  ): SerdesProvider[K, V, SV] = new SerdesProvider[K, V, SV] {
+    override final def using(maybeRegistryConfig: Option[RegistryConfig]): ZIO[Scope, TamerError, Serdes[K, V, SV]] =
+      maybeRegistryConfig.fold(Registry.fakeRegistryZIO[PS])(registryProvider.from(_)).map { registry =>
+        new Serdes[K, V, SV] {
+          override final val keySerializer: Serializer[Any, K]          = Serde.key(K, PS).erase(registry)
+          override final val valueSerializer: Serializer[Any, V]        = Serde.value(V, PS).erase(registry)
+          override final val stateKeySerde: ZSerde[Any, Tamer.StateKey] = Serde.key(SK, PS).erase(registry)
+          override final val stateValueSerde: ZSerde[Any, SV]           = Serde.value(SV, PS).erase(registry)
+        }
+      }
+  }
+  // new SerdesProviderImpl(Serde.key(K, PS), Serde.value(V, PS), Serde.key(SK, PS), Serde.value(SV, PS), registryProvider) {}
 }

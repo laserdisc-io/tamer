@@ -12,19 +12,20 @@ import zio.stream.ZPipeline
 
 import scala.math.Ordering.Implicits.infixOrderingOps
 
-sealed abstract case class S3Setup[R, K: Tag, V: Tag, S: Tag: Hashable](
-    serdes: Setup.Serdes[K, V, S],
-    initialState: S,
-    recordKey: (S, V) => K,
+sealed abstract case class S3Setup[R, K: Tag, V: Tag, SV: Tag: Hashable](
+    initialState: SV,
+    recordKey: (SV, V) => K,
     bucket: String,
     prefix: String,
     parallelism: Int,
     minimumIntervalForBucketFetch: Duration,
     maximumIntervalForBucketFetch: Duration,
-    selectObjectForState: (S, Keys) => Option[String],
-    stateFold: (KeysR, S, Queue[Unit]) => UIO[S],
+    selectObjectForState: (SV, Keys) => Option[String],
+    stateFold: (KeysR, SV, Queue[Unit]) => UIO[SV],
     pipeline: ZPipeline[R, Throwable, Byte, V]
-) extends Setup[R with S3, K, V, S] {
+)(
+    implicit ev: SerdesProvider[K, V, SV]
+) extends Setup[R with S3, K, V, SV] {
 
   private[this] sealed trait EphemeralChange extends Product with Serializable
   private[this] final object EphemeralChange {
@@ -83,7 +84,7 @@ sealed abstract case class S3Setup[R, K: Tag, V: Tag, S: Tag: Hashable](
     } yield EphemeralChange(detectedKeyListChanged)
   }
 
-  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]) = for {
+  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: SV, queue: Enqueue[NonEmptyChunk[(K, V)]]) = for {
     log       <- logTask
     nextState <- stateFold(keysR, currentState, keysChangedToken)
     _         <- log.debug(s"next state computed to be $nextState")
@@ -99,7 +100,7 @@ sealed abstract case class S3Setup[R, K: Tag, V: Tag, S: Tag: Hashable](
       .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
   } yield nextState
 
-  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with S3, S] = for {
+  override def iteration(currentState: SV, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with S3, SV] = for {
     sourceState <- initialEphemeralState
     token       <- Queue.dropping[Unit](requestedCapacity = 1)
     _           <- updatedSourceState(sourceState, token).scheduleFrom(EphemeralChange.Detected)(ephemeralChangeSchedule).forever.fork
@@ -110,22 +111,21 @@ sealed abstract case class S3Setup[R, K: Tag, V: Tag, S: Tag: Hashable](
 object S3Setup {
   private[this] final val defaultPipeline = ZPipeline.utf8Decode >>> ZPipeline.splitLines
 
-  def apply[R, K: Tag: Codec, V: Tag: Codec, S: Tag: Codec: Hashable](
+  def apply[R, K: Tag, V: Tag, SV: Tag: Hashable](
       bucket: String,
       prefix: String,
       minimumIntervalForBucketFetch: Duration,
       maximumIntervalForBucketFetch: Duration,
-      initialState: S
+      initialState: SV
   )(
-      recordKey: (S, V) => K,
-      selectObjectForState: (S, Keys) => Option[String],
-      stateFold: (KeysR, S, Queue[Unit]) => UIO[S],
+      recordKey: (SV, V) => K,
+      selectObjectForState: (SV, Keys) => Option[String],
+      stateFold: (KeysR, SV, Queue[Unit]) => UIO[SV],
       parallelism: Int = 1,
       pipeline: ZPipeline[R, Throwable, Byte, V] = defaultPipeline
   )(
-      implicit ev: Codec[Tamer.StateKey]
-  ): S3Setup[R, K, V, S] = new S3Setup(
-    Setup.mkSerdes[K, V, S],
+      implicit ev: SerdesProvider[K, V, SV]
+  ): S3Setup[R, K, V, SV] = new S3Setup(
     initialState,
     recordKey,
     bucket,
@@ -163,7 +163,7 @@ object S3Setup {
   private final def selectObjectForInstant(formatter: ZonedDateTimeFormatter)(from: Instant, keys: Keys): Option[String] =
     keys.find(_.contains(formatter.format(from)))
 
-  final def timed[R, K: Tag: Codec, V: Tag: Codec](
+  final def timed[R, K: Tag, V: Tag](
       bucket: String,
       prefix: String,
       from: Instant,
@@ -174,10 +174,8 @@ object S3Setup {
       minimumIntervalForBucketFetch: Duration = 5.minutes,
       maximumIntervalForBucketFetch: Duration = 5.minutes
   )(
-      implicit ev0: Codec[Tamer.StateKey],
-      ev1: Codec[Instant]
+      implicit ev: SerdesProvider[K, V, Instant]
   ): S3Setup[R, K, V, Instant] = new S3Setup(
-    Setup.mkSerdes[K, V, Instant],
     from,
     recordKey,
     bucket,

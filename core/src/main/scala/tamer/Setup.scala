@@ -2,7 +2,7 @@ package tamer
 
 import zio._
 
-abstract class Setup[-R, K: Tag, V: Tag, SV: Tag](implicit val mkSerdes: MkSerdes[K, V, SV]) {
+abstract class Setup[-R, K: Tag, V: Tag, SV: Tag](implicit val serdesProvider: SerdesProvider[K, V, SV]) {
   val initialState: SV
   val stateKey: Int
   val recordKey: (SV, V) => K
