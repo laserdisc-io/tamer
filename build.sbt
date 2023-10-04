@@ -26,7 +26,7 @@ val V = new {
   val zio                = "2.0.17"
   val `zio-interop`      = "23.0.0.8"
   val `zio-json`         = "0.6.2"
-  val `zio-kafka`        = "2.4.2"
+  val `zio-kafka`        = "2.4.3"
   val `zio-oci-os`       = "0.6.0"
   val `zio-s3`           = "0.4.2.4"
 }
