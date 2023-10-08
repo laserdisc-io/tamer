@@ -6,7 +6,6 @@ val V = new {
   val awsSdk             = "2.20.161"
   val `cats-effect`      = "3.5.2"
   val circe              = "0.14.6"
-  val ciris              = "3.3.0"
   val confluent          = "7.5.0"
   val doobie             = "1.0.0-RC4"
   val http4s             = "0.23.23"
@@ -108,12 +107,10 @@ lazy val core = project
       "com.fasterxml.jackson.core"             % "jackson-annotations"          % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-core"                 % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-databind"             % V.`jackson-databind`,
-      "dev.zio"                               %% "zio-interop-cats"             % V.`zio-interop`,
       "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka`,
       "dev.zio"                               %% "zio-streams"                  % V.zio,
       "io.confluent"                           % "kafka-schema-registry-client" % V.confluent excludeAll ("org.apache.kafka", "kafka-clients"),
       "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
-      "is.cir"                                %% "ciris"                        % V.ciris,
       "org.apache.kafka"                       % "kafka-clients"                % V.kafka,
       "org.typelevel"                         %% "cats-effect"                  % V.`cats-effect`,
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"          % V.`jsoniter-scala` % Optional,
@@ -136,8 +133,9 @@ lazy val db = project
   .settings(
     name := "tamer-db",
     libraryDependencies ++= Seq(
-      "org.tpolecat" %% "doobie-core"   % V.doobie,
-      "org.tpolecat" %% "doobie-hikari" % V.doobie
+      "dev.zio"      %% "zio-interop-cats" % V.`zio-interop`,
+      "org.tpolecat" %% "doobie-core"      % V.doobie,
+      "org.tpolecat" %% "doobie-hikari"    % V.doobie
     )
   )
 
@@ -173,13 +171,14 @@ lazy val rest = project
     name := "tamer-rest",
     libraryDependencies ++= Seq(
       "com.softwaremill.sttp.client3" %% "zio"                 % V.sttp,
-      "com.github.fd4s"               %% "vulcan-generic"      % V.vulcan % Test,
-      "io.circe"                      %% "circe-core"          % V.circe  % Test,
-      "io.circe"                      %% "circe-generic"       % V.circe  % Test,
-      "io.circe"                      %% "circe-parser"        % V.circe  % Test,
-      "org.http4s"                    %% "http4s-circe"        % V.http4s % Test,
-      "org.http4s"                    %% "http4s-ember-server" % V.http4s % Test,
-      "org.http4s"                    %% "http4s-dsl"          % V.http4s % Test
+      "com.github.fd4s"               %% "vulcan-generic"      % V.vulcan        % Test,
+      "dev.zio"                       %% "zio-interop-cats"    % V.`zio-interop` % Test,
+      "io.circe"                      %% "circe-core"          % V.circe         % Test,
+      "io.circe"                      %% "circe-generic"       % V.circe         % Test,
+      "io.circe"                      %% "circe-parser"        % V.circe         % Test,
+      "org.http4s"                    %% "http4s-circe"        % V.http4s        % Test,
+      "org.http4s"                    %% "http4s-ember-server" % V.http4s        % Test,
+      "org.http4s"                    %% "http4s-dsl"          % V.http4s        % Test
     )
   )
 

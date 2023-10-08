@@ -1,12 +1,20 @@
 package tamer
 
-import cats.implicits._
-import ciris._
 import zio._
-import zio.interop.catz._
 
 final case class SinkConfig(topic: String)
+object SinkConfig {
+  val config: Config[SinkConfig] = Config.string("kafka_sink_topic").map(SinkConfig.apply)
+}
+
 final case class StateConfig(topic: String, groupId: String, clientId: String)
+object StateConfig {
+  val config: Config[StateConfig] =
+    (Config.string("kafka_state_topic") ++ Config.string("kafka_state_group_id") ++ Config.string("kafka_state_client_id")).map {
+      case (stateTopic, stateGroupId, stateClientId) => StateConfig(stateTopic, stateGroupId, stateClientId)
+    }
+}
+
 final case class KafkaConfig(
     brokers: List[String],
     schemaRegistryUrl: Option[String],
@@ -38,24 +46,19 @@ object KafkaConfig {
     properties = Map.empty
   )
 
-  private[this] implicit final val durationConfigDecoder: ConfigDecoder[String, Duration] =
-    ConfigDecoder.stringFiniteDurationConfigDecoder.map(Duration.fromScala)
-  private[this] implicit final val hostListConfigDecoder: ConfigDecoder[String, List[String]] =
-    ConfigDecoder.identity[String].map(_.split(",").toList.map(_.trim))
-
-  private[this] val kafkaSinkConfigValue  = env("KAFKA_SINK_TOPIC").map(SinkConfig)
-  private[this] val kafkaStateConfigValue = (env("KAFKA_STATE_TOPIC"), env("KAFKA_STATE_GROUP_ID"), env("KAFKA_STATE_CLIENT_ID")).mapN(StateConfig)
   private[this] val kafkaConfigValue = (
-    env("KAFKA_BROKERS").as[List[String]],
-    env("KAFKA_SCHEMA_REGISTRY_URL").option,
-    env("KAFKA_CLOSE_TIMEOUT").as[Duration],
-    env("KAFKA_BUFFER_SIZE").as[Int],
-    kafkaSinkConfigValue,
-    kafkaStateConfigValue,
-    env("KAFKA_TRANSACTIONAL_ID").as[String]
-  ).mapN(KafkaConfig.apply)
+    Config.listOf(Config.string("kafka_brokers")) ++
+      Config.string("kafka_schema_registry_url").optional ++
+      Config.duration("kafka_close_timeout") ++
+      Config.int("kafka_buffer_size") ++
+      SinkConfig.config ++
+      StateConfig.config ++
+      Config.string("kafka_transactional_id")
+  ).map { case (brokers, schemaRegistryUrl, closeTimeout, bufferSize, sink, state, transactionalId) =>
+    KafkaConfig(brokers, schemaRegistryUrl, closeTimeout, bufferSize, sink, state, transactionalId)
+  }
 
   final val fromEnvironment: Layer[TamerError, KafkaConfig] = ZLayer {
-    kafkaConfigValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce))
+    ZIO.config(kafkaConfigValue).mapError(ce => TamerError(ce.getMessage(), ce))
   }
 }
