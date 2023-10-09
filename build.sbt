@@ -1,34 +1,34 @@
 val scala_212 = "2.12.18"
-val scala_213 = "2.13.11"
+val scala_213 = "2.13.12"
 
 val V = new {
   val avro4s             = "4.1.1"
-  val awsSdk             = "2.20.138"
-  val `cats-effect`      = "3.5.1"
+  val awsSdk             = "2.20.162"
+  val `cats-effect`      = "3.5.2"
   val circe              = "0.14.6"
-  val confluent          = "7.5.0"
+  val confluent          = "7.5.1"
   val doobie             = "1.0.0-RC4"
   val http4s             = "0.23.23"
   val jackson            = "2.15.2"
   val `jackson-databind` = "2.15.2"
   val `json-schema`      = "1.14.2"
-  val `jsoniter-scala`   = "2.23.3"
-  val kafka              = "3.5.1"
+  val `jsoniter-scala`   = "2.24.1"
+  val kafka              = "3.6.0"
   val logback            = "1.4.11"
   val `log-effect`       = "0.17.0"
-  val ociSdk             = "3.24.0"
+  val ociSdk             = "3.25.3"
   val postgres           = "42.6.0"
   val `scala-compat`     = "2.11.0"
-  val slf4j              = "2.0.7"
-  val sttp               = "3.8.16"
+  val slf4j              = "2.0.9"
+  val sttp               = "3.9.0"
   val vulcan             = "1.9.0"
-  val zio                = "2.0.16"
+  val zio                = "2.0.18"
+  val `zio-config`       = "3.0.7"
   val `zio-interop`      = "23.0.0.8"
-  val `zio-json`         = "0.6.1"
-  val `zio-kafka`        = "2.4.2"
+  val `zio-json`         = "0.6.2"
+  val `zio-kafka`        = "2.5.0"
   val `zio-oci-os`       = "0.6.0"
   val `zio-s3`           = "0.4.2.4"
-  val `zio-config`       = "3.0.7"
 }
 
 val flags = Seq(
@@ -108,9 +108,9 @@ lazy val core = project
       "com.fasterxml.jackson.core"             % "jackson-annotations"          % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-core"                 % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-databind"             % V.`jackson-databind`,
+      "dev.zio"                               %% "zio-config"                   % V.`zio-config`,
       "dev.zio"                               %% "zio-interop-cats"             % V.`zio-interop`,
       "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka`,
-      "dev.zio"                               %% "zio-config"                   % V.`zio-config`,
       "dev.zio"                               %% "zio-streams"                  % V.zio,
       "io.confluent"                           % "kafka-schema-registry-client" % V.confluent excludeAll ("org.apache.kafka", "kafka-clients"),
       "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
