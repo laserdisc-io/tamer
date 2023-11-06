@@ -28,7 +28,7 @@ package object db {
     }
 
   final def mkTransactor(config: DbConfig, connectEC: ExecutionContext): ZIO[Scope, TamerError, HikariTransactor[Task]] =
-    newHikariTransactor[Task](config.driver, config.uri, config.username, config.password, connectEC).toScopedZIO
+    newHikariTransactor[Task](config.driver, config.uri, config.username, config.password.value.asString, connectEC).toScopedZIO
       .refineToOrDie[SQLException]
       .mapError(sqle => TamerError(sqle.getLocalizedMessage, sqle))
 
