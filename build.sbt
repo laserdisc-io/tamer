@@ -3,7 +3,7 @@ val scala_213 = "2.13.12"
 
 val V = new {
   val avro4s             = "4.1.1"
-  val awsSdk             = "2.21.15"
+  val awsSdk             = "2.21.17"
   val `cats-effect`      = "3.5.2"
   val circe              = "0.14.6"
   val confluent          = "7.5.2"
@@ -22,7 +22,7 @@ val V = new {
   val slf4j              = "2.0.9"
   val sttp               = "3.9.0"
   val vulcan             = "1.9.0"
-  val zio                = "2.0.18"
+  val zio                = "2.0.19"
   val `zio-interop`      = "23.0.0.8"
   val `zio-json`         = "0.6.2"
   val `zio-kafka`        = "2.6.0"
