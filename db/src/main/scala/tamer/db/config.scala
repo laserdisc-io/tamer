@@ -1,22 +1,22 @@
 package tamer
 package db
 
-import cats.syntax.all._
-import ciris.{ConfigException, env}
 import zio._
 
-import zio.interop.catz._
-
-final case class DbConfig(driver: String, uri: String, username: String, password: String, fetchChunkSize: Int)
+final case class DbConfig(driver: String, uri: String, username: String, password: Config.Secret, fetchChunkSize: Int)
 object DbConfig {
   private[this] final val dbConfigValue =
-    (env("DATABASE_DRIVER"), env("DATABASE_URL"), env("DATABASE_USERNAME"), env("DATABASE_PASSWORD").redacted, env("QUERY_FETCH_CHUNK_SIZE").as[Int])
-      .mapN(DbConfig.apply)
+    (
+      Config.string("database_driver") ++
+        Config.string("database_url") ++
+        Config.string("database_username") ++
+        Config.secret("database_password") ++
+        Config.int("query_fetch_chunk_size")
+    ).map { case (driver, uri, username, password, fetchChunkSize) =>
+      DbConfig(driver, uri, username, password, fetchChunkSize)
+    }
 
   final val fromEnvironment: Layer[TamerError, DbConfig] = ZLayer {
-    dbConfigValue
-      .load[Task]
-      .refineToOrDie[ConfigException]
-      .mapError(ce => TamerError(ce.error.redacted.show, ce))
+    ZIO.config(dbConfigValue).mapError(ce => TamerError(ce.getMessage(), ce))
   }
 }

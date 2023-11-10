@@ -3,10 +3,9 @@ val scala_213 = "2.13.12"
 
 val V = new {
   val avro4s             = "4.1.1"
-  val awsSdk             = "2.21.15"
+  val awsSdk             = "2.21.17"
   val `cats-effect`      = "3.5.2"
   val circe              = "0.14.6"
-  val ciris              = "3.4.0"
   val confluent          = "7.5.1"
   val doobie             = "1.0.0-RC4"
   val http4s             = "0.23.23"
@@ -23,7 +22,7 @@ val V = new {
   val slf4j              = "2.0.9"
   val sttp               = "3.9.0"
   val vulcan             = "1.9.0"
-  val zio                = "2.0.18"
+  val zio                = "2.0.19"
   val `zio-interop`      = "23.0.0.8"
   val `zio-json`         = "0.6.2"
   val `zio-kafka`        = "2.6.0"
@@ -93,7 +92,7 @@ lazy val commonSettings = baseSettings ++ Seq(
     "dev.zio" %% "zio-test-sbt" % V.zio % Test
   ),
   testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
-  Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings"),
+  Compile / console / scalacOptions --= Seq("-Ywarn-unused:imports", "-Xfatal-warnings", "-Wconf:any:error"),
   Test / console / scalacOptions := (Compile / console / scalacOptions).value,
   Test / fork                    := true
 )
@@ -108,12 +107,10 @@ lazy val core = project
       "com.fasterxml.jackson.core"             % "jackson-annotations"          % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-core"                 % V.jackson,
       "com.fasterxml.jackson.core"             % "jackson-databind"             % V.`jackson-databind`,
-      "dev.zio"                               %% "zio-interop-cats"             % V.`zio-interop`,
       "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka`,
       "dev.zio"                               %% "zio-streams"                  % V.zio,
       "io.confluent"                           % "kafka-schema-registry-client" % V.confluent excludeAll ("org.apache.kafka", "kafka-clients"),
       "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
-      "is.cir"                                %% "ciris"                        % V.ciris,
       "org.apache.kafka"                       % "kafka-clients"                % V.kafka,
       "org.typelevel"                         %% "cats-effect"                  % V.`cats-effect`,
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"          % V.`jsoniter-scala` % Optional,
@@ -136,8 +133,9 @@ lazy val db = project
   .settings(
     name := "tamer-db",
     libraryDependencies ++= Seq(
-      "org.tpolecat" %% "doobie-core"   % V.doobie,
-      "org.tpolecat" %% "doobie-hikari" % V.doobie
+      "dev.zio"      %% "zio-interop-cats" % V.`zio-interop`,
+      "org.tpolecat" %% "doobie-core"      % V.doobie,
+      "org.tpolecat" %% "doobie-hikari"    % V.doobie
     )
   )
 
@@ -173,13 +171,14 @@ lazy val rest = project
     name := "tamer-rest",
     libraryDependencies ++= Seq(
       "com.softwaremill.sttp.client3" %% "zio"                 % V.sttp,
-      "com.github.fd4s"               %% "vulcan-generic"      % V.vulcan % Test,
-      "io.circe"                      %% "circe-core"          % V.circe  % Test,
-      "io.circe"                      %% "circe-generic"       % V.circe  % Test,
-      "io.circe"                      %% "circe-parser"        % V.circe  % Test,
-      "org.http4s"                    %% "http4s-circe"        % V.http4s % Test,
-      "org.http4s"                    %% "http4s-ember-server" % V.http4s % Test,
-      "org.http4s"                    %% "http4s-dsl"          % V.http4s % Test
+      "com.github.fd4s"               %% "vulcan-generic"      % V.vulcan        % Test,
+      "dev.zio"                       %% "zio-interop-cats"    % V.`zio-interop` % Test,
+      "io.circe"                      %% "circe-core"          % V.circe         % Test,
+      "io.circe"                      %% "circe-generic"       % V.circe         % Test,
+      "io.circe"                      %% "circe-parser"        % V.circe         % Test,
+      "org.http4s"                    %% "http4s-circe"        % V.http4s        % Test,
+      "org.http4s"                    %% "http4s-ember-server" % V.http4s        % Test,
+      "org.http4s"                    %% "http4s-dsl"          % V.http4s        % Test
     )
   )
 

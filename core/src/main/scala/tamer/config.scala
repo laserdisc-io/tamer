@@ -1,19 +1,32 @@
 package tamer
 
-import cats.implicits._
-import ciris._
 import zio._
-import zio.interop.catz._
 
-final case class SinkConfig(topic: String)
-final case class StateConfig(topic: String, groupId: String, clientId: String)
 final case class RegistryConfig(url: String, cacheSize: Int)
 object RegistryConfig {
   def apply(url: String): RegistryConfig = RegistryConfig(
     url = url,
     cacheSize = 1000
   )
+  val config: Config[Option[RegistryConfig]] =
+    (Config.string("url") ++ Config.int("cache_size").withDefault(1000)).map { case (url, cacheSize) =>
+      RegistryConfig(url, cacheSize)
+    }.optional
 }
+
+final case class SinkConfig(topic: String)
+object SinkConfig {
+  val config: Config[SinkConfig] = Config.string("topic").map(SinkConfig.apply)
+}
+
+final case class StateConfig(topic: String, groupId: String, clientId: String)
+object StateConfig {
+  val config: Config[StateConfig] =
+    (Config.string("topic") ++ Config.string("group_id") ++ Config.string("client_id")).map { case (stateTopic, stateGroupId, stateClientId) =>
+      StateConfig(stateTopic, stateGroupId, stateClientId)
+    }
+}
+
 final case class KafkaConfig(
     brokers: List[String],
     maybeRegistry: Option[RegistryConfig],
@@ -44,29 +57,19 @@ object KafkaConfig {
     properties = Map.empty
   )
 
-  private[this] implicit final val durationConfigDecoder: ConfigDecoder[String, Duration] =
-    ConfigDecoder.stringFiniteDurationConfigDecoder.map(Duration.fromScala)
-  private[this] implicit final val hostListConfigDecoder: ConfigDecoder[String, List[String]] =
-    ConfigDecoder.identity[String].map(_.split(",").toList.map(_.trim))
-
-  private[this] val kafkaSinkConfigValue  = env("KAFKA_SINK_TOPIC").map(SinkConfig)
-  private[this] val kafkaStateConfigValue = (env("KAFKA_STATE_TOPIC"), env("KAFKA_STATE_GROUP_ID"), env("KAFKA_STATE_CLIENT_ID")).mapN(StateConfig)
-  private[this] val kafkaRegistryConfigValue =
-    (env("KAFKA_SCHEMA_REGISTRY_URL").option, env("KAFKA_SCHEMA_REGISTRY_CACHE_SIZE").as[Int].default(1000)).mapN {
-      case (Some(url), cacheSize) => Some(RegistryConfig(url, cacheSize))
-      case _                      => None
-    }
   private[this] val kafkaConfigValue = (
-    env("KAFKA_BROKERS").as[List[String]],
-    kafkaRegistryConfigValue,
-    env("KAFKA_CLOSE_TIMEOUT").as[Duration],
-    env("KAFKA_BUFFER_SIZE").as[Int],
-    kafkaSinkConfigValue,
-    kafkaStateConfigValue,
-    env("KAFKA_TRANSACTIONAL_ID").as[String]
-  ).mapN(KafkaConfig.apply)
+    Config.listOf(Config.string("brokers")) ++
+      RegistryConfig.config.nested("schema_registry") ++
+      Config.duration("close_timeout") ++
+      Config.int("buffer_size") ++
+      SinkConfig.config.nested("sink") ++
+      StateConfig.config.nested("state") ++
+      Config.string("transactional_id")
+  ).map { case (brokers, maybeRegistry, closeTimeout, bufferSize, sink, state, transactionalId) =>
+    KafkaConfig(brokers, maybeRegistry, closeTimeout, bufferSize, sink, state, transactionalId)
+  }.nested("kafka")
 
   final val fromEnvironment: Layer[TamerError, KafkaConfig] = ZLayer {
-    kafkaConfigValue.load[Task].refineToOrDie[ConfigException].mapError(ce => TamerError(ce.error.redacted.show, ce))
+    ZIO.config(kafkaConfigValue).mapError(ce => TamerError(ce.getMessage(), ce))
   }
 }
