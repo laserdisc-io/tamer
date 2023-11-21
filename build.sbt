@@ -12,6 +12,7 @@ val V = new {
   val jackson            = "2.16.0"
   val `jackson-databind` = "2.16.0"
   val `json-schema`      = "1.14.3"
+  val json4s             = "4.0.6"
   val `jsoniter-scala`   = "2.24.4"
   val kafka              = "3.6.0"
   val logback            = "1.4.11"
@@ -23,6 +24,7 @@ val V = new {
   val sttp               = "3.9.1"
   val vulcan             = "1.9.0"
   val zio                = "2.0.19"
+  val `zio-cache`        = "0.2.3"
   val `zio-interop`      = "23.0.0.8"
   val `zio-json`         = "0.6.2"
   val `zio-kafka`        = "2.6.0"
@@ -103,23 +105,25 @@ lazy val core = project
   .settings(
     name := "tamer-core",
     libraryDependencies ++= Seq(
-      "com.github.fd4s"                       %% "vulcan"                       % V.vulcan           % Optional,
-      "com.fasterxml.jackson.core"             % "jackson-annotations"          % V.jackson,
-      "com.fasterxml.jackson.core"             % "jackson-core"                 % V.jackson,
-      "com.fasterxml.jackson.core"             % "jackson-databind"             % V.`jackson-databind`,
-      "dev.zio"                               %% "zio-kafka"                    % V.`zio-kafka`,
-      "dev.zio"                               %% "zio-streams"                  % V.zio,
-      "io.confluent"                           % "kafka-schema-registry-client" % V.confluent excludeAll ("org.apache.kafka", "kafka-clients"),
-      "io.laserdisc"                          %% "log-effect-zio"               % V.`log-effect`,
-      "org.apache.kafka"                       % "kafka-clients"                % V.kafka,
-      "org.typelevel"                         %% "cats-effect"                  % V.`cats-effect`,
-      "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"          % V.`jsoniter-scala` % Optional,
-      "com.sksamuel.avro4s"                   %% "avro4s-core"                  % V.avro4s           % Optional,
-      "dev.zio"                               %% "zio-json"                     % V.`zio-json`       % Optional,
-      "io.circe"                              %% "circe-parser"                 % V.circe            % Optional,
-      "ch.qos.logback"                         % "logback-classic"              % V.logback          % Test,
-      "com.github.everit-org.json-schema"      % "org.everit.json.schema"       % V.`json-schema`    % Test,
-      "io.github.embeddedkafka"               %% "embedded-kafka"               % V.kafka            % Test,
+      "com.fasterxml.jackson.core"             % "jackson-annotations"    % V.jackson,
+      "com.fasterxml.jackson.core"             % "jackson-core"           % V.jackson,
+      "com.fasterxml.jackson.core"             % "jackson-databind"       % V.`jackson-databind`,
+      "com.softwaremill.sttp.client3"         %% "json4s"                 % V.sttp,
+      "com.softwaremill.sttp.client3"         %% "zio"                    % V.sttp,
+      "dev.zio"                               %% "zio-cache"              % V.`zio-cache`,
+      "dev.zio"                               %% "zio-kafka"              % V.`zio-kafka`,
+      "dev.zio"                               %% "zio-streams"            % V.zio,
+      "io.laserdisc"                          %% "log-effect-zio"         % V.`log-effect`,
+      "org.apache.kafka"                       % "kafka-clients"          % V.kafka,
+      "org.json4s"                            %% "json4s-jackson"         % V.json4s,
+      "com.github.fd4s"                       %% "vulcan"                 % V.vulcan           % Optional,
+      "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"    % V.`jsoniter-scala` % Optional,
+      "com.sksamuel.avro4s"                   %% "avro4s-core"            % V.avro4s           % Optional,
+      "dev.zio"                               %% "zio-json"               % V.`zio-json`       % Optional,
+      "io.circe"                              %% "circe-parser"           % V.circe            % Optional,
+      "ch.qos.logback"                         % "logback-classic"        % V.logback          % Test,
+      "com.github.everit-org.json-schema"      % "org.everit.json.schema" % V.`json-schema`    % Test,
+      "io.github.embeddedkafka"               %% "embedded-kafka"         % V.kafka            % Test,
       "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.confluent % Test excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema", "org.slf4j" % "slf4j-log4j12"),
       "org.slf4j" % "jul-to-slf4j"     % V.slf4j % Test,
       "org.slf4j" % "log4j-over-slf4j" % V.slf4j % Test

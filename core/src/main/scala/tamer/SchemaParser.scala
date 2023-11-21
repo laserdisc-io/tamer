@@ -16,12 +16,6 @@ trait SchemaParser[-S, +PS] {
 
 object SchemaParser extends LowPrioritySchemaParser {
   final def apply[S, PS](implicit PS: SchemaParser[S, PS]): SchemaParser[S, PS] = PS
-
-  implicit final val avroSchemaConfluentParsedSchemaParser: SchemaParser[org.apache.avro.Schema, io.confluent.kafka.schemaregistry.ParsedSchema] =
-    new SchemaParser[org.apache.avro.Schema, io.confluent.kafka.schemaregistry.ParsedSchema] {
-      override final def parse(s: org.apache.avro.Schema): Option[io.confluent.kafka.schemaregistry.ParsedSchema] =
-        scala.util.Try(new io.confluent.kafka.schemaregistry.avro.AvroSchema(s)).toOption
-    }
 }
 sealed trait LowPrioritySchemaParser {
   implicit final def identitySchemaParser[S]: SchemaParser[S, S] = new SchemaParser[S, S] {
