@@ -7,8 +7,7 @@ import org.apache.kafka.common.header.Headers
 import zio._
 import zio.kafka.serde.{Serde => ZSerde}
 
-sealed abstract case class Serde[PS: Tag, A](isKey: Boolean, codec: Codec[A], maybeResolvedSchema: Option[PS]) extends ZSerde[Registry[PS], A] {
-  self =>
+sealed abstract case class Serde[A](isKey: Boolean, codec: Codec[A]) extends ZSerde[Registry, A] { self =>
   final val Magic: Byte = 0x0
   final val IntByteSize = 4
 
@@ -20,10 +19,10 @@ sealed abstract case class Serde[PS: Tag, A](isKey: Boolean, codec: Codec[A], ma
   }
   final def subject(topic: String): String = s"$topic-${if (isKey) "key" else "value"}"
 
-  override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[Registry[PS], A] = ZIO.serviceWithZIO {
+  override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[Registry, A] = ZIO.serviceWithZIO {
     case Registry.FakeRegistry => deserialize(data)
     case registry =>
-      maybeResolvedSchema.fold(deserialize(data)) { schema =>
+      codec.maybeSchema.fold(deserialize(data)) { schema =>
         val buffer = ByteBuffer.wrap(data)
         if (buffer.get() != Magic) ZIO.fail(TamerError("Deserialization failed: unknown magic byte!"))
         else {
@@ -41,10 +40,10 @@ sealed abstract case class Serde[PS: Tag, A](isKey: Boolean, codec: Codec[A], ma
       }
   }
 
-  override def serialize(topic: String, headers: Headers, value: A): RIO[Registry[PS], Array[Byte]] = ZIO.serviceWithZIO {
+  override def serialize(topic: String, headers: Headers, value: A): RIO[Registry, Array[Byte]] = ZIO.serviceWithZIO {
     case Registry.FakeRegistry => serialize(value)
     case registry =>
-      maybeResolvedSchema.fold(serialize(value)) { schema =>
+      codec.maybeSchema.fold(serialize(value)) { schema =>
         for {
           id <- registry.getOrRegisterId(subject(topic), schema)
           arr <- ZIO.attempt {
@@ -57,7 +56,7 @@ sealed abstract case class Serde[PS: Tag, A](isKey: Boolean, codec: Codec[A], ma
       }
   }
 
-  final def erase(registry: Registry[PS]): ZSerde[Any, A] = new ZSerde[Any, A] {
+  final def using(registry: Registry): ZSerde[Any, A] = new ZSerde[Any, A] {
     private final val layer = ZLayer.succeed(registry)
     override def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[A] =
       self.deserialize(topic, headers, data).provideLayer(layer)
@@ -67,8 +66,6 @@ sealed abstract case class Serde[PS: Tag, A](isKey: Boolean, codec: Codec[A], ma
 }
 
 object Serde {
-  final def key[A, S, PS: Tag](codec: Codec.Aux[A, S], schemaParser: SchemaParser[S, PS]): Serde[PS, A] =
-    new Serde(isKey = true, codec, codec.maybeSchema.flatMap(schemaParser.parse)) {}
-  final def value[A, S, PS: Tag](codec: Codec.Aux[A, S], schemaParser: SchemaParser[S, PS]): Serde[PS, A] =
-    new Serde(isKey = false, codec, codec.maybeSchema.flatMap(schemaParser.parse)) {}
+  final def key[A: Codec]: Serde[A]   = new Serde(isKey = true, Codec[A]) {}
+  final def value[A: Codec]: Serde[A] = new Serde(isKey = false, Codec[A]) {}
 }
