@@ -43,8 +43,7 @@ jobs:
           - 3.3.1
         java:
           - adopt@1.11
-          - adopt@1.17
-          - adopt@1.21
+          - adopt@1.15
         os:
           - ubuntu-20.04
     runs-on: ${{ matrix.os }}
