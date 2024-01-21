@@ -14,7 +14,7 @@ trait Registry {
 }
 
 object Registry {
-  final object FakeRegistry extends Registry {
+  object FakeRegistry extends Registry {
     override def getOrRegisterId(subject: String, schema: ParsedSchema): Task[Int] = ZIO.succeed(-1)
     override def verifySchema(id: Int, schema: ParsedSchema): Task[Unit]           = ZIO.unit
   }
@@ -50,7 +50,7 @@ object Registry {
     ZIO
       .attemptBlocking(new CachedSchemaRegistryClient(url, size, configuration.asJava))
       .mapError(TamerError("Cannot construct registry client", _))
-      .map(LiveRegistry)
+      .map(LiveRegistry.apply)
   }
 
   val fake: ULayer[Registry] = ZLayer.succeed(FakeRegistry)
