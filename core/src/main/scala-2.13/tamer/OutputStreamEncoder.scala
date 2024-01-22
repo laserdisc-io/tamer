@@ -2,7 +2,7 @@ package tamer
 
 import scala.annotation.unused
 
-object ScalaVersionDependent {
+object OutputStreamEncoder {
   def avro4sOutputStream[A](
       @unused schema: org.apache.avro.Schema,
       encoderA: com.sksamuel.avro4s.Encoder[A]

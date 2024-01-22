@@ -139,7 +139,7 @@ object Codec extends LowPriorityCodecs {
 
     private[this] final val _avroDecoderBuilder = com.sksamuel.avro4s.AvroInputStream.binary(da.asInstanceOf[com.sksamuel.avro4s.Decoder[A]])
     private[this] final val _avroEncoderBuilder =
-      ScalaVersionDependent.avro4sOutputStream(schema.underlying, ea.asInstanceOf[com.sksamuel.avro4s.Encoder[A]])
+      OutputStreamEncoder.avro4sOutputStream(schema.underlying, ea.asInstanceOf[com.sksamuel.avro4s.Encoder[A]])
 
     override final def decode(is: InputStream): A = _avroDecoderBuilder.from(is).build(schema.underlying).iterator.next()
     override final def encode(value: A, os: OutputStream): Unit = {
