@@ -11,7 +11,7 @@ sealed abstract class Schema {
   def isCompatible(previous: String): List[String]
 }
 object Schema {
-  final case class Avro private (underlying: org.apache.avro.Schema) extends Schema {
+  final case class Avro(underlying: org.apache.avro.Schema) extends Schema {
     import org.apache.avro.SchemaCompatibility.Incompatibility
     import org.apache.avro.SchemaCompatibility.SchemaIncompatibilityType._
     import scala.jdk.CollectionConverters._
@@ -52,13 +52,13 @@ object Schema {
           .toList
       catch { case NonFatal(e) => s"Unexpected exception during compatibility check: ${e.getMessage()}" :: Nil }
   }
-  private final object Avro {
+  private object Avro {
     private[this] final val parser = new org.apache.avro.Schema.Parser()
 
     final def parse(s: String): org.apache.avro.Schema = parser.parse(s)
   }
 
-  final def fromAvro(f: =>org.apache.avro.Schema): Schema.Avro = Schema.Avro(f)
+  final def fromAvro(s: =>org.apache.avro.Schema): Schema.Avro = Schema.Avro(s)
 }
 
 @implicitNotFound(
@@ -135,10 +135,11 @@ object Codec extends LowPriorityCodecs {
       ea: E[A],
       sfa: SF[A]
   ): Codec[A] = new AvroCodec[A] {
-    private[this] final val _avroDecoderBuilder = com.sksamuel.avro4s.AvroInputStream.binary(da.asInstanceOf[com.sksamuel.avro4s.Decoder[A]])
-    private[this] final val _avroEncoderBuilder = com.sksamuel.avro4s.AvroOutputStream.binary(ea.asInstanceOf[com.sksamuel.avro4s.Encoder[A]])
-
     override final val schema: Schema.Avro = Schema.fromAvro(sfa.asInstanceOf[com.sksamuel.avro4s.SchemaFor[A]].schema)
+
+    private[this] final val _avroDecoderBuilder = com.sksamuel.avro4s.AvroInputStream.binary(da.asInstanceOf[com.sksamuel.avro4s.Decoder[A]])
+    private[this] final val _avroEncoderBuilder =
+      ScalaVersionDependent.avro4sOutputStream(schema.underlying, ea.asInstanceOf[com.sksamuel.avro4s.Encoder[A]])
 
     override final def decode(is: InputStream): A = _avroDecoderBuilder.from(is).build(schema.underlying).iterator.next()
     override final def encode(value: A, os: OutputStream): Unit = {

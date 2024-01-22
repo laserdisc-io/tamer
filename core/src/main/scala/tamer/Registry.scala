@@ -2,11 +2,10 @@ package tamer
 
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import org.json4s.{DefaultFormats, Serialization}
-import org.json4s.jackson.{Serialization => JacksonSerialization}
-import sttp.client3._
-import sttp.client3.json4s._
+import sttp.client4._
+import sttp.client4.upicklejson.default._
 import sttp.model._
+import upickle.default._
 import zio._
 import zio.cache._
 
@@ -16,16 +15,21 @@ trait Registry {
 }
 
 object Registry {
-  private[this] final type Backend            = SttpBackend[Task, Any]
-  private[this] final type LoadingCache[K, R] = Cache[(Backend, String, LogWriter[Task], K, Schema), Throwable, R]
+  private[this] final type LoadingCache[K, R] = Cache[(Backend[Task], String, LogWriter[Task], K, Schema), Throwable, R]
 
   object SttpRegistry {
     private[this] final case class SchemaString(schema: String)
+    private[this] object SchemaString {
+      implicit val rw: ReadWriter[SchemaString] = macroRW[SchemaString]
+    }
     private[this] final case class SubjectIdVersionSchemaString(subject: String, id: Int, version: Int, schema: String)
+    private[this] object SubjectIdVersionSchemaString {
+      implicit val rw: ReadWriter[SubjectIdVersionSchemaString] = macroRW[SubjectIdVersionSchemaString]
+    }
     private[this] final case class Id(id: Int)
-
-    private[this] implicit final val formats: DefaultFormats      = DefaultFormats
-    private[this] implicit final val serialization: Serialization = JacksonSerialization
+    private[this] object Id {
+      implicit val rw: ReadWriter[Id] = macroRW[Id]
+    }
 
     private[this] final val schemaRegistryV1MediaType = MediaType.unsafeParse("application/vnd.schemaregistry.v1+json")
     private[this] final val schemaRegistryMediaType   = MediaType.unsafeParse("application/vnd.schemaregistry+json")
@@ -34,7 +38,7 @@ object Registry {
       Header.contentType(schemaRegistryV1MediaType)
     )
 
-    private[this] final def getId(backend: Backend, url: String, log: LogWriter[Task], subject: String, schema: Schema): Task[Int] =
+    private[this] final def getId(backend: Backend[Task], url: String, log: LogWriter[Task], subject: String, schema: Schema): Task[Int] =
       request
         .post(uri"$url/subjects/$subject?normalize=false&deleted=false")
         .body(SchemaString(schema.show))
@@ -42,15 +46,15 @@ object Registry {
         .send(backend)
         .flatMap(response => ZIO.fromEither(response.body.map(_.id)))
         .tap(id => log.debug(s"retrieved existing writer schema id: $id"))
-    private[this] final def register(backend: Backend, url: String, log: LogWriter[Task], subject: String, schema: Schema): Task[Int] =
+    private[this] final def register(backend: Backend[Task], url: String, log: LogWriter[Task], subject: String, schema: Schema): Task[Int] =
       request
         .post(uri"$url/subjects/$subject/versions?normalize=false")
         .body(SchemaString(schema.show))
         .response(asJson[Id])
         .send(backend)
         .flatMap(response => ZIO.fromEither(response.body.map(_.id)))
-        .tap(id => log.info(s"registered with id $id new subject $subject writer schema $schema"))
-    private[this] final def get(backend: Backend, url: String, log: LogWriter[Task], id: Int): Task[String] =
+        .tap(id => log.info(s"registered with id $id new subject $subject writer schema ${schema.show}"))
+    private[this] final def get(backend: Backend[Task], url: String, log: LogWriter[Task], id: Int): Task[String] =
       request
         .get(uri"$url/schemas/ids/$id?subject=")
         .response(asJson[SchemaString])
@@ -65,13 +69,13 @@ object Registry {
         }
         .unit
 
-    final def getOrRegisterId(backend: Backend, url: String, log: LogWriter[Task], subject: String, schema: Schema): Task[Int] =
+    final def getOrRegisterId(backend: Backend[Task], url: String, log: LogWriter[Task], subject: String, schema: Schema): Task[Int] =
       getId(backend, url, log, subject, schema) <> register(backend, url, log, subject, schema)
-    final def verifySchema(backend: Backend, url: String, log: LogWriter[Task], id: Int, schema: Schema): Task[Unit] =
+    final def verifySchema(backend: Backend[Task], url: String, log: LogWriter[Task], id: Int, schema: Schema): Task[Unit] =
       get(backend, url, log, id).flatMap(verify(schema, _)).unit
   }
   sealed abstract class SttpRegistry(
-      backend: Backend,
+      backend: Backend[Task],
       url: String,
       schemaToIdCache: LoadingCache[String, Int],
       schemaIdToValidationCache: LoadingCache[Int, Unit],
@@ -83,7 +87,7 @@ object Registry {
       schemaIdToValidationCache.get((backend, url, log, id, schema))
   }
 
-  final object FakeRegistry extends Registry {
+  object FakeRegistry extends Registry {
     override final def getOrRegisterId(subject: String, schema: Schema): Task[Int] = ZIO.succeed(-1)
     override final def verifySchema(id: Int, schema: Schema): Task[Unit]           = ZIO.unit
   }
@@ -95,7 +99,7 @@ final case class RegistryProvider(from: RegistryConfig => ZIO[Scope, TamerError,
 
 object RegistryProvider {
   implicit final val defaultRegistryProvider: RegistryProvider = RegistryProvider { config =>
-    val sttpBackend = sttp.client3.httpclient.zio.HttpClientZioBackend.scoped()
+    val sttpBackend = sttp.client4.httpclient.zio.HttpClientZioBackend.scoped()
     val schemaToIdCache = Cache.makeWithKey(config.cacheSize, Lookup((Registry.SttpRegistry.getOrRegisterId _).tupled))(
       _ => 1.hour,
       { case (_, _, _, subject, schema) => (subject, schema) }

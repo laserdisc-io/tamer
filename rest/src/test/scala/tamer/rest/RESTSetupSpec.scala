@@ -4,8 +4,8 @@ package rest
 import com.comcast.ip4s.Port
 import io.circe.parser
 import log.effect.zio.ZioLogWriter.log4sFromName
-import sttp.client3._
-import sttp.client3.httpclient.zio._
+import sttp.client4._
+import sttp.client4.httpclient.zio._
 import vulcan.Codec
 import vulcan.generic._
 import zio._
@@ -24,7 +24,7 @@ object RESTSetupSpec extends ZIOSpecDefault with HttpServerSupport {
   }
 
   final case class Fixtures(port: Port) {
-    private[this] def queryFor(@unused state: State): Request[Either[String, String], Any] =
+    private[this] def queryFor(@unused state: State): Request[Either[String, String]] =
       basicRequest.get(uri"http://localhost:${port.value}/random").readTimeout(20.seconds.asScala)
 
     private[this] val decoder: String => Task[DecodedPage[Value, State]] = DecodedPage.fromString { v =>

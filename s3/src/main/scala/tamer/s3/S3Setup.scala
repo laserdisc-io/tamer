@@ -28,9 +28,9 @@ sealed abstract case class S3Setup[R, K: Tag, V: Tag, SV: Tag: Hashable](
 ) extends Setup[R with S3, K, V, SV] {
 
   private[this] sealed trait EphemeralChange extends Product with Serializable
-  private[this] final object EphemeralChange {
-    final case object Detected    extends EphemeralChange
-    final case object NotDetected extends EphemeralChange
+  private[this] object EphemeralChange {
+    case object Detected    extends EphemeralChange
+    case object NotDetected extends EphemeralChange
 
     def apply(b: Boolean): EphemeralChange = if (b) Detected else NotDetected
   }

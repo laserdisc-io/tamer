@@ -44,7 +44,7 @@ sealed abstract case class DbSetup[K: Tag, V: Tag, SV: Tag: Hashable](
       .transact(tx)
       .map(ChunkWithMetadata(_))
       .evalTap { c =>
-        val chunk = Chunk.fromIterable(c.chunk.toStream.map(v => recordKey(state, v) -> v))
+        val chunk = Chunk.fromIterable(c.chunk.iterator.to(LazyList).map(v => recordKey(state, v) -> v))
         NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit)
       }
       .flatMap(c => Stream.chunk(c.chunk).map(ValueWithMetadata(_, c.pulledAt)))

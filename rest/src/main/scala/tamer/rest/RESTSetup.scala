@@ -7,8 +7,8 @@ import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import sttp.capabilities.{Effect, WebSockets}
 import sttp.capabilities.zio.ZioStreams
-import sttp.client3.{Request, Response, UriContext, basicRequest}
-import sttp.client3.httpclient.zio.{SttpClient, send}
+import sttp.client4.{Request, Response, UriContext, basicRequest}
+import sttp.client4.httpclient.zio.{SttpClient, send}
 import sttp.model.StatusCode.{Forbidden, NotFound, Unauthorized}
 import zio._
 
@@ -16,7 +16,7 @@ sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, SV: Tag: Hashable](
     initialState: SV,
     recordKey: (SV, V) => K,
     authentication: Option[Authentication[R]],
-    queryFor: SV => Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets],
+    queryFor: SV => SttpRequest,
     pageDecoder: String => RIO[R, DecodedPage[V, SV]],
     filterPage: (DecodedPage[V, SV], SV) => List[V],
     stateFold: (DecodedPage[V, SV], SV) => URIO[R, SV],
@@ -109,7 +109,7 @@ sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, SV: Tag: Hashable](
 
 object RESTSetup {
   def apply[R, K: Tag, V: Tag, SV: Tag: Hashable](initialState: SV)(
-      query: SV => Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets],
+      query: SV => SttpRequest,
       pageDecoder: String => RIO[R, DecodedPage[V, SV]],
       recordKey: (SV, V) => K,
       stateFold: (DecodedPage[V, SV], SV) => URIO[R, SV],

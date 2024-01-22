@@ -52,9 +52,9 @@ object Tamer {
         case _                                         => ZIO.unit <* log.debug(s"received an empty chunk for $topic")
       }
 
-  private[tamer] sealed trait Decision        extends Product with Serializable
-  private[tamer] final case object Initialize extends Decision
-  private[tamer] final case object Resume     extends Decision
+  private[tamer] sealed trait Decision  extends Product with Serializable
+  private[tamer] case object Initialize extends Decision
+  private[tamer] case object Resume     extends Decision
 
   private[tamer] def decidedAction(committed: Map[TopicPartition, Option[OffsetAndMetadata]]): Decision =
     if (committed.values.exists(_.isDefined)) Resume else Initialize
