@@ -5,7 +5,7 @@ import sttp.capabilities.{Effect, WebSockets}
 import sttp.capabilities.zio.ZioStreams
 import sttp.client4.{BackendOptions, Request, Response}
 import sttp.client4.httpclient.zio._
-import zio.{Layer, Ref, Task}
+import zio.{Ref, Task, TaskLayer}
 
 package object rest {
   type EphemeralSecretCache = Ref[Option[String]]
@@ -16,7 +16,7 @@ package object rest {
       options: BackendOptions = BackendOptions.Default,
       customizeRequest: HttpRequest => HttpRequest = identity,
       customEncodingHandler: HttpClientZioBackend.ZioEncodingHandler = PartialFunction.empty
-  ): Layer[TamerError, SttpClient with EphemeralSecretCache] =
+  ): TaskLayer[SttpClient with EphemeralSecretCache] =
     HttpClientZioBackend
       .layer(options, customizeRequest, customEncodingHandler)
       .mapError(e => TamerError(e.getLocalizedMessage(), e)) ++ EphemeralSecretCache.live

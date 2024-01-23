@@ -16,7 +16,7 @@ object DbConfig {
       DbConfig(driver, uri, username, password, fetchChunkSize)
     }
 
-  final val fromEnvironment: Layer[TamerError, DbConfig] = ZLayer {
+  final val fromEnvironment: TaskLayer[DbConfig] = ZLayer {
     ZIO.config(dbConfigValue).mapError(ce => TamerError(ce.getMessage(), ce))
   }
 }

@@ -15,14 +15,13 @@ object RESTDynamicData extends ZIOAppDefault {
       ZIO.attempt(body.split(",").toList.filterNot(_.isBlank))
     }
 
-  def program(now: Instant) = RESTSetup
-    .periodicallyPaginated(
-      baseUrl = "http://localhost:9395/dynamic-pagination",
-      pageDecoder = pageDecoder,
-      periodStart = now
-    )((_, data) => data)
-    .runWith(restLive() ++ KafkaConfig.fromEnvironment)
-    .exitCode
-
-  override final val run = Clock.instant.flatMap(program(_))
+  override final val run = Clock.instant.flatMap { now =>
+    RESTSetup
+      .periodicallyPaginated(
+        baseUrl = "http://localhost:9395/dynamic-pagination",
+        pageDecoder = pageDecoder,
+        periodStart = now
+      )((_, data) => data)
+      .runWith(restLive() ++ KafkaConfig.fromEnvironment)
+  }
 }

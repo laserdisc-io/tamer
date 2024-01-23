@@ -22,5 +22,5 @@ object OciObjectStorageSimple extends ZIOAppDefault {
     },
     objectName = _.current,
     startAfter = _.startAfter
-  ).runWith(objectStorageLayer(US_PHOENIX_1, ObjectStorageAuth.fromConfigFileDefaultProfile) ++ KafkaConfig.fromEnvironment).exitCode
+  ).runWith(objectStorageLayer(US_PHOENIX_1, ObjectStorageAuth.fromConfigFileDefaultProfile) ++ KafkaConfig.fromEnvironment)
 }

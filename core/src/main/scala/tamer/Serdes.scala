@@ -32,7 +32,7 @@ sealed trait Serdes[K, V, SV] {
     "  - \u001b[36mtamer.RegistryProvider\u001b[0m\n"
 )
 sealed trait SerdesProvider[K, V, SV] {
-  def using(maybeRegistryConfig: Option[RegistryConfig]): ZIO[Scope, TamerError, Serdes[K, V, SV]]
+  def using(maybeRegistryConfig: Option[RegistryConfig]): RIO[Scope, Serdes[K, V, SV]]
 }
 
 object SerdesProvider {
@@ -40,7 +40,7 @@ object SerdesProvider {
       implicit SK: Codec[Tamer.StateKey],
       registryProvider: RegistryProvider
   ): SerdesProvider[K, V, SV] = new SerdesProvider[K, V, SV] {
-    override final def using(maybeRegistryConfig: Option[RegistryConfig]): ZIO[Scope, TamerError, Serdes[K, V, SV]] =
+    override final def using(maybeRegistryConfig: Option[RegistryConfig]): RIO[Scope, Serdes[K, V, SV]] =
       maybeRegistryConfig.fold(Registry.fakeRegistryZIO)(registryProvider.from(_)).map { registry =>
         new Serdes[K, V, SV] {
           override final val keySerializer: Serializer[Any, K]          = Serde.key[K].using(registry)

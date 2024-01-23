@@ -20,6 +20,6 @@ object DatabaseGeneralized extends ZIOAppDefault {
             val mostRecent = results.sortBy(_.modifiedAt).max.timestamp
             Clock.instant.map(now => MyState(mostRecent, (mostRecent + 5.minutes).or(now)))
         }
-      ).runWith(dbLayerFromEnvironment ++ KafkaConfig.fromEnvironment).exitCode
+      ).runWith(dbLayerFromEnvironment ++ KafkaConfig.fromEnvironment)
     }
 }

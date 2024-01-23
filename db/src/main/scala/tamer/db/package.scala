@@ -19,19 +19,19 @@ package object db {
     def -(d: Duration): Instant                              = instant.minus(d)
   }
 
-  final val hikariLayer: ZLayer[DbConfig, TamerError, Transactor[Task]] =
-    ZLayer.scoped.apply {
+  final val hikariLayer: RLayer[DbConfig, Transactor[Task]] =
+    ZLayer.scoped {
       ZIO
         .service[DbConfig]
         .zip(ZIO.descriptor.map(_.executor.asExecutionContext))
         .flatMap { case (config, ec) => mkTransactor(config, ec) }
     }
 
-  final def mkTransactor(config: DbConfig, connectEC: ExecutionContext): ZIO[Scope, TamerError, HikariTransactor[Task]] =
+  final def mkTransactor(config: DbConfig, connectEC: ExecutionContext): RIO[Scope, HikariTransactor[Task]] =
     newHikariTransactor[Task](config.driver, config.uri, config.username, config.password.value.asString, connectEC).toScopedZIO
       .refineToOrDie[SQLException]
       .mapError(sqle => TamerError(sqle.getLocalizedMessage, sqle))
 
-  final val dbLayerFromEnvironment: Layer[TamerError, DbConfig with Transactor[Task]] =
+  final val dbLayerFromEnvironment: TaskLayer[DbConfig with Transactor[Task]] =
     DbConfig.fromEnvironment >+> hikariLayer
 }

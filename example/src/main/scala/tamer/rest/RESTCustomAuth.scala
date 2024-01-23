@@ -18,7 +18,7 @@ object RESTCustomAuth extends ZIOAppDefault {
 
   val authentication: Authentication[SttpClient] = new Authentication[SttpClient] {
     override def addAuthentication(request: SttpRequest, bearerToken: Option[String]): SttpRequest = request.auth.bearer(bearerToken.getOrElse(""))
-    override def setSecret(secretRef: Ref[Option[String]]): ZIO[SttpClient, TamerError, Unit] = {
+    override def setSecret(secretRef: Ref[Option[String]]): RIO[SttpClient, Unit] = {
       val fetchToken = send(basicRequest.get(uri"http://localhost:9395/auth").auth.basic("user", "pass"))
         .flatMap(_.body match {
           case Left(error)  => ZIO.fail(TamerError(error))
@@ -43,5 +43,4 @@ object RESTCustomAuth extends ZIOAppDefault {
       increment = 2
     )
     .runWith(restLive() ++ KafkaConfig.fromEnvironment)
-    .exitCode
 }

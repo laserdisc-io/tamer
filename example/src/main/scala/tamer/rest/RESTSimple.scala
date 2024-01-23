@@ -20,5 +20,4 @@ object RESTSimple extends ZIOAppDefault {
       fixedPageElementCount = Some(3)
     )
     .runWith(restLive() ++ KafkaConfig.fromEnvironment)
-    .exitCode
 }
