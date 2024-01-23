@@ -7,24 +7,25 @@ import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import sttp.capabilities.{Effect, WebSockets}
 import sttp.capabilities.zio.ZioStreams
-import sttp.client3.{Request, Response, UriContext, basicRequest}
-import sttp.client3.httpclient.zio.{SttpClient, send}
+import sttp.client4.{Request, Response, UriContext, basicRequest}
+import sttp.client4.httpclient.zio.{SttpClient, send}
 import sttp.model.StatusCode.{Forbidden, NotFound, Unauthorized}
 import zio._
 
-sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, S: Tag: Hashable](
-    serdes: Setup.Serdes[K, V, S],
-    initialState: S,
-    recordKey: (S, V) => K,
+sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, SV: Tag: Hashable](
+    initialState: SV,
+    recordKey: (SV, V) => K,
     authentication: Option[Authentication[R]],
-    queryFor: S => Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets],
-    pageDecoder: String => RIO[R, DecodedPage[V, S]],
-    filterPage: (DecodedPage[V, S], S) => List[V],
-    stateFold: (DecodedPage[V, S], S) => URIO[R, S],
+    queryFor: SV => SttpRequest,
+    pageDecoder: String => RIO[R, DecodedPage[V, SV]],
+    filterPage: (DecodedPage[V, SV], SV) => List[V],
+    stateFold: (DecodedPage[V, SV], SV) => URIO[R, SV],
     retrySchedule: Option[
       SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
     ] = None
-) extends Setup[R with SttpClient with EphemeralSecretCache, K, V, S] {
+)(
+    implicit ev: SerdesProvider[K, V, SV]
+) extends Setup[R with SttpClient with EphemeralSecretCache, K, V, SV] {
 
   private[this] final val query            = queryFor(initialState).show(includeHeaders = false, includeBody = false)
   private[this] final val queryHash        = query.hash
@@ -45,7 +46,7 @@ sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, S: Tag: Hashable](
       request: SttpRequest,
       secretCacheRef: EphemeralSecretCache,
       log: LogWriter[Task]
-  ): RIO[R with SttpClient, DecodedPage[V, S]] = {
+  ): RIO[R with SttpClient, DecodedPage[V, SV]] = {
     def sendRequestRepeatMaybe(request: SttpRequest) =
       retrySchedule.fold[RIO[SttpClient, Response[Either[String, String]]]](send(request))(schedule =>
         send(request).either.repeat(schedule(request)).absolve
@@ -94,9 +95,9 @@ sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, S: Tag: Hashable](
   // intuitive filtering of the page result and automatic type inference of the state for
   // the page decoder helper functions.
   override def iteration(
-      currentState: S,
+      currentState: SV,
       queue: Enqueue[NonEmptyChunk[(K, V)]]
-  ): RIO[R with SttpClient with EphemeralSecretCache, S] = for {
+  ): RIO[R with SttpClient with EphemeralSecretCache, SV] = for {
     log         <- logTask
     tokenCache  <- ZIO.service[EphemeralSecretCache]
     decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
@@ -107,20 +108,19 @@ sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, S: Tag: Hashable](
 }
 
 object RESTSetup {
-  def apply[R, K: Tag: Codec, V: Tag: Codec, S: Tag: Codec: Hashable](initialState: S)(
-      query: S => Request[Either[String, String], ZioStreams with Effect[Task] with WebSockets],
-      pageDecoder: String => RIO[R, DecodedPage[V, S]],
-      recordKey: (S, V) => K,
-      stateFold: (DecodedPage[V, S], S) => URIO[R, S],
+  def apply[R, K: Tag, V: Tag, SV: Tag: Hashable](initialState: SV)(
+      query: SV => SttpRequest,
+      pageDecoder: String => RIO[R, DecodedPage[V, SV]],
+      recordKey: (SV, V) => K,
+      stateFold: (DecodedPage[V, SV], SV) => URIO[R, SV],
       authentication: Option[Authentication[R]] = None,
-      filterPage: (DecodedPage[V, S], S) => List[V] = (dp: DecodedPage[V, S], _: S) => dp.data,
+      filterPage: (DecodedPage[V, SV], SV) => List[V] = (dp: DecodedPage[V, SV], _: SV) => dp.data,
       retrySchedule: Option[
         SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
       ] = None
   )(
-      implicit ev: Codec[Tamer.StateKey]
-  ): RESTSetup[R, K, V, S] = new RESTSetup(
-    Setup.mkSerdes[K, V, S],
+      implicit ev: SerdesProvider[K, V, SV]
+  ): RESTSetup[R, K, V, SV] = new RESTSetup(
     initialState,
     recordKey,
     authentication,
@@ -131,13 +131,11 @@ object RESTSetup {
     retrySchedule
   ) {}
 
-  def paginated[R, K: Tag: Codec, V: Tag: Codec](
+  def paginated[R, K: Tag, V: Tag](
       baseUrl: String,
       pageDecoder: String => RIO[R, DecodedPage[V, Offset]],
       authentication: Option[Authentication[R]] = None,
-      retrySchedule: Option[
-        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
-      ] = None
+      retrySchedule: Option[SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]] = None
   )(
       recordKey: (Offset, V) => K,
       offsetParameterName: String = "page",
@@ -146,8 +144,7 @@ object RESTSetup {
       readRequestTimeout: Duration = 30.seconds,
       initialOffset: Offset = Offset(0, 0)
   )(
-      implicit ev0: Codec[Tamer.StateKey],
-      ev1: Codec[Offset]
+      implicit ev: SerdesProvider[K, V, Offset]
   ): RESTSetup[R, K, V, Offset] = {
     def queryFor(state: Offset) =
       basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala)
@@ -168,7 +165,6 @@ object RESTSetup {
     }
 
     new RESTSetup(
-      Setup.mkSerdes[K, V, Offset],
       initialOffset,
       recordKey,
       authentication,
@@ -213,7 +209,7 @@ object RESTSetup {
     }
   }
 
-  def periodicallyPaginated[R, K: Tag: Codec, V: Tag: Codec](
+  def periodicallyPaginated[R, K: Tag, V: Tag](
       baseUrl: String,
       pageDecoder: String => RIO[R, DecodedPage[V, PeriodicOffset]],
       periodStart: Instant,
@@ -225,12 +221,9 @@ object RESTSetup {
       readRequestTimeout: Duration = 30.seconds,
       startingOffset: Int = 0,
       filterPage: (DecodedPage[V, PeriodicOffset], PeriodicOffset) => List[V] = (dp: DecodedPage[V, PeriodicOffset], _: PeriodicOffset) => dp.data,
-      retrySchedule: Option[
-        SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]
-      ] = None
+      retrySchedule: Option[SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]] = None
   )(recordKey: (PeriodicOffset, V) => K)(
-      implicit ev0: Codec[Tamer.StateKey],
-      ev1: Codec[PeriodicOffset]
+      implicit ev: SerdesProvider[K, V, PeriodicOffset]
   ): RESTSetup[R, K, V, PeriodicOffset] = {
     def queryFor(state: PeriodicOffset) =
       basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala)
@@ -255,7 +248,6 @@ object RESTSetup {
       }
 
     new RESTSetup(
-      Setup.mkSerdes[K, V, PeriodicOffset],
       PeriodicOffset(startingOffset, periodStart),
       recordKey,
       authentication,

@@ -1,7 +1,7 @@
 package tamer
 package rest
 
-import sttp.client3.RetryWhen
+import sttp.client4.RetryWhen
 import zio._
 
 object RESTBasicAuth extends ZIOAppDefault {

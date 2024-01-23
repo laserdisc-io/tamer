@@ -17,9 +17,11 @@ val V = new {
   val postgresql                = "42.7.1"
   val `scala-collection-compat` = "2.11.0"
   val slf4j                     = "2.0.11"
-  val sttp                      = "3.9.2"
+  val sttp                      = "4.0.0-M8"
+  val upickle                   = "3.1.4"
   val vulcan                    = "1.10.1"
   val `zio-interop`             = "23.1.0.0"
+  val `zio-cache`               = "0.2.3"
   val `zio-json`                = "0.6.2"
   val `zio-kafka`               = "2.7.2"
   val `zio-nio`                 = "2.0.2"
@@ -61,9 +63,12 @@ lazy val D = new {
   val `oci-java-sdk-objectstorage` = "com.oracle.oci.sdk"             % "oci-java-sdk-objectstorage" % V.ocisdk
   val postgresql                   = "org.postgresql"                 % "postgresql"                 % V.postgresql
   val `scala-collection-compat`    = "org.scala-lang.modules"        %% "scala-collection-compat"    % V.`scala-collection-compat`
-  val `sttp-zio`                   = "com.softwaremill.sttp.client3" %% "zio"                        % V.sttp
+  val `sttp-upickle`               = "com.softwaremill.sttp.client4" %% "upickle"                    % V.sttp
+  val `sttp-zio`                   = "com.softwaremill.sttp.client4" %% "zio"                        % V.sttp
+  val upickle                      = "com.lihaoyi"                   %% "upickle"                    % V.upickle
   val vulcan                       = "com.github.fd4s"               %% "vulcan"                     % V.vulcan
   val `vulcan-generic`             = "com.github.fd4s"               %% "vulcan-generic"             % V.vulcan
+  val `zio-cache`                  = "dev.zio"                       %% "zio-cache"                  % V.`zio-cache`
   val `zio-interop-cats`           = "dev.zio"                       %% "zio-interop-cats"           % V.`zio-interop`
   val `zio-json`                   = "dev.zio"                       %% "zio-json"                   % V.`zio-json`
   val `zio-kafka`                  = "dev.zio"                       %% "zio-kafka"                  % V.`zio-kafka`
@@ -95,13 +100,15 @@ lazy val core = project
   .settings(
     name := "tamer-core",
     libraryDependencies ++= Seq(
-      D.`cats-effect`,
       D.`jackson-annotations`,
       D.`jackson-core`,
       D.`jackson-databind`,
       D.`kafka-clients`,
-      D.`kafka-schema-registry-client`,
       D.`log-effect-zio`,
+      D.`sttp-upickle`,
+      D.`sttp-zio`,
+      D.upickle,
+      D.`zio-cache`,
       D.`zio-kafka`,
       // optional dependencies
       D.`circe-parser`        % Optional,

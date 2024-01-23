@@ -1,10 +1,65 @@
 package tamer
 
-import java.io.{InputStream, OutputStream}
+import java.io.{InputStream, OutputStream, OutputStreamWriter}
+import java.nio.charset.StandardCharsets.UTF_8
 
-import io.confluent.kafka.schemaregistry.ParsedSchema
-
+import scala.{specialized => sp}
 import scala.annotation.{implicitNotFound, nowarn}
+
+sealed abstract class Schema {
+  def show: String
+  def isCompatible(previous: String): List[String]
+}
+object Schema {
+  final case class Avro(underlying: org.apache.avro.Schema) extends Schema {
+    import org.apache.avro.SchemaCompatibility.Incompatibility
+    import org.apache.avro.SchemaCompatibility.SchemaIncompatibilityType._
+    import scala.jdk.CollectionConverters._
+    import scala.util.control.NonFatal
+
+    private[this] final def asString(i: Incompatibility): String = {
+      val errorDescription = i.getType() match {
+        case FIXED_SIZE_MISMATCH =>
+          s"The size of FIXED type field at path '${i.getLocation()}' in the reader schema (${i
+              .getReaderFragment()}) does not match with the writer schema (${i.getWriterFragment()})"
+        case TYPE_MISMATCH =>
+          s"The type (path '${i.getLocation()}') of a field in the reader schema (${i
+              .getReaderFragment()}) does not match with the writer schema (${i.getWriterFragment()})"
+        case NAME_MISMATCH =>
+          s"The name of the schema has changed (path '${i.getLocation()}')"
+        case MISSING_ENUM_SYMBOLS =>
+          s"The reader schema (${i.getReaderFragment()}) is missing enum symbols '${i.getMessage()}' at path '${i
+              .getLocation()}' in the writer schema (${i.getWriterFragment()})"
+        case MISSING_UNION_BRANCH =>
+          s"The reader schema (${i.getReaderFragment()}) is missing a type inside a union field at path '${i
+              .getLocation()}' in the writer schema (${i.getWriterFragment()})"
+        case READER_FIELD_MISSING_DEFAULT_VALUE =>
+          s"The field '${i.getMessage()}' at path '${i.getLocation()}' in the reader schema (${i
+              .getReaderFragment()}) has no default value and is missing in the writer schema (${i.getWriterFragment()})"
+      }
+      s"{errorType:'${i.getType()}', description:'$errorDescription', additionalInfo:'${i.getMessage()}'}"
+    }
+
+    override final def show: String = underlying.toString()
+    override final def isCompatible(previous: String): List[String] =
+      try
+        org.apache.avro.SchemaCompatibility
+          .checkReaderWriterCompatibility(underlying, Avro.parse(previous))
+          .getResult()
+          .getIncompatibilities()
+          .asScala
+          .map(asString)
+          .toList
+      catch { case NonFatal(e) => s"Unexpected exception during compatibility check: ${e.getMessage()}" :: Nil }
+  }
+  private object Avro {
+    private[this] final val parser = new org.apache.avro.Schema.Parser()
+
+    final def parse(s: String): org.apache.avro.Schema = parser.parse(s)
+  }
+
+  final def fromAvro(s: =>org.apache.avro.Schema): Schema.Avro = Schema.Avro(s)
+}
 
 @implicitNotFound(
   "\n" +
@@ -38,10 +93,10 @@ import scala.annotation.{implicitNotFound, nowarn}
     "  d. Jsoniter Scala: `import \u001b[36mtamer.Codec.optionalJsoniterScalaCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`\n" +
     "  e. ZIO Json: `import \u001b[36mtamer.Codec.optionalZioJsonCodec[\u001b[32m${A}\u001b[0m\u001b[36m]\u001b[0m`.\n"
 )
-sealed trait Codec[@specialized A] {
+sealed trait Codec[@sp A] {
   def decode(is: InputStream): A
   def encode(value: A, os: OutputStream): Unit
-  def maybeSchema: Option[ParsedSchema]
+  def maybeSchema: Option[Schema]
 }
 
 // The series of tricks used to summon implicit instances using optional dependencies
@@ -49,15 +104,18 @@ sealed trait Codec[@specialized A] {
 object Codec extends LowPriorityCodecs {
   final def apply[A](implicit A: Codec[A]): Codec[A] = A
 
-  implicit final def optionalVulcanCodec[A, C[_]: VulcanCodec](implicit ca: C[A]): Codec[A] = new Codec[A] {
+  // Vulcan
+  implicit final def optionalVulcanCodec[A, C[_]: VulcanCodec](implicit ca: C[A]): Codec[A] = new AvroCodec[A] {
     private[this] final val _vulcanCodec = ca.asInstanceOf[vulcan.Codec[A]]
-    assert(_vulcanCodec.schema.isRight)
-    private[this] final val _vulcanSchema = _vulcanCodec.schema.getOrElse(???)
+
+    override final val schema: Schema.Avro = Schema.fromAvro(_vulcanCodec.schema.fold(error => throw error.throwable, identity))
+
+    private[this] final val _genericDatumReader = new org.apache.avro.generic.GenericDatumReader[Any](schema.underlying)
+    private[this] final val _genericDatumWriter = new org.apache.avro.generic.GenericDatumWriter[Any](schema.underlying)
 
     override final def decode(is: InputStream): A = {
       val decoder = org.apache.avro.io.DecoderFactory.get.binaryDecoder(is, null)
-      val value   = new org.apache.avro.generic.GenericDatumReader[Any](_vulcanSchema).read(null, decoder)
-      _vulcanCodec.decode(value, _vulcanSchema) match {
+      _vulcanCodec.decode(_genericDatumReader.read(null, decoder), schema.underlying) match {
         case Left(error)  => throw error.throwable
         case Right(value) => value
       }
@@ -66,62 +124,73 @@ object Codec extends LowPriorityCodecs {
       case Left(error) => throw error.throwable
       case Right(encoded) =>
         val encoder = org.apache.avro.io.EncoderFactory.get.binaryEncoder(os, null)
-        new org.apache.avro.generic.GenericDatumWriter[Any](_vulcanSchema).write(encoded, encoder)
+        _genericDatumWriter.write(encoded, encoder)
         encoder.flush()
     }
-    override final val maybeSchema: Option[ParsedSchema] = Some(new io.confluent.kafka.schemaregistry.avro.AvroSchema(_vulcanSchema))
   }
 
+  // Avro4s
   implicit final def optionalAvro4sCodec[A, D[_]: Avro4sDecoder, E[_]: Avro4sEncoder, SF[_]: Avro4sSchemaFor](
       implicit da: D[A],
       ea: E[A],
       sfa: SF[A]
-  ): Codec[A] = new Codec[A] {
-    private[this] final val _avroSchema         = sfa.asInstanceOf[com.sksamuel.avro4s.SchemaFor[A]].schema
+  ): Codec[A] = new AvroCodec[A] {
+    override final val schema: Schema.Avro = Schema.fromAvro(sfa.asInstanceOf[com.sksamuel.avro4s.SchemaFor[A]].schema)
+
     private[this] final val _avroDecoderBuilder = com.sksamuel.avro4s.AvroInputStream.binary(da.asInstanceOf[com.sksamuel.avro4s.Decoder[A]])
     private[this] final val _avroEncoderBuilder =
-      OutputStreamEncoder.avro4sOutputStream(_avroSchema, ea.asInstanceOf[com.sksamuel.avro4s.Encoder[A]])
+      OutputStreamEncoder.avro4sOutputStream(schema.underlying, ea.asInstanceOf[com.sksamuel.avro4s.Encoder[A]])
 
-    override final def decode(is: InputStream): A = _avroDecoderBuilder.from(is).build(_avroSchema).iterator.next()
+    override final def decode(is: InputStream): A = _avroDecoderBuilder.from(is).build(schema.underlying).iterator.next()
     override final def encode(value: A, os: OutputStream): Unit = {
       val ser = _avroEncoderBuilder.to(os).build()
       ser.write(value)
       ser.close()
     }
-    override final val maybeSchema: Option[ParsedSchema] = Some(new io.confluent.kafka.schemaregistry.avro.AvroSchema(_avroSchema))
   }
 }
-private[tamer] sealed trait LowPriorityCodecs {
-  implicit final def optionalCirceCodec[A, D[_]: CirceDecoder, E[_]: CirceEncoder](implicit da: D[A], ea: E[A]): Codec[A] = new Codec[A] {
-    private[this] final val _circeDecoder = da.asInstanceOf[io.circe.Decoder[A]]
-    private[this] final val _circeEncoder = ea.asInstanceOf[io.circe.Encoder[A]]
+private[tamer] sealed trait LowPriorityCodecs extends LowestPriorityCodecs {
 
-    override final def decode(is: InputStream): A = io.circe.jawn.decodeChannel(java.nio.channels.Channels.newChannel(is))(_circeDecoder) match {
-      case Left(error)  => throw error
-      case Right(value) => value
+  // Circe
+  implicit final def optionalCirceCodec[A, D[_]: CirceDecoder, E[_]: CirceEncoder](implicit da: D[A], ea: E[A]): Codec[A] =
+    new SchemalessCodec[A] {
+      private[this] final val _circeDecoder = da.asInstanceOf[io.circe.Decoder[A]]
+      private[this] final val _circeEncoder = ea.asInstanceOf[io.circe.Encoder[A]]
+
+      override final def decode(is: InputStream): A = io.circe.jawn.decodeChannel(java.nio.channels.Channels.newChannel(is))(_circeDecoder) match {
+        case Left(error)  => throw error
+        case Right(value) => value
+      }
+      override final def encode(value: A, os: OutputStream): Unit =
+        new OutputStreamWriter(os, UTF_8).append(_circeEncoder(value).noSpaces).flush()
     }
-    override final def encode(value: A, os: OutputStream): Unit =
-      new java.io.OutputStreamWriter(os, java.nio.charset.StandardCharsets.UTF_8).append(_circeEncoder(value).noSpaces).flush()
-    override final val maybeSchema: Option[ParsedSchema] = None
-  }
 
-  implicit final def optionalJsoniterScalaCodec[@specialized A, C[_]: JsoniterScalaCodec](implicit ca: C[A]): Codec[A] = new Codec[A] {
+  // Jsoniter-Scala
+  implicit final def optionalJsoniterScalaCodec[@sp A, C[_]: JsoniterScalaCodec](implicit ca: C[A]): Codec[A] = new SchemalessCodec[A] {
     private[this] final val _jsoniterCodec = ca.asInstanceOf[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[A]]
 
     override final def decode(is: InputStream): A               = com.github.plokhotnyuk.jsoniter_scala.core.readFromStream(is)(_jsoniterCodec)
     override final def encode(value: A, os: OutputStream): Unit = com.github.plokhotnyuk.jsoniter_scala.core.writeToStream(value, os)(_jsoniterCodec)
-    override final val maybeSchema: Option[ParsedSchema]        = None
   }
 
-  implicit final def optionalZioJsonCodec[A, C[_]: ZioJsonCodec](implicit ca: C[A]): Codec[A] = new Codec[A] {
+  // ZIO-Json
+  implicit final def optionalZioJsonCodec[A, C[_]: ZioJsonCodec](implicit ca: C[A]): Codec[A] = new SchemalessCodec[A] {
     private[this] final val _zioJsonCodec = ca.asInstanceOf[zio.json.JsonCodec[A]]
 
     override final def decode(is: InputStream): A = zio.Unsafe.unsafe { implicit unsafe =>
       zio.Runtime.default.unsafe.run(_zioJsonCodec.decoder.decodeJsonStreamInput(zio.stream.ZStream.fromInputStream(is))).getOrThrowFiberFailure()
     }
     override final def encode(value: A, os: OutputStream): Unit =
-      new java.io.OutputStreamWriter(os).append(_zioJsonCodec.encodeJson(value, None)).flush()
-    override final val maybeSchema: Option[ParsedSchema] = None
+      new OutputStreamWriter(os, UTF_8).append(_zioJsonCodec.encodeJson(value, None)).flush()
+  }
+}
+private[tamer] sealed trait LowestPriorityCodecs {
+  private[tamer] sealed abstract class AvroCodec[@sp A] extends Codec[A] {
+    def schema: Schema.Avro
+    override final def maybeSchema: Option[Schema] = Some(schema)
+  }
+  private[tamer] sealed abstract class SchemalessCodec[@sp A] extends Codec[A] {
+    override final val maybeSchema: Option[Schema] = None
   }
 }
 
