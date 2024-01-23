@@ -9,7 +9,6 @@ abstract class Setup[-R, K: Tag, V: Tag, SV: Tag](implicit val serdesProvider: S
   val repr: String = "no repr string implemented, if you want a neat description of the source configuration please implement it"
   def iteration(currentState: SV, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R, SV]
 
-  final val run: ZIO[R with KafkaConfig, TamerError, Unit] = runLoop.provideSomeLayer(Tamer.live(this))
-  final def runWith[E >: TamerError, R1](layer: Layer[E, R with KafkaConfig with R1]): IO[E, Unit] =
-    runLoop.provideLayer(layer >>> Tamer.live(this))
+  final val run: RIO[R with KafkaConfig, Unit]                                    = runLoop.provideSomeLayer(Tamer.live(this)).orDie
+  final def runWith[R1](layer: TaskLayer[R with KafkaConfig with R1]): Task[Unit] = runLoop.provideLayer(layer >>> Tamer.live(this)).orDie
 }

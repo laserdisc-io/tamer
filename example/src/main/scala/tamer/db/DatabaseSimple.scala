@@ -15,5 +15,4 @@ object DatabaseSimple extends ZIOAppDefault {
       sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${window.from} AND modified_at <= ${window.to}""".query[Row]
     )(recordKey = (_, v) => v.id, from = Instant.parse("2020-01-01T00:00:00.00Z"), tumblingStep = 5.days)
     .runWith(dbLayerFromEnvironment ++ KafkaConfig.fromEnvironment)
-    .exitCode
 }

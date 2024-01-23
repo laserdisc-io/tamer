@@ -13,7 +13,7 @@ import zio.kafka.serde.{Serde => ZSerde, Serializer}
 import zio.stream.{Stream, ZStream}
 
 trait Tamer {
-  def runLoop: IO[TamerError, Unit]
+  def runLoop: Task[Unit]
 }
 
 object Tamer {
@@ -23,11 +23,6 @@ object Tamer {
   final case class StateKey(stateKey: String, groupId: String)
 
   private[this] final val tenTimes = Schedule.recurs(10L) && Schedule.exponential(100.milliseconds) // FIXME make configurable
-
-  private[this] final val tamerErrors: PartialFunction[Throwable, TamerError] = {
-    case ke: KafkaException => TamerError(ke.getLocalizedMessage, ke)
-    case te: TamerError     => te
-  }
 
   private[this] implicit final class OffsetOps(private val _underlying: Offset) extends AnyVal {
     def info: String = s"${_underlying.topicPartition}@${_underlying.offset}"
@@ -203,16 +198,12 @@ object Tamer {
       runSink <&> runSource
     }
 
-    override val runLoop: IO[TamerError, Unit] = {
-      val logic = for {
-        log   <- logTask
-        _     <- log.info(s"initializing Tamer with setup: \n$repr")
-        queue <- Queue.bounded[(TransactionInfo, Chunk[(K, V)])](config.bufferSize)
-        _     <- runLoop(queue, log)
-      } yield ()
-
-      logic.refineOrDie(tamerErrors)
-    }
+    override val runLoop: Task[Unit] = for {
+      log   <- logTask
+      _     <- log.info(s"initializing Tamer with setup: \n$repr")
+      queue <- Queue.bounded[(TransactionInfo, Chunk[(K, V)])](config.bufferSize)
+      _     <- runLoop(queue, log)
+    } yield ()
   }
 
   object LiveTamer {
@@ -224,7 +215,7 @@ object Tamer {
         stateKey: Int,
         iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
         repr: String
-    ): ZIO[Scope, TamerError, LiveTamer[K, V, SV]] = {
+    ): RIO[Scope, LiveTamer[K, V, SV]] = {
 
       val KafkaConfig(brokers, _, closeTimeout, _, _, StateConfig(_, groupId, clientId), transactionalId, properties) = config
 
@@ -251,9 +242,7 @@ object Tamer {
         .mapError(TamerError("Could not build Kafka client", _))
     }
 
-    private[tamer] final def getLayer[R, K: Tag, V: Tag, SV: Tag](
-        setup: Setup[R, K, V, SV]
-    ): ZLayer[R with KafkaConfig, TamerError, Tamer] =
+    private[tamer] final def getLayer[R, K: Tag, V: Tag, SV: Tag](setup: Setup[R, K, V, SV]): RLayer[R with KafkaConfig, Tamer] =
       ZLayer.scoped[R with KafkaConfig] {
         for {
           config <- ZIO.service[KafkaConfig]
@@ -265,7 +254,5 @@ object Tamer {
       }
   }
 
-  final def live[R, K: Tag, V: Tag, SV: Tag](
-      setup: Setup[R, K, V, SV]
-  ): ZLayer[R with KafkaConfig, TamerError, Tamer] = LiveTamer.getLayer(setup)
+  final def live[R, K: Tag, V: Tag, SV: Tag](setup: Setup[R, K, V, SV]): RLayer[R with KafkaConfig, Tamer] = LiveTamer.getLayer(setup)
 }

@@ -92,10 +92,10 @@ object Registry {
     override final def verifySchema(id: Int, schema: Schema): Task[Unit]           = ZIO.unit
   }
 
-  private[tamer] final val fakeRegistryZIO: ZIO[Scope, TamerError, Registry] = ZIO.succeed(Registry.FakeRegistry)
+  private[tamer] final val fakeRegistryZIO: RIO[Scope, Registry] = ZIO.succeed(Registry.FakeRegistry)
 }
 
-final case class RegistryProvider(from: RegistryConfig => ZIO[Scope, TamerError, Registry])
+final case class RegistryProvider(from: RegistryConfig => RIO[Scope, Registry])
 
 object RegistryProvider {
   implicit final val defaultRegistryProvider: RegistryProvider = RegistryProvider { config =>

@@ -69,7 +69,7 @@ object KafkaConfig {
     KafkaConfig(brokers, maybeRegistry, closeTimeout, bufferSize, sink, state, transactionalId)
   }.nested("kafka")
 
-  final val fromEnvironment: Layer[TamerError, KafkaConfig] = ZLayer {
+  final val fromEnvironment: TaskLayer[KafkaConfig] = ZLayer {
     ZIO.config(kafkaConfigValue).mapError(ce => TamerError(ce.getMessage(), ce))
   }
 }

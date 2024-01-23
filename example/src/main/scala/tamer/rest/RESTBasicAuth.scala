@@ -31,5 +31,4 @@ object RESTBasicAuth extends ZIOAppDefault {
       increment = 2
     )
     .runWith(restLive() ++ KafkaConfig.fromEnvironment)
-    .exitCode
 }
