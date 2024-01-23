@@ -8,19 +8,20 @@ import zio._
 import zio.oci.objectstorage._
 import zio.stream.ZPipeline
 
-sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, S: Tag](
-    serdes: Setup.Serdes[K, V, S],
-    initialState: S,
-    recordKey: (S, V) => K,
+sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, SV: Tag](
+    initialState: SV,
+    recordKey: (SV, V) => K,
     namespace: String,
     bucket: String,
     prefix: Option[String],
-    objectName: S => Option[String],
-    startAfter: S => Option[String],
+    objectName: SV => Option[String],
+    startAfter: SV => Option[String],
     objectNameFinder: String => Boolean,
-    stateFold: (S, Option[String]) => URIO[R, S],
+    stateFold: (SV, Option[String]) => URIO[R, SV],
     pipeline: ZPipeline[R, Throwable, Byte, V]
-) extends Setup[R with ObjectStorage, K, V, S] {
+)(
+    implicit ev: SerdesProvider[K, V, SV]
+) extends Setup[R with ObjectStorage, K, V, SV] {
 
   private[this] final val namespaceHash = namespace.hash
   private[this] final val bucketHash    = bucket.hash
@@ -41,7 +42,7 @@ sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, S: Tag](
 
   private[this] final def process(
       log: LogWriter[Task],
-      currentState: S,
+      currentState: SV,
       queue: Enqueue[NonEmptyChunk[(K, V)]]
   ): RIO[R with ObjectStorage, Unit] =
     objectName(currentState) match {
@@ -56,7 +57,7 @@ sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, S: Tag](
         log.debug("no state change")
     }
 
-  override def iteration(currentState: S, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with ObjectStorage, S] = for {
+  override def iteration(currentState: SV, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with ObjectStorage, SV] = for {
     log <- logTask
     _   <- log.debug(s"current state: $currentState")
     options <- ZIO.succeed(
@@ -69,22 +70,21 @@ sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, S: Tag](
 }
 
 object ObjectStorageSetup {
-  def apply[R, K: Tag: Codec, V: Tag: Codec, S: Tag: Codec](
+  def apply[R, K: Tag, V: Tag, SV: Tag](
       namespace: String,
       bucket: String,
-      initialState: S
+      initialState: SV
   )(
-      recordKey: (S, V) => K,
-      stateFold: (S, Option[String]) => URIO[R, S],
-      objectName: S => Option[String],
-      startAfter: S => Option[String],
+      recordKey: (SV, V) => K,
+      stateFold: (SV, Option[String]) => URIO[R, SV],
+      objectName: SV => Option[String],
+      startAfter: SV => Option[String],
       prefix: Option[String] = None,
       objectNameFinder: String => Boolean = _ => true,
       pipeline: ZPipeline[R, Throwable, Byte, V] = ZPipeline.utf8Decode >>> ZPipeline.splitLines
   )(
-      implicit ev: Codec[Tamer.StateKey]
-  ): ObjectStorageSetup[R, K, V, S] = new ObjectStorageSetup(
-    Setup.mkSerdes[K, V, S],
+      implicit ev: SerdesProvider[K, V, SV]
+  ): ObjectStorageSetup[R, K, V, SV] = new ObjectStorageSetup(
     initialState,
     recordKey,
     namespace,

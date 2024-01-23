@@ -1,8 +1,8 @@
 package tamer
 package rest
 
-import sttp.client3.httpclient.zio.{SttpClient, send}
-import sttp.client3.{UriContext, basicRequest}
+import sttp.client4.httpclient.zio.{SttpClient, send}
+import sttp.client4.{UriContext, basicRequest}
 import zio._
 
 import scala.util.matching.Regex
