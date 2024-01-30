@@ -1,7 +1,7 @@
 val V = new {
   val avro4s_scala2             = "4.1.1"
   val avro4s_scala3             = "5.0.9"
-  val awssdk                    = "2.23.12"
+  val awssdk                    = "2.23.13"
   val `cats-effect`             = "3.5.3"
   val circe                     = "0.14.6"
   val confluent                 = "7.5.3"
@@ -9,7 +9,7 @@ val V = new {
   val http4s                    = "0.23.25"
   val jackson                   = "2.16.1"
   val `json-schema`             = "1.14.4"
-  val `jsoniter-scala`          = "2.27.7"
+  val `jsoniter-scala`          = "2.28.0"
   val kafka                     = "3.6.1"
   val logback                   = "1.4.14"
   val `log-effect`              = "0.19.0"
