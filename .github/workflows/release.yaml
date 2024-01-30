@@ -1,8 +1,7 @@
 name: Release
 on:
   release:
-    types:
-      - created
+    types: [published]
 jobs:
   release_213:
     name: Release 2.13
