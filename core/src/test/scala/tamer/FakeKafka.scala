@@ -34,15 +34,18 @@ object FakeKafka {
     for {
       randomString <- Random.nextUUID.map(uuid => s"test-$uuid")
       fakeKafka    <- ZIO.service[FakeKafka]
-      _            <- fakeKafka.createTopic(s"sink.topic.tape.$randomString")
+      _            <- fakeKafka.createTopic(s"sink.topic.$randomString")
+      _            <- fakeKafka.createTopic(s"state.topic.$randomString")
     } yield KafkaConfig(
       brokers = fakeKafka.bootstrapServers,
-      maybeRegistry = Some(RegistryConfig(fakeKafka.schemaRegistryUrl, 1000)),
+      maybeRegistry = Some(RegistryConfig(fakeKafka.schemaRegistryUrl)),
       closeTimeout = 1.second,
       bufferSize = 5,
-      sink = SinkConfig(s"sink.topic.$randomString"),
-      state = StateConfig(s"sink.topic.tape.$randomString", s"embedded.groupid.$randomString", s"embedded.clientid.$randomString"),
-      transactionalId = s"test-transactional-id-$randomString"
+      sink = TopicConfig(s"sink.topic.$randomString"),
+      state = TopicConfig(s"state.topic.$randomString"),
+      groupId = s"groupid.$randomString",
+      clientId = s"clientid.$randomString",
+      transactionalId = s"transactionalid.$randomString"
     )
   }
 

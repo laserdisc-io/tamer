@@ -2,9 +2,18 @@ version: '3.1'
 
 services:
 
+  minio:
+    image: 'docker.io/bitnami/minio'
+    environment:
+      - MINIO_ACCESS_KEY=
+    ports:
+      - '9000:9000'
+    volumes:
+      - './minio/data:/data'
+
   zookeeper:
     container_name: local-zookeeper
-    image: confluentinc/cp-zookeeper:6.1.1
+    image: confluentinc/cp-zookeeper:latest
     ports:
       - 2181:2181
     hostname: zookeeper
@@ -15,7 +24,7 @@ services:
 
   kafka:
     container_name: local-kafka
-    image: confluentinc/cp-kafka:6.2.1
+    image: confluentinc/cp-kafka:latest
     depends_on:
       - zookeeper
     ports:
@@ -26,15 +35,16 @@ services:
     networks:
       - local_kafka_network
     environment:
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
       - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
-      - KAFKA_JMX_PORT=9101
 
   kafka-rest:
     container_name: local-kafka-rest
-    image: confluentinc/cp-kafka-rest:6.2.1
+    image: confluentinc/cp-kafka-rest:latest
     depends_on:
       - kafka
       - schema-registry
@@ -65,7 +75,7 @@ services:
 
   schema-registry:
     container_name: local-schema-registry
-    image: confluentinc/cp-schema-registry:6.2.1
+    image: confluentinc/cp-schema-registry:latest
     depends_on:
       - kafka
     ports:
@@ -100,15 +110,6 @@ services:
     environment:
       - SCHEMAREGISTRY_URL=http://schema-registry:8081
       - PROXY=true
-
-  minio:
-    image: 'docker.io/bitnami/minio'
-    environment:
-      - MINIO_ACCESS_KEY=
-    ports:
-      - '9000:9000'
-    volumes:
-      - './minio/data:/data'
 
 networks:
   local_kafka_network:

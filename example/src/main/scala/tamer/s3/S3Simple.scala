@@ -18,5 +18,5 @@ object S3Simple extends ZIOAppDefault {
       from = Instant.parse("2020-12-03T10:15:30.00Z"),
       dateTimeFormatter = ZonedDateTimeFormatter.fromPattern("yyyy-MM-dd HH:mm:ss", ZoneId.of("Europe/Rome"))
     )
-    .runWith(Scope.default >>> (liveZIO(AF_SOUTH_1, s3.providers.default, Some(new URI("http://localhost:9000"))) ++ KafkaConfig.fromEnvironment))
+    .runWith(liveZIO(AF_SOUTH_1, ZIO.scoped(s3.providers.default), Some(new URI("http://localhost:9000"))) ++ KafkaConfig.fromEnvironment)
 }
