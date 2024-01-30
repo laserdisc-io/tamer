@@ -85,17 +85,37 @@ object Tamer {
 
     val partitionSet = consumer.partitionsFor(stateTopic).map(_.map(pi => new TopicPartition(pi.topic(), pi.partition())).toSet)
 
+    def decide(committed: Map[TopicPartition, Option[OffsetAndMetadata]], endOffsets: Map[TopicPartition, Long]) = {
+      val topicPartitionOrdering: Ordering[TopicPartition]                        = Ordering.by(tp => (tp.topic(), tp.partition()))
+      implicit val topicPartitionOffsetOrdering: Ordering[(TopicPartition, Long)] = topicPartitionOrdering.on(_._1)
+      implicit val topicPartitionCommittedOffsetMetadataOrdering: Ordering[(TopicPartition, Option[OffsetAndMetadata])] =
+        topicPartitionOrdering.on(_._1)
+
+      val endOffsetIsAfterCommitted: ((TopicPartition, Long), (TopicPartition, Option[OffsetAndMetadata])) => Boolean = {
+        case ((tp1, endOffset), (tp2, Some(committedOffsetAndMetadata))) => tp1 == tp2 && endOffset > committedOffsetAndMetadata.offset()
+        case _                                                           => false
+      }
+
+      if (endOffsets.keySet == committed.keySet && committed.values.forall(_.isEmpty)) ZIO.succeed(StartupDecision.Initialize)
+      else if (endOffsets.toList.sorted.zip(committed.toList.sorted).forall(endOffsetIsAfterCommitted.tupled)) ZIO.succeed(StartupDecision.Resume)
+      else ZIO.fail(TamerError("Tamer is stuck, it will not proceed unless state is restored manually"))
+    }
+
     val startupDecision: Task[StartupDecision] = for {
-      _          <- log.debug(s"obtaining information on $stateTopic")
+      _          <- log.debug(s"obtaining information on topic $stateTopic")
       partitions <- partitionSet
-      _          <- log.debug(s"received the following information on $stateTopic: $partitionSet")
-      decision   <- consumer.committed(partitions).map(c => if (c.values.exists(_.isDefined)) StartupDecision.Resume else StartupDecision.Initialize)
+      _          <- log.debug(s"received the following information on topic $stateTopic: $partitionSet")
+      committed  <- consumer.committed(partitions)
+      _          <- log.debug(s"received the following commited state information on topic $stateTopic for the group $stateGroupId: $committed")
+      endOffsets <- consumer.endOffsets(partitions)
+      _          <- log.debug(s"received the following end offsets information on the topic $stateTopic: $endOffsets")
+      decision   <- decide(committed, endOffsets)
       _          <- log.debug(s"decided to $decision")
     } yield decision
 
     val initialize: Task[Unit] = startupDecision.flatMap {
       case StartupDecision.Initialize =>
-        log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
+        log.info(s"consumer group $stateGroupId never consumed from topic $stateTopic") *>
           ZIO.scoped {
             producer.createTransaction.flatMap { transaction =>
               transaction
@@ -104,7 +124,7 @@ object Tamer {
                 .unit
             }
           }
-      case StartupDecision.Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
+      case StartupDecision.Resume => log.info(s"consumer group $stateGroupId resuming consumption from topic $stateTopic")
     }
 
     val stateStream: Stream[Throwable, Unit] = consumer
@@ -195,9 +215,9 @@ object Tamer {
       sinkStream(config.sink.topicName, keySerializer, valueSerializer, queue, log)
 
     private def drainSink(queue: Dequeue[(TxInfo, Chunk[(K, V)])], log: LogWriter[Task]) =
-      log.info(s"running final drain on sink queue for topic $sinkTopicName").ignore *>
+      log.info("running final drain on sink queue").ignore *>
         sink(queue, log).runDrain.orDie.fork <*
-        log.info(s"sink queue drained for $sinkTopicName").ignore *>
+        log.info("sink queue drained").ignore *>
         queue.size.repeatWhile(_ > 0) *>
         queue.shutdown
 

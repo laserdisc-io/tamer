@@ -56,5 +56,5 @@ object S3Generalized extends ZIOAppDefault {
     recordKey = (l: Long, _: String) => l,
     selectObjectForState = (l: Long, _: Keys) => internals.selectObjectForInstant(l),
     stateFold = internals.getNextState
-  ).runWith(Scope.default >>> (liveZIO(AF_SOUTH_1, s3.providers.default, Some(new URI("http://localhost:9000"))) ++ myKafkaConfigLayer))
+  ).runWith(liveZIO(AF_SOUTH_1, ZIO.scoped(s3.providers.default), Some(new URI("http://localhost:9000"))) ++ myKafkaConfigLayer)
 }
