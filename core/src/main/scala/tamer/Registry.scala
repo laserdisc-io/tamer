@@ -101,11 +101,11 @@ object RegistryProvider {
   implicit final val defaultRegistryProvider: RegistryProvider = RegistryProvider { config =>
     val sttpBackend = sttp.client4.httpclient.zio.HttpClientZioBackend.scoped()
     val schemaToIdCache = Cache.makeWithKey(config.cacheSize, Lookup((Registry.SttpRegistry.getOrRegisterId _).tupled))(
-      _ => 1.hour,
+      _ => config.expiration,
       { case (_, _, _, subject, schema) => (subject, schema) }
     )
     val schemaIdToValidationCache = Cache.makeWithKey(config.cacheSize, Lookup((Registry.SttpRegistry.verifySchema _).tupled))(
-      _ => 1.hour,
+      _ => config.expiration,
       { case (_, _, _, id, schema) => (id, schema) }
     )
     val log = log4sFromName.provideEnvironment(ZEnvironment("tamer.SttpRegistry"))

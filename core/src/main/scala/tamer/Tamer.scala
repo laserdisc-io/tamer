@@ -6,6 +6,9 @@ import org.apache.kafka.clients.consumer.{ConsumerConfig, OffsetAndMetadata}
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.{KafkaException, TopicPartition}
 import zio._
+import zio.kafka.admin._
+import zio.kafka.admin.AdminClient.{DescribeTopicsOptions, ListTopicsOptions, NewTopic, TopicDescription}
+import zio.kafka.admin.acl.AclOperation
 import zio.kafka.consumer.Consumer.{AutoOffsetStrategy, OffsetRetrieval}
 import zio.kafka.consumer._
 import zio.kafka.producer.{ProducerSettings, Transaction, TransactionalProducer, TransactionalProducerSettings}
@@ -17,44 +20,53 @@ trait Tamer {
 }
 
 object Tamer {
-  case class TransactionDelimiter(promise: Promise[Nothing, Unit])
-  type TransactionInfo = Either[Transaction, TransactionDelimiter]
+  private[tamer] sealed trait TxInfo extends Product with Serializable
+  private[tamer] object TxInfo {
+    final case class Delimiter(promise: Promise[Nothing, Unit]) extends TxInfo
+    final case class Context(transaction: Transaction)          extends TxInfo
+  }
+
+  private[tamer] sealed trait StartupDecision extends Product with Serializable
+  private[tamer] object StartupDecision {
+    case object Initialize extends StartupDecision
+    case object Resume     extends StartupDecision
+  }
 
   final case class StateKey(stateKey: String, groupId: String)
 
-  private[this] final val tenTimes = Schedule.recurs(10L) && Schedule.exponential(100.milliseconds) // FIXME make configurable
+  private final val retries = Schedule.recurs(10L) && Schedule.exponential(100.milliseconds) // FIXME make configurable
 
-  private[this] implicit final class OffsetOps(private val _underlying: Offset) extends AnyVal {
+  private implicit final class OffsetOps(private val _underlying: Offset) extends AnyVal {
     def info: String = s"${_underlying.topicPartition}@${_underlying.offset}"
+  }
+  private implicit final class TupleOps[K, V](private val _underlying: (K, V)) extends AnyVal {
+    def toProducerRecord(topic: String): ProducerRecord[K, V] = new ProducerRecord(topic, _underlying._1, _underlying._2)
   }
 
   private[tamer] final def sinkStream[K, V](
-      queue: Dequeue[(TransactionInfo, Chunk[(K, V)])],
-      topic: String,
-      keySerializer: Serializer[Any, K],
-      valueSerializer: Serializer[Any, V],
+      sinkTopic: String,
+      sinkKeySerializer: Serializer[Any, K],
+      sinkValueSerializer: Serializer[Any, V],
+      queue: Dequeue[(TxInfo, Chunk[(K, V)])],
       log: LogWriter[Task]
   ): Stream[Throwable, Unit] =
     ZStream
       .fromQueueWithShutdown(queue)
       .mapZIO {
-        case (Left(transaction), chunk) if chunk.nonEmpty =>
-          (transaction
-            .produceChunk(chunk.map { case (k, v) => new ProducerRecord(topic, k, v) }, keySerializer, valueSerializer, None)
-            .tapError(_ => log.debug(s"failed pushing ${chunk.size} messages to $topic"))
-            .retry(tenTimes) <* log.info(s"pushed ${chunk.size} messages to $topic")).unit // TODO: stop trying if the error is transaction related
-        case (Right(TransactionDelimiter(promise)), _) => promise.succeed(()).unit <* log.debug(s"user implicitly signalled end of data production")
-        case _                                         => ZIO.unit <* log.debug(s"received an empty chunk for $topic")
+        case (TxInfo.Context(transaction), chunk) if chunk.nonEmpty =>
+          transaction
+            .produceChunk(chunk.map(_.toProducerRecord(sinkTopic)), sinkKeySerializer, sinkValueSerializer, None)
+            .tapError(_ => log.debug(s"failed pushing ${chunk.size} messages to $sinkTopic"))
+            .retry(retries) // TODO: stop trying if the error is transaction related
+            .unit <*
+            log.info(s"pushed ${chunk.size} messages to $sinkTopic")
+        case (TxInfo.Delimiter(promise), _) =>
+          promise.succeed(()).unit <*
+            log.debug(s"user implicitly signalled end of data production")
+        case _ => log.debug(s"received an empty chunk for $sinkTopic")
       }
 
-  private[tamer] sealed trait Decision  extends Product with Serializable
-  private[tamer] case object Initialize extends Decision
-  private[tamer] case object Resume     extends Decision
-
-  private[tamer] def decidedAction(committed: Map[TopicPartition, Option[OffsetAndMetadata]]): Decision =
-    if (committed.values.exists(_.isDefined)) Resume else Initialize
-
-  private[tamer] final def source[K, V, SV](
+  private[tamer] final def sourceStream[K, V, SV](
       stateTopic: String,
       stateGroupId: String,
       stateHash: Int,
@@ -63,7 +75,7 @@ object Tamer {
       initialState: SV,
       consumer: Consumer,
       producer: TransactionalProducer,
-      queue: Enqueue[(TransactionInfo, Chunk[(K, V)])],
+      queue: Enqueue[(TxInfo, Chunk[(K, V)])],
       iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
       log: LogWriter[Task]
   ): Stream[Throwable, Unit] = {
@@ -71,30 +83,28 @@ object Tamer {
     val key          = StateKey(stateHash.toHexString, stateGroupId)
     val subscription = Subscription.topics(stateTopic)
 
-    val partitionInfo: Task[Set[TopicPartition]] = for {
-      topics        <- consumer.listTopics()
-      partitionInfo <- ZIO.fromOption(topics.get(stateTopic)).mapError(_ => TamerError(s"Group $stateGroupId has no permission on topic $stateTopic"))
-    } yield partitionInfo.map(pi => new TopicPartition(pi.topic(), pi.partition())).toSet
+    val partitionSet = consumer.partitionsFor(stateTopic).map(_.map(pi => new TopicPartition(pi.topic(), pi.partition())).toSet)
 
-    val stateTopicDecision: Task[Decision] = for {
-      _            <- log.debug(s"obtaining information on $stateTopic")
-      partitionSet <- partitionInfo
-      _            <- log.debug(s"received the following information on $stateTopic: $partitionSet")
-      decision     <- consumer.committed(partitionSet).map(decidedAction)
-      _            <- log.debug(s"decided to $decision")
+    val startupDecision: Task[StartupDecision] = for {
+      _          <- log.debug(s"obtaining information on $stateTopic")
+      partitions <- partitionSet
+      _          <- log.debug(s"received the following information on $stateTopic: $partitionSet")
+      decision   <- consumer.committed(partitions).map(c => if (c.values.exists(_.isDefined)) StartupDecision.Resume else StartupDecision.Initialize)
+      _          <- log.debug(s"decided to $decision")
     } yield decision
 
-    val initialize: Task[Unit] = stateTopicDecision.flatMap {
-      case Initialize =>
+    val initialize: Task[Unit] = startupDecision.flatMap {
+      case StartupDecision.Initialize =>
         log.info(s"consumer group $stateGroupId never consumed from $stateTopic") *>
           ZIO.scoped {
-            producer.createTransaction.flatMap { tx =>
-              tx.produce(stateTopic, key, initialState, stateKeySerde, stateValueSerde, None)
+            producer.createTransaction.flatMap { transaction =>
+              transaction
+                .produce(stateTopic, key, initialState, stateKeySerde, stateValueSerde, None)
                 .tap(rmd => log.info(s"pushed initial state $initialState to $rmd"))
                 .unit
             }
           }
-      case Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
+      case StartupDecision.Resume => log.info(s"consumer group $stateGroupId resuming consumption from $stateTopic")
     }
 
     val stateStream: Stream[Throwable, Unit] = consumer
@@ -103,8 +113,9 @@ object Tamer {
         case cr if cr.record.key == key =>
           ZIO.scoped {
             val offset = cr.offset
-            producer.createTransaction.flatMap { tx =>
-              val enrichedQueue = new EnrichedBoundedEnqueue(queue, (neChunk: NonEmptyChunk[(K, V)]) => (Left(tx), neChunk.toChunk))
+            producer.createTransaction.flatMap { transaction =>
+              val enrichedQueue =
+                new EnrichedBoundedEnqueue(queue, (neChunk: NonEmptyChunk[(K, V)]) => (TxInfo.Context(transaction), neChunk.toChunk))
               log.debug(s"consumer group $stateGroupId consumed state ${cr.record.value} from ${offset.info}") *>
                 // we got a valid state to process, invoke the handler
                 log.debug(s"invoking the iteration function under $stateGroupId") *> iterationFunction(cr.record.value, enrichedQueue).flatMap {
@@ -115,13 +126,13 @@ object Tamer {
                     Promise.make[Nothing, Unit].flatMap { p =>
                       // we enqueue a transaction delimiter because at this point, since we have a newState, we presume that
                       // the user has finished publishing data to the queue
-                      queue.offer((Right(TransactionDelimiter(p)), Chunk.empty)) *>
+                      queue.offer((TxInfo.Delimiter(p), Chunk.empty)) *>
                         // whenever we get the transaction delimiter back (via promise) it means that at least production of
                         // data has been enqueue in the kafka client buffer, so we can proceed with committing the transaction
                         p.await
                     } *>
                       log.debug(s"consumer group $stateGroupId will commit offset ${offset.info}") <*
-                      tx
+                      transaction
                         .produce(stateTopic, key, newState, stateKeySerde, stateValueSerde, Some(offset))
                         .tap(rmd => log.debug(s"pushed state $newState to $rmd for $stateGroupId"))
                 }
@@ -130,7 +141,7 @@ object Tamer {
         case cr =>
           val offset = cr.offset
           log.debug(s"consumer group $stateGroupId ignored state (wrong key: ${cr.record.key} != $key) from ${offset.info}") *>
-            offset.commitOrRetry(tenTimes) <*
+            offset.commitOrRetry(retries) <*
             log.debug(s"consumer group $stateGroupId committed offset ${offset.info}")
       }
 
@@ -144,25 +155,26 @@ object Tamer {
       stateHash: Int,
       iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
       repr: String,
+      adminClient: AdminClient,
       consumer: Consumer,
       producer: TransactionalProducer
   ) extends Tamer {
 
-    private[this] val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.LiveTamer"))
+    private val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.LiveTamer"))
 
-    private[this] val SinkConfig(sinkTopic)                    = config.sink
-    private[this] val StateConfig(stateTopic, stateGroupId, _) = config.state
+    private val sinkTopicConfig @ TopicConfig(sinkTopicName, maybeSinkTopicOptions)    = config.sink
+    private val stateTopicConfig @ TopicConfig(stateTopicName, maybeStateTopicOptions) = config.state
 
-    private[this] val keySerializer   = serdes.keySerializer
-    private[this] val valueSerializer = serdes.valueSerializer
+    private val keySerializer   = serdes.keySerializer
+    private val valueSerializer = serdes.valueSerializer
 
-    private[this] val stateKeySerde   = serdes.stateKeySerde
-    private[this] val stateValueSerde = serdes.stateValueSerde
+    private val stateKeySerde   = serdes.stateKeySerde
+    private val stateValueSerde = serdes.stateValueSerde
 
-    private[tamer] def sourceStream(queue: Enqueue[(TransactionInfo, Chunk[(K, V)])], log: LogWriter[Task]) =
-      source(
-        stateTopic,
-        stateGroupId,
+    private def source(queue: Enqueue[(TxInfo, Chunk[(K, V)])], log: LogWriter[Task]) =
+      sourceStream(
+        stateTopicName,
+        config.groupId,
         stateHash,
         stateKeySerde,
         stateValueSerde,
@@ -174,34 +186,105 @@ object Tamer {
         log
       )
 
-    private[this] def stopSource(log: LogWriter[Task]) =
-      log.info(s"stopping consuming of topic $stateTopic").ignore *>
+    private def stopSource(log: LogWriter[Task]) =
+      log.info(s"stopping consuming of topic $stateTopicName").ignore *>
         consumer.stopConsumption <*
-        log.info(s"consumer of topic $stateTopic stopped").ignore
+        log.info(s"consumer of topic $stateTopicName stopped").ignore
 
-    private[tamer] def drainSink(
-        queue: Dequeue[(TransactionInfo, Chunk[(K, V)])],
-        log: LogWriter[Task]
-    ): UIO[Unit] =
-      for {
-        _ <- log.info(s"running final drain on sink queue for topic $sinkTopic").ignore
-        _ <- sinkStream(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain.orDie.fork
-        _ <- log.info(s"sink queue drained for $sinkTopic").ignore
-        _ <- queue.size.repeatWhile(_ > 0)
-        _ <- queue.shutdown
-      } yield ()
+    private def sink(queue: Dequeue[(TxInfo, Chunk[(K, V)])], log: LogWriter[Task]) =
+      sinkStream(config.sink.topicName, keySerializer, valueSerializer, queue, log)
 
-    private[tamer] def runLoop(queue: Queue[(TransactionInfo, Chunk[(K, V)])], log: LogWriter[Task]) = {
-      val runSink = log.info(s"running sink to $sinkTopic perpetually") *> sinkStream(queue, sinkTopic, keySerializer, valueSerializer, log).runDrain
-        .onInterrupt(log.info(s"stopping producing to $sinkTopic").ignore)
-      val runSource = sourceStream(queue, log).ensuring(stopSource(log)).ensuring(drainSink(queue, log)).runDrain
+    private def drainSink(queue: Dequeue[(TxInfo, Chunk[(K, V)])], log: LogWriter[Task]) =
+      log.info(s"running final drain on sink queue for topic $sinkTopicName").ignore *>
+        sink(queue, log).runDrain.orDie.fork <*
+        log.info(s"sink queue drained for $sinkTopicName").ignore *>
+        queue.size.repeatWhile(_ > 0) *>
+        queue.shutdown
+
+    private def runLoop(queue: Queue[(TxInfo, Chunk[(K, V)])], log: LogWriter[Task]) = {
+      val runSink = log.info(s"running sink on topic $sinkTopicName perpetually") *>
+        sink(queue, log).runDrain.onInterrupt(log.info(s"stopping producing to $sinkTopicName").ignore)
+      val runSource = source(queue, log).ensuring(stopSource(log)).ensuring(drainSink(queue, log)).runDrain
+
       runSink <&> runSource
     }
 
+    private final val listTopicsOptions     = Some(ListTopicsOptions(listInternal = false, timeout = None))
+    private final val describeTopicsOptions = Some(DescribeTopicsOptions(includeAuthorizedOperations = true, timeout = None))
+
+    private def filterSinkAndState(topic: String): Boolean = topic == sinkTopicName || topic == stateTopicName
+
+    private def describeTopics(log: LogWriter[Task]) = for {
+      topics         <- adminClient.listTopics(listTopicsOptions).map(_.keySet.filter(filterSinkAndState))
+      maybeTopicDesc <- ZIO.when(topics.nonEmpty)(log.debug(s"describing $topics") *> adminClient.describeTopics(topics, describeTopicsOptions))
+      _              <- log.debug(s"result of describing $topics: $maybeTopicDesc")
+    } yield maybeTopicDesc.getOrElse(Map.empty)
+
+    private def verifyOrCreateTopic(
+        topics: Map[String, TopicDescription],
+        topicConfig: TopicConfig,
+        expectedACL: Set[AclOperation],
+        log: LogWriter[Task]
+    ) =
+      ZIO
+        .fromOption(topics.get(topicConfig.topicName))
+        .mapBoth(_ => topicConfig.maybeTopicOptions, (_, topicConfig.maybeTopicOptions))
+        .foldZIO(
+          {
+            case Some(TopicOptions(partitions, replicas)) =>
+              log.info(
+                s"topic ${topicConfig.topicName} does not exist in Kafka. Given auto_create is set to true, creating it with $partitions partitions and $replicas replicas"
+              ) *> adminClient.createTopic(NewTopic(topicConfig.topicName, partitions, replicas))
+            case _ =>
+              ZIO.fail(
+                TamerError(s"Topic ${topicConfig.topicName} does not exist in Kafka and its corresponding auto_create flag is set to false, aborting")
+              )
+          },
+          {
+            case (TopicDescription(_, _, tpInfo, Some(acls)), Some(TopicOptions(partitions, replicas)))
+                if tpInfo.size == partitions && tpInfo.forall(_.replicas.size == replicas) && expectedACL.subsetOf(acls) =>
+              log
+                .info(
+                  s"verified topic ${topicConfig.topicName} successfully. It has the expected $partitions partitions and expected $replicas replicas, and it satisfies all expected ACLs (${expectedACL
+                      .mkString(", ")}), proceeding"
+                )
+            case (TopicDescription(_, _, tpInfo, Some(acls)), None) if expectedACL.subsetOf(acls) =>
+              log
+                .info(
+                  s"verified topic ${topicConfig.topicName} successfully. Kafka informs us that it has ${tpInfo.size} partitions and ${tpInfo.head.replicas.size} replicas, but it satisfies all expected ACLs (${expectedACL
+                      .mkString(", ")}), proceeding"
+                )
+            case (TopicDescription(_, _, tpInfo, Some(acls)), Some(TopicOptions(partitions, replicas))) if expectedACL.subsetOf(acls) =>
+              log
+                .warn(
+                  s"inconsistencies in topic ${topicConfig.topicName}. Kafka informs us that it has ${tpInfo.size} partitions and ${tpInfo.head.replicas.size} replicas, expecting $partitions partitions and ${tpInfo.head.replicas.size} replicas, but it satisfies all expected ACLs (${expectedACL
+                      .mkString(", ")}), proceeding"
+                )
+            case (TopicDescription(_, _, _, Some(acls)), _) =>
+              ZIO.fail(
+                TamerError(
+                  s"Topic ${topicConfig.topicName} does not satisfy all expected ACLs. Kafka informs us that it has ${acls
+                      .mkString(", ")}, expecting ${expectedACL.mkString(", ")}"
+                )
+              )
+            case (other, _) =>
+              ZIO.fail(
+                TamerError(s"Topic ${topicConfig.topicName} cannot be verified. Kafka informs us the following about this topic: $other")
+              )
+          }
+        )
+
+    private def initTopics(log: LogWriter[Task]) = for {
+      topics <- describeTopics(log)
+      _      <- verifyOrCreateTopic(topics, sinkTopicConfig, Set(AclOperation.Write), log)
+      _      <- verifyOrCreateTopic(topics, stateTopicConfig, Set(AclOperation.Read, AclOperation.Write), log)
+    } yield ()
+
     override val runLoop: Task[Unit] = for {
       log   <- logTask
-      _     <- log.info(s"initializing Tamer with setup: \n$repr")
-      queue <- Queue.bounded[(TransactionInfo, Chunk[(K, V)])](config.bufferSize)
+      _     <- log.info(s"initializing Tamer with setup:\n$repr")
+      _     <- initTopics(log)
+      queue <- Queue.bounded[(TxInfo, Chunk[(K, V)])](config.bufferSize)
       _     <- runLoop(queue, log)
     } yield ()
   }
@@ -217,8 +300,10 @@ object Tamer {
         repr: String
     ): RIO[Scope, LiveTamer[K, V, SV]] = {
 
-      val KafkaConfig(brokers, _, closeTimeout, _, _, StateConfig(_, groupId, clientId), transactionalId, properties) = config
+      val KafkaConfig(brokers, _, closeTimeout, _, _, _, groupId, clientId, transactionalId, properties) = config
 
+      val adminClientSettings = AdminClientSettings(closeTimeout, Map.empty)
+        .withBootstrapServers(brokers)
       val consumerSettings = ConsumerSettings(brokers)
         .withClientId(clientId)
         .withCloseTimeout(closeTimeout)
@@ -231,13 +316,14 @@ object Tamer {
         .withProperties(properties)
       val txProducerSettings = TransactionalProducerSettings(producerSettings, transactionalId)
 
-      val serdes   = serdesProvider.using(config.maybeRegistry)
-      val consumer = Consumer.make(consumerSettings)
-      val producer = TransactionalProducer.make(txProducerSettings)
+      val serdes      = serdesProvider.using(config.maybeRegistry)
+      val adminClient = AdminClient.make(adminClientSettings)
+      val consumer    = Consumer.make(consumerSettings)
+      val producer    = TransactionalProducer.make(txProducerSettings)
 
-      (serdes <*> consumer <*> producer)
-        .map { case (serdes, consumer, producer) =>
-          new LiveTamer(config, serdes, initialState, stateKey, iterationFunction, repr, consumer, producer)
+      (serdes <*> adminClient <*> consumer <*> producer)
+        .map { case (serdes, adminClient, consumer, producer) =>
+          new LiveTamer(config, serdes, initialState, stateKey, iterationFunction, repr, adminClient, consumer, producer)
         }
         .mapError(TamerError("Could not build Kafka client", _))
     }

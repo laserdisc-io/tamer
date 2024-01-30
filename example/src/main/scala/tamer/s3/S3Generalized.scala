@@ -33,9 +33,17 @@ object S3Generalized extends ZIOAppDefault {
   }
 
   val myKafkaConfigLayer = ZLayer.succeed {
-    val kafkaSink  = SinkConfig("sink-topic")
-    val kafkaState = StateConfig("state-topic", "groupid", "clientid")
-    KafkaConfig(List("localhost:9092"), Some(RegistryConfig("http://localhost:8081")), 10.seconds, 50, kafkaSink, kafkaState, "s3-generalized-id")
+    KafkaConfig(
+      List("localhost:9092"),
+      Some(RegistryConfig("http://localhost:8081")),
+      10.seconds,
+      50,
+      TopicConfig("sink", Some(TopicOptions(1, 1))),
+      TopicConfig("state", Some(TopicOptions(1, 1))),
+      "groupid",
+      "clientid",
+      "s3-generalized-id"
+    )
   }
 
   override final val run = S3Setup(

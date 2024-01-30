@@ -21,7 +21,7 @@ services:
 
   zookeeper:
     container_name: local-zookeeper
-    image: confluentinc/cp-zookeeper:6.1.1
+    image: confluentinc/cp-zookeeper:latest
     ports:
       - 2181:2181
     hostname: zookeeper
@@ -32,7 +32,7 @@ services:
 
   kafka:
     container_name: local-kafka
-    image: confluentinc/cp-kafka:6.2.1
+    image: confluentinc/cp-kafka:latest
     depends_on:
       - zookeeper
     ports:
@@ -43,47 +43,16 @@ services:
     networks:
       - local_kafka_network
     environment:
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
       - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
 
-  kafka2:
-    container_name: local-kafka2
-    image: confluentinc/cp-kafka:6.2.1
-    depends_on:
-      - zookeeper
-    ports:
-      - 9093:9093
-      - 9104:9104
-      - 29093:29093
-    hostname: kafka2
-    networks:
-      - local_kafka_network
-    environment:
-      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka2:29093,PLAINTEXT_HOST://localhost:9093
-
-  kafka3:
-    container_name: local-kafka3
-    image: confluentinc/cp-kafka:6.2.1
-    depends_on:
-      - zookeeper
-    ports:
-      - 9095:9095
-      - 9106:9106
-      - 29095:29095
-    hostname: kafka3
-    networks:
-      - local_kafka_network
-    environment:
-      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka3:29095,PLAINTEXT_HOST://localhost:9095
-
   kafka-rest:
     container_name: local-kafka-rest
-    image: confluentinc/cp-kafka-rest:6.2.1
+    image: confluentinc/cp-kafka-rest:latest
     depends_on:
       - kafka
       - schema-registry
@@ -114,7 +83,7 @@ services:
 
   schema-registry:
     container_name: local-schema-registry
-    image: confluentinc/cp-schema-registry:6.2.1
+    image: confluentinc/cp-schema-registry:latest
     depends_on:
       - kafka
     ports:
