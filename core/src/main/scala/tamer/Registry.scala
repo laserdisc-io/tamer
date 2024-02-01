@@ -15,7 +15,7 @@ trait Registry {
 }
 
 object Registry {
-  private[this] final type LoadingCache[K, R] = Cache[(Backend[Task], String, LogWriter[Task], K, Schema), Throwable, R]
+  private[this] final type LoadingCache[K, R] = Cache[(Backend[Task], String, Option[RegistryAuthConfig], LogWriter[Task], K, Schema), Throwable, R]
 
   object SttpRegistry {
     private[this] final case class SchemaString(schema: String)
@@ -38,24 +38,50 @@ object Registry {
       Header.contentType(schemaRegistryV1MediaType)
     )
 
-    private[this] final def getId(backend: Backend[Task], url: String, log: LogWriter[Task], subject: String, schema: Schema): Task[Int] =
-      request
+    private[this] def requestWithAuth(maybeRegistryAuth: Option[RegistryAuthConfig]) = maybeRegistryAuth match {
+      case Some(RegistryAuthConfig.Basic(userInfo)) => request.header(Header.authorization("Basic", userInfo))
+      case Some(RegistryAuthConfig.Bearer(token))   => request.header(Header.authorization("Bearer", token))
+      case None                                     => request
+    }
+
+    private[this] final def getId(
+        backend: Backend[Task],
+        url: String,
+        maybeRegistryAuth: Option[RegistryAuthConfig],
+        log: LogWriter[Task],
+        subject: String,
+        schema: Schema
+    ): Task[Int] =
+      requestWithAuth(maybeRegistryAuth)
         .post(uri"$url/subjects/$subject?normalize=false&deleted=false")
         .body(SchemaString(schema.show))
         .response(asJson[SubjectIdVersionSchemaString])
         .send(backend)
         .flatMap(response => ZIO.fromEither(response.body.map(_.id)))
         .tap(id => log.debug(s"retrieved existing writer schema id: $id"))
-    private[this] final def register(backend: Backend[Task], url: String, log: LogWriter[Task], subject: String, schema: Schema): Task[Int] =
-      request
+    private[this] final def register(
+        backend: Backend[Task],
+        url: String,
+        maybeRegistryAuth: Option[RegistryAuthConfig],
+        log: LogWriter[Task],
+        subject: String,
+        schema: Schema
+    ): Task[Int] =
+      requestWithAuth(maybeRegistryAuth)
         .post(uri"$url/subjects/$subject/versions?normalize=false")
         .body(SchemaString(schema.show))
         .response(asJson[Id])
         .send(backend)
         .flatMap(response => ZIO.fromEither(response.body.map(_.id)))
         .tap(id => log.info(s"registered with id $id new subject $subject writer schema ${schema.show}"))
-    private[this] final def get(backend: Backend[Task], url: String, log: LogWriter[Task], id: Int): Task[String] =
-      request
+    private[this] final def get(
+        backend: Backend[Task],
+        url: String,
+        maybeRegistryAuth: Option[RegistryAuthConfig],
+        log: LogWriter[Task],
+        id: Int
+    ): Task[String] =
+      requestWithAuth(maybeRegistryAuth)
         .get(uri"$url/schemas/ids/$id?subject=")
         .response(asJson[SchemaString])
         .send(backend)
@@ -69,22 +95,37 @@ object Registry {
         }
         .unit
 
-    final def getOrRegisterId(backend: Backend[Task], url: String, log: LogWriter[Task], subject: String, schema: Schema): Task[Int] =
-      getId(backend, url, log, subject, schema) <> register(backend, url, log, subject, schema)
-    final def verifySchema(backend: Backend[Task], url: String, log: LogWriter[Task], id: Int, schema: Schema): Task[Unit] =
-      get(backend, url, log, id).flatMap(verify(schema, _)).unit
+    final def getOrRegisterId(
+        backend: Backend[Task],
+        url: String,
+        maybeRegistryAuth: Option[RegistryAuthConfig],
+        log: LogWriter[Task],
+        subject: String,
+        schema: Schema
+    ): Task[Int] =
+      getId(backend, url, maybeRegistryAuth, log, subject, schema) <> register(backend, url, maybeRegistryAuth, log, subject, schema)
+    final def verifySchema(
+        backend: Backend[Task],
+        url: String,
+        maybeRegistryAuth: Option[RegistryAuthConfig],
+        log: LogWriter[Task],
+        id: Int,
+        schema: Schema
+    ): Task[Unit] =
+      get(backend, url, maybeRegistryAuth, log, id).flatMap(verify(schema, _)).unit
   }
   sealed abstract class SttpRegistry(
       backend: Backend[Task],
       url: String,
+      maybeRegistryAuth: Option[RegistryAuthConfig],
       schemaToIdCache: LoadingCache[String, Int],
       schemaIdToValidationCache: LoadingCache[Int, Unit],
       log: LogWriter[Task]
   ) extends Registry {
     override final def getOrRegisterId(subject: String, schema: Schema): Task[Int] =
-      schemaToIdCache.get((backend, url, log, subject, schema))
+      schemaToIdCache.get((backend, url, maybeRegistryAuth, log, subject, schema))
     override final def verifySchema(id: Int, schema: Schema): Task[Unit] =
-      schemaIdToValidationCache.get((backend, url, log, id, schema))
+      schemaIdToValidationCache.get((backend, url, maybeRegistryAuth, log, id, schema))
   }
 
   object FakeRegistry extends Registry {
@@ -102,18 +143,18 @@ object RegistryProvider {
     val sttpBackend = sttp.client4.httpclient.zio.HttpClientZioBackend.scoped()
     val schemaToIdCache = Cache.makeWithKey(config.cacheSize, Lookup((Registry.SttpRegistry.getOrRegisterId _).tupled))(
       _ => config.expiration,
-      { case (_, _, _, subject, schema) => (subject, schema) }
+      { case (_, _, _, _, subject, schema) => (subject, schema) }
     )
     val schemaIdToValidationCache = Cache.makeWithKey(config.cacheSize, Lookup((Registry.SttpRegistry.verifySchema _).tupled))(
       _ => config.expiration,
-      { case (_, _, _, id, schema) => (id, schema) }
+      { case (_, _, _, _, id, schema) => (id, schema) }
     )
     val log = log4sFromName.provideEnvironment(ZEnvironment("tamer.SttpRegistry"))
     (sttpBackend <*> schemaToIdCache <*> schemaIdToValidationCache <*> log)
       .mapError(TamerError("Cannot construct SttpRegistry client", _))
       .flatMap { case (backend, schemaToIdCache, schemaIdToValidationCache, log) =>
-        ZIO.succeed(new Registry.SttpRegistry(backend, config.url, schemaToIdCache, schemaIdToValidationCache, log) {}) <*
-          log.info(s"SttpRegistry client created successfully").ignore
+        ZIO.succeed(new Registry.SttpRegistry(backend, config.url, config.maybeRegistryAuth, schemaToIdCache, schemaIdToValidationCache, log) {}) <*
+          log.info(s"SttpRegistry client created successfully")
       }
   }
 }
