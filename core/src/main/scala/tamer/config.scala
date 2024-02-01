@@ -1,19 +1,51 @@
 package tamer
 
+import java.nio.charset.StandardCharsets
 import java.time.{Duration => JDuration}
+import java.util.Base64
 
 import zio._
 
-final case class RegistryConfig(url: String, cacheSize: Int, expiration: JDuration)
+sealed trait RegistryAuthConfig extends Product with Serializable
+object RegistryAuthConfig {
+  final case class Basic(userInfo: String) extends RegistryAuthConfig
+  object Basic {
+    def apply(userInfo: String): Basic                   = new Basic(Base64.getEncoder.encodeToString(userInfo.getBytes(StandardCharsets.UTF_8)))
+    def apply(username: String, password: String): Basic = new Basic(s"$username:$password")
+  }
+  final case class Bearer(token: String) extends RegistryAuthConfig
+  val config: Config[Option[RegistryAuthConfig]] =
+    (Config.secret("user_info").optional ++
+      Config.secret("username").optional ++
+      Config.secret("password").optional ++
+      Config.secret("token").optional).mapOrFail {
+      case (None, None, None, None)                     => Right(None)
+      case (Some(userInfo), None, None, None)           => Right(Some(Basic(userInfo.value.asString)))
+      case (None, Some(username), Some(password), None) => Right(Some(Basic(username.value.asString, password.value.asString)))
+      case (None, None, None, Some(token))              => Right(Some(Bearer(token.value.asString)))
+      case _ =>
+        Left(
+          Config.Error.InvalidData(message =
+            "When auth is configured you must specify one of these three options (mutually exclusive): user_info (Basic auth), username and password pair (Basic auth) or token (Bearer auth)"
+          )
+        )
+    }
+}
+
+final case class RegistryConfig(url: String, cacheSize: Int, expiration: JDuration, maybeRegistryAuth: Option[RegistryAuthConfig])
 object RegistryConfig {
   def apply(url: String): RegistryConfig = RegistryConfig(
     url = url,
     cacheSize = 4,
-    expiration = 1.hour
+    expiration = 1.hour,
+    maybeRegistryAuth = None
   )
   val config: Config[Option[RegistryConfig]] =
-    (Config.string("url") ++ Config.int("cache_size").withDefault(4) ++ Config.duration("expiration").withDefault(1.hour)).map {
-      case (url, cacheSize, expiration) => RegistryConfig(url, cacheSize, expiration)
+    (Config.string("url") ++
+      Config.int("cache_size").withDefault(4) ++
+      Config.duration("expiration").withDefault(1.hour) ++
+      RegistryAuthConfig.config.nested("auth")).map { case (url, cacheSize, expiration, maybeRegistryAuth) =>
+      RegistryConfig(url, cacheSize, expiration, maybeRegistryAuth)
     }.optional
 }
 
