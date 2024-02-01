@@ -38,8 +38,8 @@ object S3Generalized extends ZIOAppDefault {
       Some(RegistryConfig("http://localhost:8081")),
       10.seconds,
       50,
-      TopicConfig("sink", Some(TopicOptions(1, 1))),
-      TopicConfig("state", Some(TopicOptions(1, 1))),
+      TopicConfig("sink", Some(TopicOptions(1, 1, false))),
+      TopicConfig("state", Some(TopicOptions(1, 1, true))),
       "groupid",
       "clientid",
       "s3-generalized-id"
