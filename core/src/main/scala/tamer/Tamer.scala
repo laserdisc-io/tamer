@@ -5,6 +5,7 @@ import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.consumer.{ConsumerConfig, OffsetAndMetadata}
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.{KafkaException, TopicPartition}
+import org.apache.kafka.common.config.{TopicConfig => KTopicConfig}
 import zio._
 import zio.kafka.admin._
 import zio.kafka.admin.AdminClient.{DescribeTopicsOptions, ListTopicsOptions, NewTopic, TopicDescription}
@@ -251,7 +252,13 @@ object Tamer {
         .mapBoth(_ => topicConfig.maybeTopicOptions, (_, topicConfig.maybeTopicOptions))
         .foldZIO(
           {
-            case Some(TopicOptions(partitions, replicas)) =>
+            case Some(TopicOptions(partitions, replicas, true)) =>
+              log.info(
+                s"topic ${topicConfig.topicName} does not exist in Kafka. Given auto_create is set to true, creating it with $partitions partitions, $replicas replicas and compaction enabled"
+              ) *> adminClient.createTopic(
+                NewTopic(topicConfig.topicName, partitions, replicas, Map(KTopicConfig.CLEANUP_POLICY_CONFIG -> KTopicConfig.CLEANUP_POLICY_COMPACT))
+              )
+            case Some(TopicOptions(partitions, replicas, false)) =>
               log.info(
                 s"topic ${topicConfig.topicName} does not exist in Kafka. Given auto_create is set to true, creating it with $partitions partitions and $replicas replicas"
               ) *> adminClient.createTopic(NewTopic(topicConfig.topicName, partitions, replicas))
@@ -261,7 +268,7 @@ object Tamer {
               )
           },
           {
-            case (TopicDescription(_, _, tpInfo, Some(acls)), Some(TopicOptions(partitions, replicas)))
+            case (TopicDescription(_, _, tpInfo, Some(acls)), Some(TopicOptions(partitions, replicas, _)))
                 if tpInfo.size == partitions && tpInfo.forall(_.replicas.size == replicas) && expectedACL.subsetOf(acls) =>
               log
                 .info(
@@ -274,7 +281,7 @@ object Tamer {
                   s"verified topic ${topicConfig.topicName} successfully. Kafka informs us that it has ${tpInfo.size} partitions and ${tpInfo.head.replicas.size} replicas, but it satisfies all expected ACLs (${expectedACL
                       .mkString(", ")}), proceeding"
                 )
-            case (TopicDescription(_, _, tpInfo, Some(acls)), Some(TopicOptions(partitions, replicas))) if expectedACL.subsetOf(acls) =>
+            case (TopicDescription(_, _, tpInfo, Some(acls)), Some(TopicOptions(partitions, replicas, _))) if expectedACL.subsetOf(acls) =>
               log
                 .warn(
                   s"inconsistencies in topic ${topicConfig.topicName}. Kafka informs us that it has ${tpInfo.size} partitions and ${tpInfo.head.replicas.size} replicas, expecting $partitions partitions and ${tpInfo.head.replicas.size} replicas, but it satisfies all expected ACLs (${expectedACL
