@@ -49,14 +49,15 @@ object RegistryConfig {
     }.optional
 }
 
-final case class TopicOptions(partitions: Int, replicas: Short)
+final case class TopicOptions(partitions: Int, replicas: Short, compaction: Boolean)
 object TopicOptions {
-  val config: Config[Option[TopicOptions]] =
+  def config(compactionDefault: Boolean): Config[Option[TopicOptions]] =
     (Config.boolean("auto_create").withDefault(false) ++
       Config.int("partitions").withDefault(1) ++
-      Config.int("replicas").map(_.toShort).withDefault(1.toShort)).map {
-      case (true, partitions, replicas) => Some(TopicOptions(partitions, replicas))
-      case _                            => None
+      Config.int("replicas").map(_.toShort).withDefault(1.toShort) ++
+      Config.boolean("compaction").withDefault(compactionDefault)).map {
+      case (true, partitions, replicas, compaction) => Some(TopicOptions(partitions, replicas, compaction))
+      case _                                        => None
     }
 }
 
@@ -66,9 +67,10 @@ object TopicConfig {
     topicName = topicName,
     maybeTopicOptions = None
   )
-  val config: Config[TopicConfig] = (Config.string("topic") ++ TopicOptions.config).map { case (topicName, maybeTopicOptions) =>
-    TopicConfig(topicName, maybeTopicOptions)
-  }
+  def config(compactionDefault: Boolean): Config[TopicConfig] =
+    (Config.string("topic") ++ TopicOptions.config(compactionDefault)).map { case (topicName, maybeTopicOptions) =>
+      TopicConfig(topicName, maybeTopicOptions)
+    }
 }
 
 final case class KafkaConfig(
@@ -112,8 +114,8 @@ object KafkaConfig {
       RegistryConfig.config.nested("schema_registry") ++
       Config.duration("close_timeout") ++
       Config.int("buffer_size") ++
-      TopicConfig.config.nested("sink") ++
-      TopicConfig.config.nested("state") ++
+      TopicConfig.config(compactionDefault = false).nested("sink") ++
+      TopicConfig.config(compactionDefault = true).nested("state") ++
       Config.string("group_id") ++
       Config.string("client_id") ++
       Config.string("transactional_id")
