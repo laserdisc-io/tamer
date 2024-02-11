@@ -14,10 +14,7 @@ final case class Record[K, V](key: K, value: V, timestamp: Option[Long], headers
 }
 
 object Record {
-  private final case class HeaderImpl private (key: String, value: Array[Byte]) extends KHeader
-  object Header {
-    def apply(key: String, value: Array[Byte]): KHeader = HeaderImpl(key, value)
-  }
+  final case class Header(key: String, value: Array[Byte]) extends KHeader
 
   def apply[K, V](key: K, value: V): Record[K, V]                        = Record(key, value, None, Nil)
   def apply[K, V](key: K, value: V, timestamp: Instant): Record[K, V]    = Record(key, value, Some(timestamp.toEpochMilli()), Nil)
