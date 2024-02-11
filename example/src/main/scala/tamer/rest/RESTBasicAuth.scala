@@ -26,7 +26,7 @@ object RESTBasicAuth extends ZIOAppDefault {
       authentication = Some(Authentication.basic("user", "pass")),
       retrySchedule = Some(retrySchedule)
     )(
-      recordKey = (_, data) => MyKey(data.i),
+      recordFrom = (_, data) => Record(MyKey(data.i), data),
       offsetParameterName = "offset",
       increment = 2
     )

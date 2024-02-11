@@ -16,7 +16,7 @@ object RESTSimple extends ZIOAppDefault {
       baseUrl = "http://localhost:9395/finite-pagination",
       pageDecoder = pageDecoder
     )(
-      recordKey = (_, data) => data,
+      recordFrom = (_, data) => Record(data, data),
       fixedPageElementCount = Some(3)
     )
     .runWith(restLive() ++ KafkaConfig.fromEnvironment)

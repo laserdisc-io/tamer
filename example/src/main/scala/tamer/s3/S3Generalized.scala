@@ -53,7 +53,7 @@ object S3Generalized extends ZIOAppDefault {
     maximumIntervalForBucketFetch = 1.minute,
     initialState = 0L
   )(
-    recordKey = (l: Long, _: String) => l,
+    recordFrom = (l: Long, v: String) => Record(l, v),
     selectObjectForState = (l: Long, _: Keys) => internals.selectObjectForInstant(l),
     stateFold = internals.getNextState
   ).runWith(liveZIO(AF_SOUTH_1, ZIO.scoped(s3.providers.default), Some(new URI("http://localhost:9000"))) ++ myKafkaConfigLayer)

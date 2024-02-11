@@ -38,7 +38,7 @@ object RESTCustomAuth extends ZIOAppDefault {
       pageDecoder = pageDecoder,
       authentication = Some(authentication)
     )(
-      recordKey = (_, data) => MyKey(data.i),
+      recordFrom = (_, data) => Record(MyKey(data.i), data),
       offsetParameterName = "offset",
       increment = 2
     )

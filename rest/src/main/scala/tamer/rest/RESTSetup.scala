@@ -14,7 +14,7 @@ import zio._
 
 sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, SV: Tag: Hashable](
     initialState: SV,
-    recordKey: (SV, V) => K,
+    recordFrom: (SV, V) => Record[K, V],
     authentication: Option[Authentication[R]],
     queryFor: SV => SttpRequest,
     pageDecoder: String => RIO[R, DecodedPage[V, SV]],
@@ -96,12 +96,12 @@ sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, SV: Tag: Hashable](
   // the page decoder helper functions.
   override def iteration(
       currentState: SV,
-      queue: Enqueue[NonEmptyChunk[(K, V)]]
+      queue: Enqueue[NonEmptyChunk[Record[K, V]]]
   ): RIO[R with SttpClient with EphemeralSecretCache, SV] = for {
     log         <- logTask
     tokenCache  <- ZIO.service[EphemeralSecretCache]
     decodedPage <- fetchAndDecodePage(queryFor(currentState), tokenCache, log)
-    chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(value => recordKey(currentState, value) -> value))
+    chunk = Chunk.fromIterable(filterPage(decodedPage, currentState).map(recordFrom(currentState, _)))
     _         <- NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit)
     nextState <- stateFold(decodedPage, currentState)
   } yield nextState
@@ -111,7 +111,7 @@ object RESTSetup {
   def apply[R, K: Tag, V: Tag, SV: Tag: Hashable](initialState: SV)(
       query: SV => SttpRequest,
       pageDecoder: String => RIO[R, DecodedPage[V, SV]],
-      recordKey: (SV, V) => K,
+      recordFrom: (SV, V) => Record[K, V],
       stateFold: (DecodedPage[V, SV], SV) => URIO[R, SV],
       authentication: Option[Authentication[R]] = None,
       filterPage: (DecodedPage[V, SV], SV) => List[V] = (dp: DecodedPage[V, SV], _: SV) => dp.data,
@@ -122,7 +122,7 @@ object RESTSetup {
       implicit ev: SerdesProvider[K, V, SV]
   ): RESTSetup[R, K, V, SV] = new RESTSetup(
     initialState,
-    recordKey,
+    recordFrom,
     authentication,
     query,
     pageDecoder,
@@ -137,7 +137,7 @@ object RESTSetup {
       authentication: Option[Authentication[R]] = None,
       retrySchedule: Option[SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]] = None
   )(
-      recordKey: (Offset, V) => K,
+      recordFrom: (Offset, V) => Record[K, V],
       offsetParameterName: String = "page",
       increment: Int = 1,
       fixedPageElementCount: Option[Int] = None,
@@ -166,7 +166,7 @@ object RESTSetup {
 
     new RESTSetup(
       initialOffset,
-      recordKey,
+      recordFrom,
       authentication,
       queryFor,
       pageDecoder,
@@ -176,12 +176,12 @@ object RESTSetup {
     ) {
       override def iteration(
           currentState: Offset,
-          queue: Enqueue[NonEmptyChunk[(K, V)]]
+          queue: Enqueue[NonEmptyChunk[Record[K, V]]]
       ): RIO[R with SttpClient with EphemeralSecretCache, Offset] = for {
         log         <- logTask
         tokenCache  <- ZIO.service[EphemeralSecretCache]
         decodedPage <- fetchWaitingNewEntries(currentState, log, tokenCache)
-        chunk = Chunk.fromIterable(this.filterPage(decodedPage, currentState).map(value => this.recordKey(currentState, value) -> value))
+        chunk = Chunk.fromIterable(this.filterPage(decodedPage, currentState).map(this.recordFrom(currentState, _)))
         _         <- NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit)
         nextState <- stateFold(decodedPage, currentState)
       } yield nextState
@@ -222,7 +222,7 @@ object RESTSetup {
       startingOffset: Int = 0,
       filterPage: (DecodedPage[V, PeriodicOffset], PeriodicOffset) => List[V] = (dp: DecodedPage[V, PeriodicOffset], _: PeriodicOffset) => dp.data,
       retrySchedule: Option[SttpRequest => Schedule[Any, FallibleResponse, FallibleResponse]] = None
-  )(recordKey: (PeriodicOffset, V) => K)(
+  )(recordFrom: (PeriodicOffset, V) => Record[K, V])(
       implicit ev: SerdesProvider[K, V, PeriodicOffset]
   ): RESTSetup[R, K, V, PeriodicOffset] = {
     def queryFor(state: PeriodicOffset) =
@@ -249,7 +249,7 @@ object RESTSetup {
 
     new RESTSetup(
       PeriodicOffset(startingOffset, periodStart),
-      recordKey,
+      recordFrom,
       authentication,
       queryFor,
       pageDecoder,
@@ -259,7 +259,7 @@ object RESTSetup {
     ) {
       override def iteration(
           currentState: PeriodicOffset,
-          queue: Enqueue[NonEmptyChunk[(K, V)]]
+          queue: Enqueue[NonEmptyChunk[Record[K, V]]]
       ): RIO[R with SttpClient with EphemeralSecretCache, PeriodicOffset] = for {
         log        <- logTask
         tokenCache <- ZIO.service[EphemeralSecretCache]
@@ -272,7 +272,7 @@ object RESTSetup {
               .succeed(Duration.fromInterval(now, currentState.periodStart))
               .tap(delayUntilNextPeriod => log.info(s"$baseUrl is going to sleep for ${delayUntilNextPeriod.render}"))
         decodedPage <- fetchAndDecodePage(this.queryFor(currentState), tokenCache, log).delay(delayUntilNextPeriod)
-        chunk = Chunk.fromIterable(this.filterPage(decodedPage, currentState).map(value => this.recordKey(currentState, value) -> value))
+        chunk = Chunk.fromIterable(this.filterPage(decodedPage, currentState).map(this.recordFrom(currentState, _)))
         _         <- NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit)
         nextState <- this.stateFold(decodedPage, currentState)
       } yield nextState

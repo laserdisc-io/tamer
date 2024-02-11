@@ -12,7 +12,7 @@ object DatabaseGeneralized extends ZIOAppDefault {
     DbSetup(MyState(bootTime - 60.days, bootTime - 60.days + 5.minutes))(s =>
       sql"""SELECT id, name, description, modified_at FROM users WHERE modified_at > ${s.from} AND modified_at <= ${s.to}""".query[Row]
     )(
-      recordKey = (_, v) => v.id,
+      recordFrom = (_, v) => Record(v.id, v),
       stateFold = {
         case (s, QueryResult(_, results)) if results.isEmpty => Clock.instant.map(now => MyState(s.from, (s.to + 5.minutes).or(now)))
         case (_, QueryResult(_, results)) =>
