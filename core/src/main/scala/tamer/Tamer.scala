@@ -326,7 +326,7 @@ object Tamer {
 
       val KafkaConfig(brokers, _, closeTimeout, _, _, _, groupId, clientId, transactionalId, properties) = config
 
-      val adminClientSettings = AdminClientSettings(closeTimeout, Map.empty)
+      val adminClientSettings = AdminClientSettings(closeTimeout, properties)
         .withBootstrapServers(brokers)
       val consumerSettings = ConsumerSettings(brokers)
         .withClientId(clientId)
