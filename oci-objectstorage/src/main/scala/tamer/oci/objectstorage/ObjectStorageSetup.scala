@@ -10,7 +10,7 @@ import zio.stream.ZPipeline
 
 sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, SV: Tag](
     initialState: SV,
-    recordKey: (SV, V) => K,
+    recordFrom: (SV, V) => Record[K, V],
     namespace: String,
     bucket: String,
     prefix: Option[String],
@@ -43,7 +43,7 @@ sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, SV: Tag](
   private[this] final def process(
       log: LogWriter[Task],
       currentState: SV,
-      queue: Enqueue[NonEmptyChunk[(K, V)]]
+      queue: Enqueue[NonEmptyChunk[Record[K, V]]]
   ): RIO[R with ObjectStorage, Unit] =
     objectName(currentState) match {
       case Some(name) =>
@@ -51,13 +51,13 @@ sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, SV: Tag](
           getObject(namespace, bucket, name)
             .via(pipeline)
             .mapError(error => TamerError(s"Error while processing object $name: ${error.getMessage}", error))
-            .map(value => recordKey(currentState, value) -> value)
+            .map(recordFrom(currentState, _))
             .runForeachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit))
       case None =>
         log.debug("no state change")
     }
 
-  override def iteration(currentState: SV, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with ObjectStorage, SV] = for {
+  override def iteration(currentState: SV, queue: Enqueue[NonEmptyChunk[Record[K, V]]]): RIO[R with ObjectStorage, SV] = for {
     log <- logTask
     _   <- log.debug(s"current state: $currentState")
     options <- ZIO.succeed(
@@ -75,7 +75,7 @@ object ObjectStorageSetup {
       bucket: String,
       initialState: SV
   )(
-      recordKey: (SV, V) => K,
+      recordFrom: (SV, V) => Record[K, V],
       stateFold: (SV, Option[String]) => URIO[R, SV],
       objectName: SV => Option[String],
       startAfter: SV => Option[String],
@@ -86,7 +86,7 @@ object ObjectStorageSetup {
       implicit ev: SerdesProvider[K, V, SV]
   ): ObjectStorageSetup[R, K, V, SV] = new ObjectStorageSetup(
     initialState,
-    recordKey,
+    recordFrom,
     namespace,
     bucket,
     prefix,

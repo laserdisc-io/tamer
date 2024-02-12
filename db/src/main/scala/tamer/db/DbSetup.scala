@@ -13,7 +13,7 @@ import zio.interop.catz._
 
 sealed abstract case class DbSetup[K: Tag, V: Tag, SV: Tag: Hashable](
     initialState: SV,
-    recordKey: (SV, V) => K,
+    recordFrom: (SV, V) => Record[K, V],
     query: SV => Query0[V],
     stateFold: (SV, QueryResult[V]) => UIO[SV]
 )(
@@ -37,14 +37,14 @@ sealed abstract case class DbSetup[K: Tag, V: Tag, SV: Tag: Hashable](
 
   private[this] final val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.db"))
 
-  private[this] final def process(query: Query0[V], chunkSize: Int, tx: Transactor[Task], queue: Enqueue[NonEmptyChunk[(K, V)]], state: SV) =
+  private[this] final def process(query: Query0[V], chunkSize: Int, tx: Transactor[Task], queue: Enqueue[NonEmptyChunk[Record[K, V]]], state: SV) =
     query
       .streamWithChunkSize(chunkSize)
       .chunks
       .transact(tx)
       .map(ChunkWithMetadata(_))
       .evalTap { c =>
-        val chunk = Chunk.fromIterable(c.chunk.iterator.to(LazyList).map(v => recordKey(state, v) -> v))
+        val chunk = Chunk.fromIterable(c.chunk.iterator.to(LazyList).map(recordFrom(state, _)))
         NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit)
       }
       .flatMap(c => Stream.chunk(c.chunk).map(ValueWithMetadata(_, c.pulledAt)))
@@ -52,7 +52,7 @@ sealed abstract case class DbSetup[K: Tag, V: Tag, SV: Tag: Hashable](
       .toList
       .map(values => values -> values.headOption.map(_.pulledAt).getOrElse(java.lang.System.nanoTime()))
 
-  override def iteration(currentState: SV, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[Transactor[Task] with DbConfig, SV] = for {
+  override def iteration(currentState: SV, queue: Enqueue[NonEmptyChunk[Record[K, V]]]): RIO[Transactor[Task] with DbConfig, SV] = for {
     log        <- logTask
     transactor <- ZIO.service[Transactor[Task]]
     chunkSize  <- ZIO.service[DbConfig].map(_.fetchChunkSize)
@@ -71,16 +71,16 @@ object DbSetup {
   )(
       query: SV => Query0[V]
   )(
-      recordKey: (SV, V) => K,
+      recordFrom: (SV, V) => Record[K, V],
       stateFold: (SV, QueryResult[V]) => UIO[SV]
   )(
       implicit ev: SerdesProvider[K, V, SV]
-  ): DbSetup[K, V, SV] = new DbSetup(initialState, recordKey, query, stateFold) {}
+  ): DbSetup[K, V, SV] = new DbSetup(initialState, recordFrom, query, stateFold) {}
 
   final def tumbling[K: Tag, V <: Timestamped: Tag: Ordering](
       query: Window => Query0[V]
   )(
-      recordKey: (Window, V) => K,
+      recordFrom: (Window, V) => Record[K, V],
       from: Instant = Instant.now,
       tumblingStep: Duration = 5.minutes,
       lag: Duration = 0.seconds
@@ -95,6 +95,6 @@ object DbSetup {
         Clock.instant.map(now => Window(mostRecent, (mostRecent + tumblingStep).or(now, lag)))
       }
 
-    DbSetup(Window(from, from + tumblingStep))(query)(recordKey, stateFold)
+    DbSetup(Window(from, from + tumblingStep))(query)(recordFrom, stateFold)
   }
 }

@@ -18,13 +18,12 @@ object TamerSpec extends ZIOSpecDefault with TamerSpecGen {
     new Setup[Ref[Log], Key, Value, State] {
       override final val initialState = State(0)
       override final val stateKey     = 0
-      override final val recordKey    = (s: State, _: Value) => Key(s.state + 1)
-      override final def iteration(s: State, q: Enqueue[NonEmptyChunk[(Key, Value)]]): RIO[Ref[Log], State] =
+      override final def iteration(s: State, q: Enqueue[NonEmptyChunk[Record[Key, Value]]]): RIO[Ref[Log], State] =
         ZIO.service[Ref[Log]].flatMap { variable =>
           val cursor = s.state + 1
           if (cursor <= 10)
             variable.update(log => log.copy(log.series ++ Vector(cursor))) *>
-              q.offer(NonEmptyChunk((Key(cursor), Value(cursor)))).as(s.copy(state = cursor))
+              q.offer(NonEmptyChunk(Record(Key(cursor), Value(cursor)))).as(s.copy(state = cursor))
           else ZIO.never *> ZIO.succeed(State(9999))
         }
     }

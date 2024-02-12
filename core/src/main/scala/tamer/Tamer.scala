@@ -40,15 +40,12 @@ object Tamer {
   private implicit final class OffsetOps(private val _underlying: Offset) extends AnyVal {
     def info: String = s"${_underlying.topicPartition}@${_underlying.offset}"
   }
-  private implicit final class TupleOps[K, V](private val _underlying: (K, V)) extends AnyVal {
-    def toProducerRecord(topic: String): ProducerRecord[K, V] = new ProducerRecord(topic, _underlying._1, _underlying._2)
-  }
 
   private[tamer] final def sinkStream[K, V](
       sinkTopic: String,
       sinkKeySerializer: Serializer[Any, K],
       sinkValueSerializer: Serializer[Any, V],
-      queue: Dequeue[(TxInfo, Chunk[(K, V)])],
+      queue: Dequeue[(TxInfo, Chunk[Record[K, V]])],
       log: LogWriter[Task]
   ): Stream[Throwable, Unit] =
     ZStream
@@ -56,7 +53,7 @@ object Tamer {
       .mapZIO {
         case (TxInfo.Context(transaction), chunk) if chunk.nonEmpty =>
           transaction
-            .produceChunk(chunk.map(_.toProducerRecord(sinkTopic)), sinkKeySerializer, sinkValueSerializer, None)
+            .produceChunk(chunk.map(_.toKafkaProducerRecord(sinkTopic)), sinkKeySerializer, sinkValueSerializer, None)
             .tapError(_ => log.debug(s"failed pushing ${chunk.size} messages to $sinkTopic"))
             .retry(retries) // TODO: stop trying if the error is transaction related
             .unit <*
@@ -76,8 +73,8 @@ object Tamer {
       initialState: SV,
       consumer: Consumer,
       producer: TransactionalProducer,
-      queue: Enqueue[(TxInfo, Chunk[(K, V)])],
-      iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
+      queue: Enqueue[(TxInfo, Chunk[Record[K, V]])],
+      iterationFunction: (SV, Enqueue[NonEmptyChunk[Record[K, V]]]) => Task[SV],
       log: LogWriter[Task]
   ): Stream[Throwable, Unit] = {
 
@@ -136,7 +133,7 @@ object Tamer {
             val offset = cr.offset
             producer.createTransaction.flatMap { transaction =>
               val enrichedQueue =
-                new EnrichedBoundedEnqueue(queue, (neChunk: NonEmptyChunk[(K, V)]) => (TxInfo.Context(transaction), neChunk.toChunk))
+                new EnrichedBoundedEnqueue(queue, (neChunk: NonEmptyChunk[Record[K, V]]) => (TxInfo.Context(transaction), neChunk.toChunk))
               log.debug(s"consumer group $stateGroupId consumed state ${cr.record.value} from ${offset.info}") *>
                 // we got a valid state to process, invoke the handler
                 log.debug(s"invoking the iteration function under $stateGroupId") *> iterationFunction(cr.record.value, enrichedQueue).flatMap {
@@ -174,7 +171,7 @@ object Tamer {
       serdes: Serdes[K, V, SV],
       initialState: SV,
       stateHash: Int,
-      iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
+      iterationFunction: (SV, Enqueue[NonEmptyChunk[Record[K, V]]]) => Task[SV],
       repr: String,
       adminClient: AdminClient,
       consumer: Consumer,
@@ -192,7 +189,7 @@ object Tamer {
     private val stateKeySerde   = serdes.stateKeySerde
     private val stateValueSerde = serdes.stateValueSerde
 
-    private def source(queue: Enqueue[(TxInfo, Chunk[(K, V)])], log: LogWriter[Task]) =
+    private def source(queue: Enqueue[(TxInfo, Chunk[Record[K, V]])], log: LogWriter[Task]) =
       sourceStream(
         stateTopicName,
         config.groupId,
@@ -212,17 +209,17 @@ object Tamer {
         consumer.stopConsumption <*
         log.info(s"consumer of topic $stateTopicName stopped").ignore
 
-    private def sink(queue: Dequeue[(TxInfo, Chunk[(K, V)])], log: LogWriter[Task]) =
+    private def sink(queue: Dequeue[(TxInfo, Chunk[Record[K, V]])], log: LogWriter[Task]) =
       sinkStream(config.sink.topicName, keySerializer, valueSerializer, queue, log)
 
-    private def drainSink(queue: Dequeue[(TxInfo, Chunk[(K, V)])], log: LogWriter[Task]) =
+    private def drainSink(queue: Dequeue[(TxInfo, Chunk[Record[K, V]])], log: LogWriter[Task]) =
       log.info("running final drain on sink queue").ignore *>
         sink(queue, log).runDrain.orDie.fork <*
         log.info("sink queue drained").ignore *>
         queue.size.repeatWhile(_ > 0) *>
         queue.shutdown
 
-    private def runLoop(queue: Queue[(TxInfo, Chunk[(K, V)])], log: LogWriter[Task]) = {
+    private def runLoop(queue: Queue[(TxInfo, Chunk[Record[K, V]])], log: LogWriter[Task]) = {
       val runSink = log.info(s"running sink on topic $sinkTopicName perpetually") *>
         sink(queue, log).runDrain.onInterrupt(log.info(s"stopping producing to $sinkTopicName").ignore)
       val runSource = source(queue, log).ensuring(stopSource(log)).ensuring(drainSink(queue, log)).runDrain
@@ -311,7 +308,7 @@ object Tamer {
       log   <- logTask
       _     <- log.info(s"initializing Tamer with setup:\n$repr")
       _     <- initTopics(log)
-      queue <- Queue.bounded[(TxInfo, Chunk[(K, V)])](config.bufferSize)
+      queue <- Queue.bounded[(TxInfo, Chunk[Record[K, V]])](config.bufferSize)
       _     <- runLoop(queue, log)
     } yield ()
   }
@@ -323,7 +320,7 @@ object Tamer {
         serdesProvider: SerdesProvider[K, V, SV],
         initialState: SV,
         stateKey: Int,
-        iterationFunction: (SV, Enqueue[NonEmptyChunk[(K, V)]]) => Task[SV],
+        iterationFunction: (SV, Enqueue[NonEmptyChunk[Record[K, V]]]) => Task[SV],
         repr: String
     ): RIO[Scope, LiveTamer[K, V, SV]] = {
 

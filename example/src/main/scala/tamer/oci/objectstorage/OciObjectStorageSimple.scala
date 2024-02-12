@@ -14,7 +14,7 @@ object OciObjectStorageSimple extends ZIOAppDefault {
     bucket = "bucketName",
     initialState = ObjectsCursor(None, None)
   )(
-    recordKey = (oc, _: String) => oc,
+    recordFrom = (oc, v: String) => Record(oc, v),
     stateFold = {
       case (ObjectsCursor(_, _), next @ Some(_)) => ZIO.succeed(ObjectsCursor(next, next))
       case (ObjectsCursor(s, Some(_)), None)     => ZIO.succeed(ObjectsCursor(s, None))

@@ -21,7 +21,7 @@ object RESTDynamicData extends ZIOAppDefault {
         baseUrl = "http://localhost:9395/dynamic-pagination",
         pageDecoder = pageDecoder,
         periodStart = now
-      )((_, data) => data)
+      )((_, data) => Record(data, data))
       .runWith(restLive() ++ KafkaConfig.fromEnvironment)
   }
 }

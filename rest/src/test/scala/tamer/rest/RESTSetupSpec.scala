@@ -34,7 +34,7 @@ object RESTSetupSpec extends ZIOSpecDefault with HttpServerSupport {
     val rest = RESTSetup(State(0))(
       queryFor,
       decoder,
-      (_: State, v: Value) => Key(v.time),
+      (_: State, v: Value) => Record(Key(v.time), v),
       (_: DecodedPage[Value, State], s: State) => ZIO.service[Ref[Log]].flatMap(_.update(l => Log(l.count + 1))) *> ZIO.succeed(State(s.count + 1))
     ).run
   }

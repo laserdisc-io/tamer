@@ -14,7 +14,7 @@ import scala.math.Ordering.Implicits.infixOrderingOps
 
 sealed abstract case class S3Setup[R, K: Tag, V: Tag, SV: Tag: Hashable](
     initialState: SV,
-    recordKey: (SV, V) => K,
+    recordFrom: (SV, V) => Record[K, V],
     bucket: String,
     prefix: String,
     parallelism: Int,
@@ -84,7 +84,7 @@ sealed abstract case class S3Setup[R, K: Tag, V: Tag, SV: Tag: Hashable](
     } yield EphemeralChange(detectedKeyListChanged)
   }
 
-  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: SV, queue: Enqueue[NonEmptyChunk[(K, V)]]) = for {
+  protected final def process(keysR: KeysR, keysChangedToken: Queue[Unit], currentState: SV, queue: Enqueue[NonEmptyChunk[Record[K, V]]]) = for {
     log       <- logTask
     nextState <- stateFold(keysR, currentState, keysChangedToken)
     _         <- log.debug(s"next state computed to be $nextState")
@@ -94,13 +94,13 @@ sealed abstract case class S3Setup[R, K: Tag, V: Tag, SV: Tag: Hashable](
       .map(
         getObject(bucket, _)
           .via(pipeline)
-          .map(value => recordKey(nextState, value) -> value)
+          .map(recordFrom(nextState, _))
           .runForeachChunk(chunk => NonEmptyChunk.fromChunk(chunk).map(queue.offer).getOrElse(ZIO.unit))
       )
       .getOrElse(ZIO.fail(TamerError(s"File not found with key $optKey for state $nextState"))) // FIXME: relies on nextState.toString
   } yield nextState
 
-  override def iteration(currentState: SV, queue: Enqueue[NonEmptyChunk[(K, V)]]): RIO[R with S3, SV] = for {
+  override def iteration(currentState: SV, queue: Enqueue[NonEmptyChunk[Record[K, V]]]): RIO[R with S3, SV] = for {
     sourceState <- initialEphemeralState
     token       <- Queue.dropping[Unit](requestedCapacity = 1)
     _           <- updatedSourceState(sourceState, token).scheduleFrom(EphemeralChange.Detected)(ephemeralChangeSchedule).forever.fork
@@ -118,7 +118,7 @@ object S3Setup {
       maximumIntervalForBucketFetch: Duration,
       initialState: SV
   )(
-      recordKey: (SV, V) => K,
+      recordFrom: (SV, V) => Record[K, V],
       selectObjectForState: (SV, Keys) => Option[String],
       stateFold: (KeysR, SV, Queue[Unit]) => UIO[SV],
       parallelism: Int = 1,
@@ -127,7 +127,7 @@ object S3Setup {
       implicit ev: SerdesProvider[K, V, SV]
   ): S3Setup[R, K, V, SV] = new S3Setup(
     initialState,
-    recordKey,
+    recordFrom,
     bucket,
     prefix,
     parallelism,
@@ -167,7 +167,7 @@ object S3Setup {
       bucket: String,
       prefix: String,
       from: Instant,
-      recordKey: (Instant, V) => K = (l: Instant, _: V) => l,
+      recordFrom: (Instant, V) => Record[K, V] = (l: Instant, v: String) => Record(l, v),
       pipeline: ZPipeline[R, Throwable, Byte, V] = defaultPipeline,
       parallelism: Int = 1,
       dateTimeFormatter: ZonedDateTimeFormatter = ZonedDateTimeFormatter(DateTimeFormatter.ISO_INSTANT, ZoneId.systemDefault()),
@@ -177,7 +177,7 @@ object S3Setup {
       implicit ev: SerdesProvider[K, V, Instant]
   ): S3Setup[R, K, V, Instant] = new S3Setup(
     from,
-    recordKey,
+    recordFrom,
     bucket,
     prefix,
     parallelism,
