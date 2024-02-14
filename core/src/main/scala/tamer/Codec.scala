@@ -53,9 +53,7 @@ object Schema {
       catch { case NonFatal(e) => s"Unexpected exception during compatibility check: ${e.getMessage()}" :: Nil }
   }
   private object Avro {
-    private[this] final val parser = new org.apache.avro.Schema.Parser()
-
-    final def parse(s: String): org.apache.avro.Schema = parser.parse(s)
+    final def parse(s: String): org.apache.avro.Schema = new org.apache.avro.Schema.Parser().parse(s)
   }
 
   final def fromAvro(s: =>org.apache.avro.Schema): Schema.Avro = Schema.Avro(s)
