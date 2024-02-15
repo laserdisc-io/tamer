@@ -91,7 +91,7 @@ object Registry {
       ZIO
         .succeed(schema.isCompatible(writerSchema))
         .filterOrElseWith(_.isEmpty) { errors =>
-          ZIO.fail(TamerError(s"Backwards incompatible schema: ${errors.mkString(", ")}"))
+          ZIO.fail(TamerError(s"Backwards incompatible schema, reader: '${schema.show}' vs writer: '$writerSchema': ${errors.mkString(", ")}"))
         }
         .unit
 
