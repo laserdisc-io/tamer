@@ -11,9 +11,9 @@ val V = new {
   val `json-schema`             = "1.14.4"
   val `jsoniter-scala`          = "2.28.4"
   val kafka                     = "3.6.1"
-  val logback                   = "1.5.3"
+  val logback                   = "1.5.4"
   val `log-effect`              = "0.19.0"
-  val ocisdk                    = "3.38.0"
+  val ocisdk                    = "3.39.1"
   val postgresql                = "42.7.3"
   val `scala-collection-compat` = "2.11.0"
   val slf4j                     = "2.0.12"
@@ -26,7 +26,7 @@ val V = new {
   val `zio-kafka`               = "2.7.3"
   val `zio-nio`                 = "2.0.2"
   val `zio-oci-objectstorage`   = "0.7.1"
-  val `zio-s3`                  = "0.4.2.4"
+  val `zio-s3`                  = "0.4.3"
 }
 
 lazy val D = new {
