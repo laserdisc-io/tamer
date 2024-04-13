@@ -1,7 +1,7 @@
 val V = new {
   val avro4s_scala2             = "4.1.2"
   val avro4s_scala3             = "5.0.9"
-  val awssdk                    = "2.25.21"
+  val awssdk                    = "2.25.31"
   val `cats-effect`             = "3.5.3"
   val circe                     = "0.14.6"
   val confluent                 = "7.5.3"
@@ -11,22 +11,22 @@ val V = new {
   val `json-schema`             = "1.14.4"
   val `jsoniter-scala`          = "2.28.4"
   val kafka                     = "3.7.0"
-  val logback                   = "1.5.3"
+  val logback                   = "1.5.5"
   val `log-effect`              = "0.19.0"
-  val ocisdk                    = "3.38.0"
+  val ocisdk                    = "3.39.1"
   val postgresql                = "42.7.3"
   val `scala-collection-compat` = "2.11.0"
-  val slf4j                     = "2.0.12"
+  val slf4j                     = "2.0.13"
   val sttp                      = "4.0.0-M11"
   val upickle                   = "3.1.4"
   val vulcan                    = "1.10.1"
-  val `zio-interop`             = "23.1.0.1"
+  val `zio-interop`             = "23.1.0.2"
   val `zio-cache`               = "0.2.3"
   val `zio-json`                = "0.6.2"
   val `zio-kafka`               = "2.7.4"
   val `zio-nio`                 = "2.0.2"
   val `zio-oci-objectstorage`   = "0.7.1"
-  val `zio-s3`                  = "0.4.2.4"
+  val `zio-s3`                  = "0.4.3"
 }
 
 lazy val D = new {
@@ -82,7 +82,7 @@ enablePlugins(ZioSbtEcosystemPlugin)
 inThisBuild(
   Seq(
     name               := "Tamer",
-    zioVersion         := "2.0.21",
+    zioVersion         := "2.0.22",
     organization       := "io.laserdisc",
     scalaVersion       := scala213.value,
     crossScalaVersions := Seq(scala213.value, scala3.value),
