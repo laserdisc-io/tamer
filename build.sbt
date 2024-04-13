@@ -11,7 +11,7 @@ val V = new {
   val `json-schema`             = "1.14.4"
   val `jsoniter-scala`          = "2.28.4"
   val kafka                     = "3.6.1"
-  val logback                   = "1.5.4"
+  val logback                   = "1.5.5"
   val `log-effect`              = "0.19.0"
   val ocisdk                    = "3.39.1"
   val postgresql                = "42.7.3"
@@ -20,7 +20,7 @@ val V = new {
   val sttp                      = "4.0.0-M11"
   val upickle                   = "3.1.4"
   val vulcan                    = "1.10.1"
-  val `zio-interop`             = "23.1.0.1"
+  val `zio-interop`             = "23.1.0.2"
   val `zio-cache`               = "0.2.3"
   val `zio-json`                = "0.6.2"
   val `zio-kafka`               = "2.7.3"
@@ -82,7 +82,7 @@ enablePlugins(ZioSbtEcosystemPlugin)
 inThisBuild(
   Seq(
     name               := "Tamer",
-    zioVersion         := "2.0.21",
+    zioVersion         := "2.0.22",
     organization       := "io.laserdisc",
     scalaVersion       := scala213.value,
     crossScalaVersions := Seq(scala213.value, scala3.value),
