@@ -58,7 +58,7 @@ object Tamer {
               .tapError(e => log.info(s"failed pushing ${chunk.size} messages to $sinkTopic, will retry. Caused by: ${e.getMessage}"))
               .retry(retries) // TODO: stop trying if the error is transaction related
               .tapError(e => log.warn(s"finally failed pushing ${chunk.size} messages to $sinkTopic, will abort. Caused by: ${e.getMessage}", e))
-              .unit*> log.info(s"successfully pushed ${chunk.size} messages to $sinkTopic")
+              .unit *> log.info(s"successfully pushed ${chunk.size} messages to $sinkTopic")
 
         case (TxInfo.Delimiter(promise), _) =>
           promise.succeed(()).unit <*
