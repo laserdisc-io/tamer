@@ -1,7 +1,7 @@
 val V = new {
   val avro4s_scala2             = "4.1.2"
   val avro4s_scala3             = "5.0.9"
-  val awssdk                    = "2.25.40"
+  val awssdk                    = "2.25.45"
   val `cats-effect`             = "3.5.3"
   val circe                     = "0.14.7"
   val confluent                 = "7.5.3"
@@ -13,7 +13,7 @@ val V = new {
   val kafka                     = "3.6.1"
   val logback                   = "1.5.6"
   val `log-effect`              = "0.19.0"
-  val ocisdk                    = "3.40.0"
+  val ocisdk                    = "3.41.0"
   val postgresql                = "42.7.3"
   val `scala-collection-compat` = "2.12.0"
   val slf4j                     = "2.0.13"
