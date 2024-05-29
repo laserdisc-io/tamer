@@ -1,6 +1,6 @@
 val V = new {
   val avro4s_scala2             = "4.1.2"
-  val avro4s_scala3             = "5.0.11"
+  val avro4s_scala3             = "5.0.13"
   val awssdk                    = "2.25.58"
   val `cats-effect`             = "3.5.3"
   val circe                     = "0.14.7"
