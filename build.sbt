@@ -22,7 +22,7 @@ val V = new {
   val vulcan                    = "1.10.1"
   val `zio-interop`             = "23.1.0.2"
   val `zio-cache`               = "0.2.3"
-  val `zio-json`                = "0.6.2"
+  val `zio-json`                = "0.7.0"
   val `zio-kafka`               = "2.7.3"
   val `zio-nio`                 = "2.0.2"
   val `zio-oci-objectstorage`   = "0.7.2"
@@ -82,7 +82,7 @@ enablePlugins(ZioSbtEcosystemPlugin)
 inThisBuild(
   Seq(
     name               := "Tamer",
-    zioVersion         := "2.1.1",
+    zioVersion         := "2.1.2",
     organization       := "io.laserdisc",
     scalaVersion       := scala213.value,
     crossScalaVersions := Seq(scala213.value, scala3.value),
