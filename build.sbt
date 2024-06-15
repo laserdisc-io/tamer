@@ -45,7 +45,11 @@ lazy val D = new {
   val `embedded-kafka` =
     "io.github.embeddedkafka" %% "embedded-kafka" % V.kafka excludeAll ("org.scala-lang.modules" % "scala-collection-compat_2.13")
   val `embedded-kafka-schema-registry` =
-    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.confluent excludeAll ("com.github.everit-org.json-schema" % "org.everit.json.schema", "org.scala-lang.modules" % "scala-collection-compat_2.13", "org.slf4j" % "slf4j-log4j12")
+    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.confluent excludeAll (
+      "com.github.everit-org.json-schema" % "org.everit.json.schema",
+      "org.scala-lang.modules"            % "scala-collection-compat_2.13",
+      "org.slf4j"                         % "slf4j-log4j12"
+    )
   val `http4s-circe`        = "org.http4s"                            %% "http4s-circe"           % V.http4s
   val `http4s-dsl`          = "org.http4s"                            %% "http4s-dsl"             % V.http4s
   val `http4s-ember-server` = "org.http4s"                            %% "http4s-ember-server"    % V.http4s
