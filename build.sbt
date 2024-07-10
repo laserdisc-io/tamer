@@ -7,13 +7,13 @@ val V = new {
   val confluent                 = "7.5.3"
   val doobie                    = "1.0.0-RC5"
   val http4s                    = "0.23.27"
-  val jackson                   = "2.17.1"
+  val jackson                   = "2.17.2"
   val `json-schema`             = "1.14.4"
-  val `jsoniter-scala`          = "2.30.3"
+  val `jsoniter-scala`          = "2.30.4"
   val kafka                     = "3.6.1"
   val logback                   = "1.5.6"
   val `log-effect`              = "0.19.0"
-  val ocisdk                    = "3.44.1"
+  val ocisdk                    = "3.44.2"
   val postgresql                = "42.7.3"
   val scala213                  = "2.13.14"
   val `scala-collection-compat` = "2.12.0"
@@ -87,7 +87,7 @@ enablePlugins(ZioSbtEcosystemPlugin)
 inThisBuild(
   Seq(
     name               := "Tamer",
-    zioVersion         := "2.1.5",
+    zioVersion         := "2.1.6",
     organization       := "io.laserdisc",
     scalaVersion       := V.scala213,
     crossScalaVersions := Seq(V.scala213, scala3.value),
