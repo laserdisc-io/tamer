@@ -1,33 +1,34 @@
 val V = new {
-  val avro4s_scala2             = "4.1.2"
-  val avro4s_scala3             = "5.0.13"
-  val awssdk                    = "2.27.9"
-  val `cats-effect`             = "3.5.3"
-  val circe                     = "0.14.9"
-  val confluent                 = "7.5.3"
-  val doobie                    = "1.0.0-RC5"
-  val http4s                    = "0.23.27"
-  val jackson                   = "2.17.2"
-  val `json-schema`             = "1.14.4"
-  val `jsoniter-scala`          = "2.30.7"
-  val kafka                     = "3.6.1"
-  val logback                   = "1.5.7"
-  val `log-effect`              = "0.19.0"
-  val ocisdk                    = "3.47.0"
-  val postgresql                = "42.7.3"
-  val scala213                  = "2.13.14"
-  val `scala-collection-compat` = "2.12.0"
-  val slf4j                     = "2.0.16"
-  val sttp                      = "4.0.0-M17"
-  val upickle                   = "3.1.4"
-  val vulcan                    = "1.11.0"
-  val `zio-interop`             = "23.1.0.3"
-  val `zio-cache`               = "0.2.3"
-  val `zio-json`                = "0.7.2"
-  val `zio-kafka`               = "2.7.3"
-  val `zio-nio`                 = "2.0.2"
-  val `zio-oci-objectstorage`   = "0.7.2"
-  val `zio-s3`                  = "0.4.3"
+  val avro4s_scala2                    = "4.1.2"
+  val avro4s_scala3                    = "5.0.13"
+  val awssdk                           = "2.27.9"
+  val `cats-effect`                    = "3.5.3"
+  val circe                            = "0.14.9"
+  val doobie                           = "1.0.0-RC5"
+  val `embedded-kafka`                 = "3.7.1.1"
+  val `embedded-kafka-schema-registry` = "7.7.0"
+  val http4s                           = "0.23.27"
+  val jackson                          = "2.17.2"
+  val `json-schema`                    = "1.14.4"
+  val `jsoniter-scala`                 = "2.30.7"
+  val kafka                            = "3.7.1"
+  val logback                          = "1.5.7"
+  val `log-effect`                     = "0.19.0"
+  val ocisdk                           = "3.47.0"
+  val postgresql                       = "42.7.3"
+  val scala213                         = "2.13.14"
+  val `scala-collection-compat`        = "2.12.0"
+  val slf4j                            = "2.0.16"
+  val sttp                             = "4.0.0-M17"
+  val upickle                          = "3.1.4"
+  val vulcan                           = "1.11.0"
+  val `zio-interop`                    = "23.1.0.3"
+  val `zio-cache`                      = "0.2.3"
+  val `zio-json`                       = "0.7.2"
+  val `zio-kafka`                      = "2.7.3"
+  val `zio-nio`                        = "2.0.2"
+  val `zio-oci-objectstorage`          = "0.7.2"
+  val `zio-s3`                         = "0.4.3"
 }
 
 lazy val D = new {
@@ -44,9 +45,9 @@ lazy val D = new {
   val `doobie-core`   = "org.tpolecat"          %% "doobie-core"   % V.doobie
   val `doobie-hikari` = "org.tpolecat"          %% "doobie-hikari" % V.doobie
   val `embedded-kafka` =
-    "io.github.embeddedkafka" %% "embedded-kafka" % V.kafka excludeAll ("org.scala-lang.modules" % "scala-collection-compat_2.13")
+    "io.github.embeddedkafka" %% "embedded-kafka" % V.`embedded-kafka` excludeAll ("org.scala-lang.modules" % "scala-collection-compat_2.13")
   val `embedded-kafka-schema-registry` =
-    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.confluent excludeAll (
+    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.`embedded-kafka-schema-registry` excludeAll (
       "com.github.everit-org.json-schema" % "org.everit.json.schema",
       "org.scala-lang.modules"            % "scala-collection-compat_2.13",
       "org.slf4j"                         % "slf4j-log4j12"
