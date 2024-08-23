@@ -1,33 +1,34 @@
 val V = new {
-  val avro4s_scala2             = "4.1.2"
-  val avro4s_scala3             = "5.0.13"
-  val awssdk                    = "2.26.15"
-  val `cats-effect`             = "3.5.3"
-  val circe                     = "0.14.9"
-  val confluent                 = "7.5.3"
-  val doobie                    = "1.0.0-RC5"
-  val http4s                    = "0.23.27"
-  val jackson                   = "2.17.1"
-  val `json-schema`             = "1.14.4"
-  val `jsoniter-scala`          = "2.30.3"
-  val kafka                     = "3.6.1"
-  val logback                   = "1.5.6"
-  val `log-effect`              = "0.19.0"
-  val ocisdk                    = "3.44.1"
-  val postgresql                = "42.7.3"
-  val scala213                  = "2.13.14"
-  val `scala-collection-compat` = "2.12.0"
-  val slf4j                     = "2.0.13"
-  val sttp                      = "4.0.0-M16"
-  val upickle                   = "3.1.4"
-  val vulcan                    = "1.11.0"
-  val `zio-interop`             = "23.1.0.2"
-  val `zio-cache`               = "0.2.3"
-  val `zio-json`                = "0.7.1"
-  val `zio-kafka`               = "2.7.5"
-  val `zio-nio`                 = "2.0.2"
-  val `zio-oci-objectstorage`   = "0.7.2"
-  val `zio-s3`                  = "0.4.3"
+  val avro4s_scala2                    = "4.1.2"
+  val avro4s_scala3                    = "5.0.13"
+  val awssdk                           = "2.27.11"
+  val `cats-effect`                    = "3.5.3"
+  val circe                            = "0.14.9"
+  val doobie                           = "1.0.0-RC5"
+  val `embedded-kafka`                 = "3.7.1.1"
+  val `embedded-kafka-schema-registry` = "7.7.0"
+  val http4s                           = "0.23.27"
+  val jackson                          = "2.17.2"
+  val `json-schema`                    = "1.14.4"
+  val `jsoniter-scala`                 = "2.30.8"
+  val kafka                            = "3.7.1"
+  val logback                          = "1.5.7"
+  val `log-effect`                     = "0.19.0"
+  val ocisdk                           = "3.47.0"
+  val postgresql                       = "42.7.4"
+  val scala213                         = "2.13.14"
+  val `scala-collection-compat`        = "2.12.0"
+  val slf4j                            = "2.0.16"
+  val sttp                             = "4.0.0-M17"
+  val upickle                          = "3.1.4"
+  val vulcan                           = "1.11.0"
+  val `zio-interop`                    = "23.1.0.3"
+  val `zio-cache`                      = "0.2.3"
+  val `zio-json`                       = "0.7.2"
+  val `zio-kafka`                      = "2.7.5"
+  val `zio-nio`                        = "2.0.2"
+  val `zio-oci-objectstorage`          = "0.7.2"
+  val `zio-s3`                         = "0.4.3"
 }
 
 lazy val D = new {
@@ -44,42 +45,41 @@ lazy val D = new {
   val `doobie-core`   = "org.tpolecat"          %% "doobie-core"   % V.doobie
   val `doobie-hikari` = "org.tpolecat"          %% "doobie-hikari" % V.doobie
   val `embedded-kafka` =
-    "io.github.embeddedkafka" %% "embedded-kafka" % V.kafka excludeAll ("org.scala-lang.modules" % "scala-collection-compat_2.13")
+    "io.github.embeddedkafka" %% "embedded-kafka" % V.`embedded-kafka` excludeAll ("org.scala-lang.modules" % "scala-collection-compat_2.13")
   val `embedded-kafka-schema-registry` =
-    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.confluent excludeAll (
+    "io.github.embeddedkafka" %% "embedded-kafka-schema-registry" % V.`embedded-kafka-schema-registry` excludeAll (
       "com.github.everit-org.json-schema" % "org.everit.json.schema",
       "org.scala-lang.modules"            % "scala-collection-compat_2.13",
       "org.slf4j"                         % "slf4j-log4j12"
     )
-  val `http4s-circe`        = "org.http4s"                            %% "http4s-circe"           % V.http4s
-  val `http4s-dsl`          = "org.http4s"                            %% "http4s-dsl"             % V.http4s
-  val `http4s-ember-server` = "org.http4s"                            %% "http4s-ember-server"    % V.http4s
-  val `jackson-annotations` = "com.fasterxml.jackson.core"             % "jackson-annotations"    % V.jackson
-  val `jackson-core`        = "com.fasterxml.jackson.core"             % "jackson-core"           % V.jackson
-  val `jackson-databind`    = "com.fasterxml.jackson.core"             % "jackson-databind"       % V.jackson
-  val `json-schema`         = "com.github.everit-org.json-schema"      % "org.everit.json.schema" % V.`json-schema`
-  val `jsoniter-scala-core` = "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"    % V.`jsoniter-scala`
-  val `jul-to-slf4j`        = "org.slf4j"                              % "jul-to-slf4j"           % V.slf4j
-  val `kafka-clients`       = "org.apache.kafka"                       % "kafka-clients"          % V.kafka
-  val `kafka-schema-registry-client` = "io.confluent" % "kafka-schema-registry-client" % V.confluent excludeAll ("org.apache.kafka", "kafka-clients")
-  val `log4j-over-slf4j`             = "org.slf4j"    % "log4j-over-slf4j"             % V.slf4j
-  val `logback-classic`            = "ch.qos.logback"                 % "logback-classic"            % V.logback
-  val `log-effect-zio`             = "io.laserdisc"                  %% "log-effect-zio"             % V.`log-effect`
-  val `oci-java-sdk-objectstorage` = "com.oracle.oci.sdk"             % "oci-java-sdk-objectstorage" % V.ocisdk
-  val postgresql                   = "org.postgresql"                 % "postgresql"                 % V.postgresql
-  val `scala-collection-compat`    = "org.scala-lang.modules"        %% "scala-collection-compat"    % V.`scala-collection-compat`
-  val `sttp-upickle`               = "com.softwaremill.sttp.client4" %% "upickle"                    % V.sttp
-  val `sttp-zio`                   = "com.softwaremill.sttp.client4" %% "zio"                        % V.sttp
-  val upickle                      = "com.lihaoyi"                   %% "upickle"                    % V.upickle
-  val vulcan                       = "com.github.fd4s"               %% "vulcan"                     % V.vulcan
-  val `vulcan-generic`             = "com.github.fd4s"               %% "vulcan-generic"             % V.vulcan
-  val `zio-cache`                  = "dev.zio"                       %% "zio-cache"                  % V.`zio-cache`
-  val `zio-interop-cats`           = "dev.zio"                       %% "zio-interop-cats"           % V.`zio-interop`
-  val `zio-json`                   = "dev.zio"                       %% "zio-json"                   % V.`zio-json`
-  val `zio-kafka`                  = "dev.zio"                       %% "zio-kafka"                  % V.`zio-kafka`
-  val `zio-nio`                    = "dev.zio"                       %% "zio-nio"                    % V.`zio-nio`
-  val `zio-oci-objectstorage`      = "io.laserdisc"                  %% "zio-oci-objectstorage"      % V.`zio-oci-objectstorage`
-  val `zio-s3`                     = "dev.zio"                       %% "zio-s3"                     % V.`zio-s3`
+  val `http4s-circe`               = "org.http4s"                            %% "http4s-circe"               % V.http4s
+  val `http4s-dsl`                 = "org.http4s"                            %% "http4s-dsl"                 % V.http4s
+  val `http4s-ember-server`        = "org.http4s"                            %% "http4s-ember-server"        % V.http4s
+  val `jackson-annotations`        = "com.fasterxml.jackson.core"             % "jackson-annotations"        % V.jackson
+  val `jackson-core`               = "com.fasterxml.jackson.core"             % "jackson-core"               % V.jackson
+  val `jackson-databind`           = "com.fasterxml.jackson.core"             % "jackson-databind"           % V.jackson
+  val `json-schema`                = "com.github.everit-org.json-schema"      % "org.everit.json.schema"     % V.`json-schema`
+  val `jsoniter-scala-core`        = "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core"        % V.`jsoniter-scala`
+  val `jul-to-slf4j`               = "org.slf4j"                              % "jul-to-slf4j"               % V.slf4j
+  val `kafka-clients`              = "org.apache.kafka"                       % "kafka-clients"              % V.kafka
+  val `log4j-over-slf4j`           = "org.slf4j"                              % "log4j-over-slf4j"           % V.slf4j
+  val `logback-classic`            = "ch.qos.logback"                         % "logback-classic"            % V.logback
+  val `log-effect-zio`             = "io.laserdisc"                          %% "log-effect-zio"             % V.`log-effect`
+  val `oci-java-sdk-objectstorage` = "com.oracle.oci.sdk"                     % "oci-java-sdk-objectstorage" % V.ocisdk
+  val postgresql                   = "org.postgresql"                         % "postgresql"                 % V.postgresql
+  val `scala-collection-compat`    = "org.scala-lang.modules"                %% "scala-collection-compat"    % V.`scala-collection-compat`
+  val `sttp-upickle`               = "com.softwaremill.sttp.client4"         %% "upickle"                    % V.sttp
+  val `sttp-zio`                   = "com.softwaremill.sttp.client4"         %% "zio"                        % V.sttp
+  val upickle                      = "com.lihaoyi"                           %% "upickle"                    % V.upickle
+  val vulcan                       = "com.github.fd4s"                       %% "vulcan"                     % V.vulcan
+  val `vulcan-generic`             = "com.github.fd4s"                       %% "vulcan-generic"             % V.vulcan
+  val `zio-cache`                  = "dev.zio"                               %% "zio-cache"                  % V.`zio-cache`
+  val `zio-interop-cats`           = "dev.zio"                               %% "zio-interop-cats"           % V.`zio-interop`
+  val `zio-json`                   = "dev.zio"                               %% "zio-json"                   % V.`zio-json`
+  val `zio-kafka`                  = "dev.zio"                               %% "zio-kafka"                  % V.`zio-kafka`
+  val `zio-nio`                    = "dev.zio"                               %% "zio-nio"                    % V.`zio-nio`
+  val `zio-oci-objectstorage`      = "io.laserdisc"                          %% "zio-oci-objectstorage"      % V.`zio-oci-objectstorage`
+  val `zio-s3`                     = "dev.zio"                               %% "zio-s3"                     % V.`zio-s3`
 }
 
 enablePlugins(ZioSbtEcosystemPlugin)
@@ -87,7 +87,7 @@ enablePlugins(ZioSbtEcosystemPlugin)
 inThisBuild(
   Seq(
     name               := "Tamer",
-    zioVersion         := "2.1.5",
+    zioVersion         := "2.1.7",
     organization       := "io.laserdisc",
     scalaVersion       := V.scala213,
     crossScalaVersions := Seq(V.scala213, scala3.value),
