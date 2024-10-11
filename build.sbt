@@ -12,9 +12,9 @@ val V = new {
   val `json-schema`                    = "1.14.4"
   val `jsoniter-scala`                 = "2.30.15"
   val kafka                            = "3.7.1"
-  val logback                          = "1.5.8"
+  val logback                          = "1.5.9"
   val `log-effect`                     = "0.19.2"
-  val ocisdk                           = "3.50.1"
+  val ocisdk                           = "3.50.2"
   val postgresql                       = "42.7.4"
   val scala213                         = "2.13.14"
   val `scala-collection-compat`        = "2.12.0"
@@ -87,7 +87,7 @@ enablePlugins(ZioSbtEcosystemPlugin)
 inThisBuild(
   Seq(
     name               := "Tamer",
-    zioVersion         := "2.1.9",
+    zioVersion         := "2.1.11",
     organization       := "io.laserdisc",
     scalaVersion       := V.scala213,
     crossScalaVersions := Seq(V.scala213, scala3.value),
