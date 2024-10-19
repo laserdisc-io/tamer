@@ -1,7 +1,7 @@
 val V = new {
   val avro4s_scala2                    = "4.1.2"
   val avro4s_scala3                    = "5.0.13"
-  val awssdk                           = "2.28.11"
+  val awssdk                           = "2.28.23"
   val `cats-effect`                    = "3.5.3"
   val circe                            = "0.14.10"
   val doobie                           = "1.0.0-RC5"
@@ -10,11 +10,11 @@ val V = new {
   val http4s                           = "0.23.28"
   val jackson                          = "2.18.0"
   val `json-schema`                    = "1.14.4"
-  val `jsoniter-scala`                 = "2.30.14"
+  val `jsoniter-scala`                 = "2.30.15"
   val kafka                            = "3.7.1"
-  val logback                          = "1.5.8"
+  val logback                          = "1.5.11"
   val `log-effect`                     = "0.19.2"
-  val ocisdk                           = "3.50.0"
+  val ocisdk                           = "3.51.0"
   val postgresql                       = "42.7.4"
   val scala213                         = "2.13.15"
   val scala3                           = "3.3.4"
@@ -22,7 +22,7 @@ val V = new {
   val slf4j                            = "2.0.16"
   val sttp                             = "4.0.0-M18"
   val upickle                          = "3.1.4"
-  val vulcan                           = "1.11.0"
+  val vulcan                           = "1.11.1"
   val `zio-interop`                    = "23.1.0.3"
   val `zio-cache`                      = "0.2.3"
   val `zio-json`                       = "0.7.3"
@@ -88,7 +88,7 @@ enablePlugins(ZioSbtEcosystemPlugin)
 inThisBuild(
   Seq(
     name               := "Tamer",
-    zioVersion         := "2.1.9",
+    zioVersion         := "2.1.11",
     organization       := "io.laserdisc",
     scalaVersion       := V.scala213,
     crossScalaVersions := Seq(V.scala213, V.scala3),
