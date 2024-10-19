@@ -1,7 +1,7 @@
 val V = new {
   val avro4s_scala2                    = "4.1.2"
   val avro4s_scala3                    = "5.0.13"
-  val awssdk                           = "2.28.21"
+  val awssdk                           = "2.28.23"
   val `cats-effect`                    = "3.5.3"
   val circe                            = "0.14.10"
   val doobie                           = "1.0.0-RC5"
@@ -16,7 +16,8 @@ val V = new {
   val `log-effect`                     = "0.19.2"
   val ocisdk                           = "3.51.0"
   val postgresql                       = "42.7.4"
-  val scala213                         = "2.13.14"
+  val scala213                         = "2.13.15"
+  val scala3                           = "3.3.4"
   val `scala-collection-compat`        = "2.12.0"
   val slf4j                            = "2.0.16"
   val sttp                             = "4.0.0-M19"
@@ -90,7 +91,7 @@ inThisBuild(
     zioVersion         := "2.1.11",
     organization       := "io.laserdisc",
     scalaVersion       := V.scala213,
-    crossScalaVersions := Seq(V.scala213, scala3.value),
+    crossScalaVersions := Seq(V.scala213, V.scala3),
     homepage           := Some(url("https://github.com/laserdisc-io/tamer")),
     Test / fork        := true,
     licenses += "MIT"  -> url("http://opensource.org/licenses/MIT"),
