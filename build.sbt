@@ -17,6 +17,7 @@ val V = new {
   val ocisdk                           = "3.50.0"
   val postgresql                       = "42.7.4"
   val scala213                         = "2.13.15"
+  val scala3                           = "3.3.4"
   val `scala-collection-compat`        = "2.12.0"
   val slf4j                            = "2.0.16"
   val sttp                             = "4.0.0-M18"
@@ -90,7 +91,7 @@ inThisBuild(
     zioVersion         := "2.1.9",
     organization       := "io.laserdisc",
     scalaVersion       := V.scala213,
-    crossScalaVersions := Seq(V.scala213, scala3.value),
+    crossScalaVersions := Seq(V.scala213, V.scala3),
     homepage           := Some(url("https://github.com/laserdisc-io/tamer")),
     Test / fork        := true,
     licenses += "MIT"  -> url("http://opensource.org/licenses/MIT"),
