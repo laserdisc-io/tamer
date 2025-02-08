@@ -1,7 +1,7 @@
 val V = new {
   val avro4s_scala2                    = "4.1.2"
   val avro4s_scala3                    = "5.0.14"
-  val awssdk                           = "2.30.12"
+  val awssdk                           = "2.30.15"
   val `cats-effect`                    = "3.5.3"
   val circe                            = "0.14.10"
   val doobie                           = "1.0.0-RC5"
@@ -25,7 +25,7 @@ val V = new {
   val vulcan                           = "1.11.1"
   val `zio-interop`                    = "23.1.0.3"
   val `zio-cache`                      = "0.2.3"
-  val `zio-json`                       = "0.7.14"
+  val `zio-json`                       = "0.7.15"
   val `zio-kafka`                      = "2.10.0"
   val `zio-nio`                        = "2.0.2"
   val `zio-oci-objectstorage`          = "0.7.3"
@@ -88,7 +88,7 @@ enablePlugins(ZioSbtEcosystemPlugin)
 inThisBuild(
   Seq(
     name               := "Tamer",
-    zioVersion         := "2.1.14",
+    zioVersion         := "2.1.15",
     organization       := "io.laserdisc",
     scalaVersion       := V.scala213,
     crossScalaVersions := Seq(V.scala213, V.scala3),
