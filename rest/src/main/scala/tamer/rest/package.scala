@@ -4,6 +4,7 @@ import java.net.http.HttpRequest
 import sttp.capabilities.{Effect, WebSockets}
 import sttp.capabilities.zio.ZioStreams
 import sttp.client4.{BackendOptions, Request, Response}
+import sttp.client4.compression.CompressionHandlers
 import sttp.client4.httpclient.zio._
 import zio.{Ref, Task, TaskLayer}
 
@@ -15,9 +16,9 @@ package object rest {
   final def restLive(
       options: BackendOptions = BackendOptions.Default,
       customizeRequest: HttpRequest => HttpRequest = identity,
-      customEncodingHandler: HttpClientZioBackend.ZioEncodingHandler = PartialFunction.empty
+      customCompressionHandler: CompressionHandlers[ZioStreams, ZioStreams.BinaryStream] = HttpClientZioBackend.DefaultCompressionHandlers
   ): TaskLayer[SttpClient with EphemeralSecretCache] =
     HttpClientZioBackend
-      .layer(options, customizeRequest, customEncodingHandler)
+      .layer(options, customizeRequest, customCompressionHandler)
       .mapError(e => TamerError(e.getLocalizedMessage(), e)) ++ EphemeralSecretCache.live
 }
