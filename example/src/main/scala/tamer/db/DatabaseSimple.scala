@@ -3,6 +3,7 @@ package db
 
 import java.time.Instant
 
+import doobie.generic.auto._
 import doobie.implicits.legacy.instant._
 import doobie.syntax.string._
 import zio._
