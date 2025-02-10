@@ -54,7 +54,7 @@ object Registry {
     ): Task[Int] =
       requestWithAuth(maybeRegistryAuth)
         .post(uri"$url/subjects/$subject?normalize=false&deleted=false")
-        .body(SchemaString(schema.show))
+        .body(asJson(SchemaString(schema.show)))
         .response(asJson[SubjectIdVersionSchemaString])
         .send(backend)
         .flatMap(response => ZIO.fromEither(response.body.map(_.id)))
@@ -69,7 +69,7 @@ object Registry {
     ): Task[Int] =
       requestWithAuth(maybeRegistryAuth)
         .post(uri"$url/subjects/$subject/versions?normalize=false")
-        .body(SchemaString(schema.show))
+        .body(asJson(SchemaString(schema.show)))
         .response(asJson[Id])
         .send(backend)
         .flatMap(response => ZIO.fromEither(response.body.map(_.id)))
