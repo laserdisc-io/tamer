@@ -3,8 +3,7 @@ package tamer
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
 import org.apache.kafka.clients.consumer.{ConsumerConfig, OffsetAndMetadata}
-import org.apache.kafka.clients.producer.ProducerRecord
-import org.apache.kafka.common.{KafkaException, TopicPartition}
+import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.config.{TopicConfig => KTopicConfig}
 import zio._
 import zio.kafka.admin._
@@ -182,8 +181,8 @@ object Tamer {
 
     private val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.LiveTamer"))
 
-    private val sinkTopicConfig @ TopicConfig(sinkTopicName, maybeSinkTopicOptions)    = config.sink
-    private val stateTopicConfig @ TopicConfig(stateTopicName, maybeStateTopicOptions) = config.state
+    private val sinkTopicConfig @ TopicConfig(sinkTopicName, _)   = config.sink
+    private val stateTopicConfig @ TopicConfig(stateTopicName, _) = config.state
 
     private val keySerializer   = serdes.keySerializer
     private val valueSerializer = serdes.valueSerializer

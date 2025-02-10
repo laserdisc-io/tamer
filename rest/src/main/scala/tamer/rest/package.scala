@@ -1,12 +1,11 @@
 package tamer
 
 import java.net.http.HttpRequest
-import sttp.capabilities.{Effect, WebSockets}
 import sttp.capabilities.zio.ZioStreams
 import sttp.client4.{BackendOptions, Request, Response}
 import sttp.client4.compression.CompressionHandlers
 import sttp.client4.httpclient.zio._
-import zio.{Ref, Task, TaskLayer}
+import zio.{Ref, TaskLayer}
 
 package object rest {
   type EphemeralSecretCache = Ref[Option[String]]

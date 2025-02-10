@@ -5,9 +5,7 @@ import java.time.Instant
 
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import sttp.capabilities.{Effect, WebSockets}
-import sttp.capabilities.zio.ZioStreams
-import sttp.client4.{Request, Response, UriContext, basicRequest}
+import sttp.client4.{Response, UriContext, basicRequest}
 import sttp.client4.httpclient.zio.{SttpClient, send}
 import sttp.model.StatusCode.{Forbidden, NotFound, Unauthorized}
 import zio._

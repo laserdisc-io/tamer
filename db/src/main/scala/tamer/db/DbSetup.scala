@@ -33,8 +33,6 @@ sealed abstract case class DbSetup[K: Tag, V: Tag, SV: Tag: Hashable](
        |state key:          $stateKey
        |""".stripMargin
 
-  import compat._
-
   private[this] final val logTask = log4sFromName.provideEnvironment(ZEnvironment("tamer.db"))
 
   private[this] final def process(query: Query0[V], chunkSize: Int, tx: Transactor[Task], queue: Enqueue[NonEmptyChunk[Record[K, V]]], state: SV) =

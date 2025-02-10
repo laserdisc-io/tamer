@@ -50,7 +50,7 @@ object RESTSetupSpec extends ZIOSpecDefault with HttpServerSupport {
   private def testRestFlow(port: Port, sl: Ref[ServerLog]) = {
     val test = for {
       log    <- log4sFromName.provideEnvironment(ZEnvironment("test-rest-flow"))
-      fiber  <- Fixtures(port).rest.fork
+      _      <- Fixtures(port).rest.fork
       _      <- (log.info("awaiting a request to our test server") *> ZIO.sleep(500.millis)).repeatUntilZIO(_ => sl.get.map(_.lastRequest.isDefined))
       output <- ZIO.service[Ref[Log]]
       _      <- (log.info("awaiting state change") *> ZIO.sleep(500.millis)).repeatUntilZIO(_ => output.get.map(_.count > 0))
