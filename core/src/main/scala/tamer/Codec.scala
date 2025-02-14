@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2019-2025 LaserDisc
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package tamer
 
 import java.io.{InputStream, OutputStream, OutputStreamWriter}
@@ -103,7 +124,7 @@ object Codec extends LowPriorityCodecs {
   final def apply[A](implicit A: Codec[A]): Codec[A] = A
 
   // Vulcan
-  implicit final def optionalVulcanCodec[A, C[_]: VulcanCodec](implicit ca: C[A]): Codec[A] = new AvroCodec[A] {
+  @nowarn implicit final def optionalVulcanCodec[A, C[_]: VulcanCodec](implicit ca: C[A]): Codec[A] = new AvroCodec[A] {
     private[this] final val _vulcanCodec = ca.asInstanceOf[vulcan.Codec[A]]
 
     override final val schema: Schema.Avro = Schema.fromAvro(_vulcanCodec.schema.fold(error => throw error.throwable, identity))
@@ -128,7 +149,7 @@ object Codec extends LowPriorityCodecs {
   }
 
   // Avro4s
-  implicit final def optionalAvro4sCodec[A, D[_]: Avro4sDecoder, E[_]: Avro4sEncoder, SF[_]: Avro4sSchemaFor](
+  @nowarn implicit final def optionalAvro4sCodec[A, D[_]: Avro4sDecoder, E[_]: Avro4sEncoder, SF[_]: Avro4sSchemaFor](
       implicit da: D[A],
       ea: E[A],
       sfa: SF[A]
@@ -150,7 +171,7 @@ object Codec extends LowPriorityCodecs {
 private[tamer] sealed trait LowPriorityCodecs extends LowestPriorityCodecs {
 
   // Circe
-  implicit final def optionalCirceCodec[A, D[_]: CirceDecoder, E[_]: CirceEncoder](implicit da: D[A], ea: E[A]): Codec[A] =
+  @nowarn implicit final def optionalCirceCodec[A, D[_]: CirceDecoder, E[_]: CirceEncoder](implicit da: D[A], ea: E[A]): Codec[A] =
     new SchemalessCodec[A] {
       private[this] final val _circeDecoder = da.asInstanceOf[io.circe.Decoder[A]]
       private[this] final val _circeEncoder = ea.asInstanceOf[io.circe.Encoder[A]]
@@ -164,7 +185,7 @@ private[tamer] sealed trait LowPriorityCodecs extends LowestPriorityCodecs {
     }
 
   // Jsoniter-Scala
-  implicit final def optionalJsoniterScalaCodec[@sp A, C[_]: JsoniterScalaCodec](implicit ca: C[A]): Codec[A] = new SchemalessCodec[A] {
+  @nowarn implicit final def optionalJsoniterScalaCodec[@sp A, C[_]: JsoniterScalaCodec](implicit ca: C[A]): Codec[A] = new SchemalessCodec[A] {
     private[this] final val _jsoniterCodec = ca.asInstanceOf[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec[A]]
 
     override final def decode(is: InputStream): A               = com.github.plokhotnyuk.jsoniter_scala.core.readFromStream(is)(_jsoniterCodec)
@@ -172,7 +193,7 @@ private[tamer] sealed trait LowPriorityCodecs extends LowestPriorityCodecs {
   }
 
   // ZIO-Json
-  implicit final def optionalZioJsonCodec[A, C[_]: ZioJsonCodec](implicit ca: C[A]): Codec[A] = new SchemalessCodec[A] {
+  @nowarn implicit final def optionalZioJsonCodec[A, C[_]: ZioJsonCodec](implicit ca: C[A]): Codec[A] = new SchemalessCodec[A] {
     private[this] final val _zioJsonCodec = ca.asInstanceOf[zio.json.JsonCodec[A]]
 
     override final def decode(is: InputStream): A = zio.Unsafe.unsafe { implicit unsafe =>
@@ -193,24 +214,24 @@ private[tamer] sealed trait LowestPriorityCodecs {
 }
 
 private final abstract class VulcanCodec[C[_]]
-@nowarn private object VulcanCodec { @inline implicit final def get: VulcanCodec[vulcan.Codec] = null }
+private object VulcanCodec { @inline implicit final def get: VulcanCodec[vulcan.Codec] = null }
 
 private final abstract class Avro4sDecoder[D[_]]
-@nowarn private object Avro4sDecoder { @inline implicit final def get: Avro4sDecoder[com.sksamuel.avro4s.Decoder] = null }
+private object Avro4sDecoder { @inline implicit final def get: Avro4sDecoder[com.sksamuel.avro4s.Decoder] = null }
 private final abstract class Avro4sEncoder[E[_]]
-@nowarn private object Avro4sEncoder { @inline implicit final def get: Avro4sEncoder[com.sksamuel.avro4s.Encoder] = null }
+private object Avro4sEncoder { @inline implicit final def get: Avro4sEncoder[com.sksamuel.avro4s.Encoder] = null }
 private final abstract class Avro4sSchemaFor[SF[_]]
-@nowarn private object Avro4sSchemaFor { @inline implicit final def get: Avro4sSchemaFor[com.sksamuel.avro4s.SchemaFor] = null }
+private object Avro4sSchemaFor { @inline implicit final def get: Avro4sSchemaFor[com.sksamuel.avro4s.SchemaFor] = null }
 
 private final abstract class CirceDecoder[D[_]]
-@nowarn private object CirceDecoder { @inline implicit final def get: CirceDecoder[io.circe.Decoder] = null }
+private object CirceDecoder { @inline implicit final def get: CirceDecoder[io.circe.Decoder] = null }
 private final abstract class CirceEncoder[E[_]]
-@nowarn private object CirceEncoder { @inline implicit final def get: CirceEncoder[io.circe.Encoder] = null }
+private object CirceEncoder { @inline implicit final def get: CirceEncoder[io.circe.Encoder] = null }
 
 private final abstract class JsoniterScalaCodec[C[_]]
-@nowarn private object JsoniterScalaCodec {
+private object JsoniterScalaCodec {
   @inline implicit final def get: JsoniterScalaCodec[com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec] = null
 }
 
 private final abstract class ZioJsonCodec[C[_]]
-@nowarn private object ZioJsonCodec { @inline implicit final def get: ZioJsonCodec[zio.json.JsonCodec] = null }
+private object ZioJsonCodec { @inline implicit final def get: ZioJsonCodec[zio.json.JsonCodec] = null }
