@@ -1,3 +1,6 @@
+val scala_213 = "2.13.16"
+val scala_3   = "3.3.5"
+
 val V = new {
   val avro4s_scala2                    = "4.1.2"
   val avro4s_scala3                    = "5.0.14"
@@ -16,13 +19,12 @@ val V = new {
   val `log-effect`                     = "0.19.4"
   val ocisdk                           = "3.55.1"
   val postgresql                       = "42.7.5"
-  val scala213                         = "2.13.16"
-  val scala3                           = "3.3.5"
   val `scala-collection-compat`        = "2.13.0"
   val slf4j                            = "2.0.16"
   val sttp                             = "4.0.0-RC1"
   val upickle                          = "4.1.0"
   val vulcan                           = "1.11.1"
+  val zio                              = "2.1.15"
   val `zio-interop`                    = "23.1.0.3"
   val `zio-cache`                      = "0.2.3"
   val `zio-json`                       = "0.7.19"
@@ -74,6 +76,7 @@ lazy val D = new {
   val upickle                      = "com.lihaoyi"                           %% "upickle"                    % V.upickle
   val vulcan                       = "com.github.fd4s"                       %% "vulcan"                     % V.vulcan
   val `vulcan-generic`             = "com.github.fd4s"                       %% "vulcan-generic"             % V.vulcan
+  val zio                          = "dev.zio"                               %% "zio"                        % V.zio
   val `zio-cache`                  = "dev.zio"                               %% "zio-cache"                  % V.`zio-cache`
   val `zio-interop-cats`           = "dev.zio"                               %% "zio-interop-cats"           % V.`zio-interop`
   val `zio-json`                   = "dev.zio"                               %% "zio-json"                   % V.`zio-json`
@@ -81,28 +84,46 @@ lazy val D = new {
   val `zio-nio`                    = "dev.zio"                               %% "zio-nio"                    % V.`zio-nio`
   val `zio-oci-objectstorage`      = "io.laserdisc"                          %% "zio-oci-objectstorage"      % V.`zio-oci-objectstorage`
   val `zio-s3`                     = "dev.zio"                               %% "zio-s3"                     % V.`zio-s3`
+  val `zio-streams`                = "dev.zio"                               %% "zio-streams"                % V.zio
+  val `zio-test`                   = "dev.zio"                               %% "zio-test"                   % V.zio
+  val `zio-test-sbt`               = "dev.zio"                               %% "zio-test-sbt"               % V.zio
 }
 
-enablePlugins(ZioSbtEcosystemPlugin)
+ThisBuild / tlBaseVersion              := "0.24"
+ThisBuild / tlCiReleaseBranches        := Seq("master")
+ThisBuild / tlJdkRelease               := Some(11)
+ThisBuild / sonatypeCredentialHost     := Sonatype.sonatypeLegacy
+ThisBuild / organization               := "io.laserdisc"
+ThisBuild / organizationName           := "LaserDisc"
+ThisBuild / licenses                   := Seq(License.MIT)
+ThisBuild / startYear                  := Some(2019)
+ThisBuild / developers                 := List(tlGitHubDev("sirocchj", "Julien Sirocchi"))
+ThisBuild / crossScalaVersions         := Seq(scala_213, scala_3)
+ThisBuild / scalaVersion               := scala_213
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("11"), JavaSpec.temurin("17"), JavaSpec.temurin("21"))
 
-inThisBuild(
-  Seq(
-    name               := "Tamer",
-    zioVersion         := "2.1.15",
-    organization       := "io.laserdisc",
-    scalaVersion       := V.scala213,
-    crossScalaVersions := Seq(V.scala213, V.scala3),
-    homepage           := Some(url("https://github.com/laserdisc-io/tamer")),
-    Test / fork        := true,
-    licenses += "MIT"  -> url("http://opensource.org/licenses/MIT"),
-    developers += Developer("sirocchj", "Julien Sirocchi", "julien.sirocchi@gmail.com", url("https://github.com/sirocchj")),
-    resolvers ++= Seq("confluent" at "https://packages.confluent.io/maven/", "jitpack" at "https://jitpack.io")
-  )
+ThisBuild / resolvers ++= List("confluent" at "https://packages.confluent.io/maven/", "jitpack" at "https://jitpack.io")
+
+ThisBuild / mergifyLabelPaths    := Map.empty
+ThisBuild / mergifyStewardConfig := Some(MergifyStewardConfig(action = MergifyAction.Merge(Some("squash"))))
+
+lazy val commonSettings = Seq(
+  headerEndYear := Some(2025),
+  scalacOptions ++= {
+    CrossVersion.partialVersion(scalaVersion.value) match {
+      case Some((2, major)) if major >= 13 => Seq("-Wconf:cat=lint-infer-any:s")
+      case _                               => Seq.empty
+    }
+  },
+  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
+  Test / fork := true
 )
 
+lazy val tamer = tlCrossRootProject
+  .aggregate(core, db, `oci-objectstorage`, s3, rest, example)
+
 lazy val core = project
-  .in(file("core"))
-  .settings(enableZIO(enableStreaming = true))
+  .settings(commonSettings)
   .settings(
     name := "tamer-core",
     libraryDependencies ++= Seq(
@@ -114,8 +135,10 @@ lazy val core = project
       D.`sttp-upickle`,
       D.`sttp-zio`,
       D.upickle,
+      D.zio,
       D.`zio-cache`,
       D.`zio-kafka`,
+      D.`zio-streams`,
       // optional dependencies
       D.`circe-parser`        % Optional,
       D.`jsoniter-scala-core` % Optional,
@@ -127,15 +150,23 @@ lazy val core = project
       D.`json-schema`                    % Test,
       D.`jul-to-slf4j`                   % Test,
       D.`log4j-over-slf4j`               % Test,
-      D.`logback-classic`                % Test
+      D.`logback-classic`                % Test,
+      D.`zio-test`                       % Test,
+      D.`zio-test-sbt`                   % Test
     ),
-    addDependenciesOn("3")(D.`scala-collection-compat`                       % Test),
-    addDependenciesOnOrElse("3")(D.avro4s.scala3 % Optional)(D.avro4s.scala2 % Optional)
+    libraryDependencies ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((3, _)) =>
+          Seq(D.`scala-collection-compat` % Test, D.avro4s.scala3 % Optional)
+        case _ =>
+          Seq(D.avro4s.scala2 % Optional)
+      }
+    }
   )
 
 lazy val db = project
-  .in(file("db"))
   .dependsOn(core)
+  .settings(commonSettings)
   .settings(
     name := "tamer-db",
     libraryDependencies ++= Seq(
@@ -145,9 +176,9 @@ lazy val db = project
     )
   )
 
-lazy val ociObjectStorage = project
-  .in(file("oci-objectstorage"))
+lazy val `oci-objectstorage` = project
   .dependsOn(core)
+  .settings(commonSettings)
   .settings(
     name := "tamer-oci-objectstorage",
     libraryDependencies ++= Seq(
@@ -157,25 +188,29 @@ lazy val ociObjectStorage = project
   )
 
 lazy val s3 = project
-  .in(file("s3"))
   .dependsOn(core)
-  .settings(enableZIO())
+  .settings(commonSettings)
   .settings(
     name := "tamer-s3",
     libraryDependencies ++= Seq(
       D.`aws-s3`,
+      D.zio,
       D.`zio-nio`, // zio-s3 brings scala-collection-compat_2.13 in scala3 build
-      D.`zio-s3`
+      D.`zio-s3`,
+      D.`zio-streams`,
+      D.`zio-test`     % Test,
+      D.`zio-test-sbt` % Test
     )
   )
 
 lazy val rest = project
-  .in(file("rest"))
   .dependsOn(core % "compile->compile;test->compile,test")
+  .settings(commonSettings)
   .settings(
     name := "tamer-rest",
     libraryDependencies ++= Seq(
       D.`sttp-zio`,
+      D.zio,
       // test dependencies
       D.`circe-core`          % Test,
       D.`circe-generic`       % Test,
@@ -184,14 +219,16 @@ lazy val rest = project
       D.`http4s-dsl`          % Test,
       D.`http4s-ember-server` % Test,
       D.`vulcan-generic`      % Test,
-      D.`zio-interop-cats`    % Test
+      D.`zio-interop-cats`    % Test,
+      D.`zio-test`            % Test,
+      D.`zio-test-sbt`        % Test
     )
   )
 
 lazy val example = project
-  .in(file("example"))
-  .enablePlugins(JavaAppPackaging)
-  .dependsOn(core, db, ociObjectStorage, rest, s3)
+  .enablePlugins(JavaAppPackaging, NoPublishPlugin)
+  .dependsOn(core, db, `oci-objectstorage`, rest, s3)
+  .settings(commonSettings)
   .settings(
     libraryDependencies ++= Seq(
       D.`circe-literal`,
@@ -202,21 +239,5 @@ lazy val example = project
       D.postgresql,
       D.`scala-collection-compat`,
       D.`vulcan-generic`
-    ),
-    publish / skip := true
-  )
-
-lazy val tamer = project
-  .in(file("."))
-  .aggregate(core, example, db, ociObjectStorage, rest, s3)
-  .settings(
-    publish / skip := true,
-    addCommandAlias("fmtCheck", "scalafmtCheckAll; scalafmtSbtCheck"),
-    addCommandAlias("fmt", "scalafmtAll; scalafmtSbt"),
-    addCommandAlias("fullTest", "clean; test"),
-    addCommandAlias(
-      "setReleaseOptions",
-      """set scalacOptions ++= Seq("-opt:l:method", "-opt:l:inline", "-opt-inline-from:tamer.**", "-opt-inline-from:<sources>")"""
-    ),
-    addCommandAlias("releaseIt", "clean; setReleaseOptions; session list; compile; ci-release")
+    )
   )
