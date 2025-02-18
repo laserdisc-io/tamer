@@ -16,7 +16,7 @@ val V = new {
   val `jsoniter-scala`                 = "2.33.2"
   val kafka                            = "3.9.0"
   val logback                          = "1.5.16"
-  val `log-effect`                     = "0.19.4"
+  val `log-effect`                     = "0.19.5"
   val ocisdk                           = "3.55.3"
   val postgresql                       = "42.7.5"
   val `scala-collection-compat`        = "2.13.0"
@@ -30,7 +30,7 @@ val V = new {
   val `zio-json`                       = "0.7.21"
   val `zio-kafka`                      = "2.10.0"
   val `zio-nio`                        = "2.0.2"
-  val `zio-oci-objectstorage`          = "0.7.3"
+  val `zio-oci-objectstorage`          = "0.8.0"
   val `zio-s3`                         = "0.4.3"
 }
 
