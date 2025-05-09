@@ -1,5 +1,5 @@
 val scala_213 = "2.13.16"
-val scala_3   = "3.3.5"
+val scala_3   = "3.3.6"
 
 val V = new {
   val avro4s_scala2                    = "4.1.2"
@@ -13,7 +13,7 @@ val V = new {
   val http4s                           = "0.23.30"
   val jackson                          = "2.19.0"
   val `json-schema`                    = "1.14.4"
-  val `jsoniter-scala`                 = "2.35.2"
+  val `jsoniter-scala`                 = "2.35.3"
   val kafka                            = "3.9.0"
   val logback                          = "1.5.18"
   val `log-effect`                     = "0.19.6"
