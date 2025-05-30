@@ -378,7 +378,7 @@ object Tamer {
       ZLayer.scoped[R with KafkaConfig] {
         for {
           config <- ZIO.service[KafkaConfig]
-          res <- {
+          res    <- {
             val iterationFunction = ZIO.environment[R].map(r => Function.untupled((setup.iteration _).tupled.andThen(_.provideEnvironment(r))))
             iterationFunction.flatMap(getService(config, setup.serdesProvider, setup.initialState, setup.stateKey, _, setup.repr))
           }

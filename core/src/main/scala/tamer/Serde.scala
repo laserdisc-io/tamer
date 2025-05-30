@@ -33,7 +33,7 @@ sealed abstract case class Serde[A](isKey: Boolean, codec: Codec[A]) extends ZSe
   final val IntByteSize = 4
 
   final def deserialize(data: Array[Byte]): Task[A] = ZIO.attempt(codec.decode(new ByteArrayInputStream(data)))
-  final def serialize(value: A): Task[Array[Byte]] = ZIO.attempt {
+  final def serialize(value: A): Task[Array[Byte]]  = ZIO.attempt {
     val baos = new ByteArrayOutputStream
     codec.encode(value, baos)
     baos.toByteArray
@@ -42,14 +42,14 @@ sealed abstract case class Serde[A](isKey: Boolean, codec: Codec[A]) extends ZSe
 
   override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[Registry, A] = ZIO.serviceWithZIO {
     case Registry.FakeRegistry => deserialize(data)
-    case registry =>
+    case registry              =>
       codec.maybeSchema.fold(deserialize(data)) { schema =>
         val buffer = ByteBuffer.wrap(data)
         if (buffer.get() != Magic) ZIO.fail(TamerError("Deserialization failed: unknown magic byte!"))
         else {
           val id = buffer.getInt()
           for {
-            _ <- registry.verifySchema(id, schema)
+            _   <- registry.verifySchema(id, schema)
             res <- ZIO.attempt {
               val length  = buffer.limit() - (IntByteSize + 1)
               val payload = new Array[Byte](length)
@@ -63,10 +63,10 @@ sealed abstract case class Serde[A](isKey: Boolean, codec: Codec[A]) extends ZSe
 
   override def serialize(topic: String, headers: Headers, value: A): RIO[Registry, Array[Byte]] = ZIO.serviceWithZIO {
     case Registry.FakeRegistry => serialize(value)
-    case registry =>
+    case registry              =>
       codec.maybeSchema.fold(serialize(value)) { schema =>
         for {
-          id <- registry.getOrRegisterId(subject(topic), schema)
+          id  <- registry.getOrRegisterId(subject(topic), schema)
           arr <- ZIO.attempt {
             val baos = new ByteArrayOutputStream
             baos.write(ByteBuffer.allocate(IntByteSize + 1).put(Magic).putInt(id).array())
@@ -78,7 +78,7 @@ sealed abstract case class Serde[A](isKey: Boolean, codec: Codec[A]) extends ZSe
   }
 
   final def using(registry: Registry): ZSerde[Any, A] = new ZSerde[Any, A] {
-    private final val layer = ZLayer.succeed(registry)
+    private final val layer                                                               = ZLayer.succeed(registry)
     override def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[A] =
       self.deserialize(topic, headers, data).provideLayer(layer)
     override def serialize(topic: String, headers: Headers, value: A): Task[Array[Byte]] =

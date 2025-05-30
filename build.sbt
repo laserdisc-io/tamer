@@ -39,14 +39,14 @@ lazy val D = new {
     val scala2 = "com.sksamuel.avro4s" %% "avro4s-core" % V.avro4s_scala2
     val scala3 = "com.sksamuel.avro4s" %% "avro4s-core" % V.avro4s_scala3
   }
-  val `aws-s3`        = "software.amazon.awssdk" % "s3"            % V.awssdk
-  val `cats-effect`   = "org.typelevel"         %% "cats-effect"   % V.`cats-effect`
-  val `circe-core`    = "io.circe"              %% "circe-core"    % V.circe
-  val `circe-generic` = "io.circe"              %% "circe-generic" % V.circe
-  val `circe-literal` = "io.circe"              %% "circe-literal" % V.circe
-  val `circe-parser`  = "io.circe"              %% "circe-parser"  % V.circe
-  val `doobie-core`   = "org.tpolecat"          %% "doobie-core"   % V.doobie
-  val `doobie-hikari` = "org.tpolecat"          %% "doobie-hikari" % V.doobie
+  val `aws-s3`         = "software.amazon.awssdk" % "s3"            % V.awssdk
+  val `cats-effect`    = "org.typelevel"         %% "cats-effect"   % V.`cats-effect`
+  val `circe-core`     = "io.circe"              %% "circe-core"    % V.circe
+  val `circe-generic`  = "io.circe"              %% "circe-generic" % V.circe
+  val `circe-literal`  = "io.circe"              %% "circe-literal" % V.circe
+  val `circe-parser`   = "io.circe"              %% "circe-parser"  % V.circe
+  val `doobie-core`    = "org.tpolecat"          %% "doobie-core"   % V.doobie
+  val `doobie-hikari`  = "org.tpolecat"          %% "doobie-hikari" % V.doobie
   val `embedded-kafka` =
     "io.github.embeddedkafka" %% "embedded-kafka" % V.`embedded-kafka` excludeAll ("org.scala-lang.modules" % "scala-collection-compat_2.13")
   val `embedded-kafka-schema-registry` =

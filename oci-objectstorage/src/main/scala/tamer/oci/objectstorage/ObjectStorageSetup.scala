@@ -49,7 +49,7 @@ sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, SV: Tag](
   private[this] final val prefixHash    = prefix.getOrElse("").hash
 
   override final val stateKey = namespaceHash + bucketHash + prefixHash
-  override final val repr =
+  override final val repr     =
     s"""namespace:      $namespace
        |namespace hash: $namespaceHash
        |bucket:         $bucket
@@ -79,8 +79,8 @@ sealed abstract case class ObjectStorageSetup[-R, K: Tag, V: Tag, SV: Tag](
     }
 
   override def iteration(currentState: SV, queue: Enqueue[NonEmptyChunk[Record[K, V]]]): RIO[R with ObjectStorage, SV] = for {
-    log <- logTask
-    _   <- log.debug(s"current state: $currentState")
+    log     <- logTask
+    _       <- log.debug(s"current state: $currentState")
     options <- ZIO.succeed(
       ListObjectsOptions(prefix, None, startAfter(currentState), Limit.Max, Set(ListObjectsOptions.Field.Name, ListObjectsOptions.Field.Size))
     )
