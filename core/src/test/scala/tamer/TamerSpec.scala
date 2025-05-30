@@ -37,8 +37,8 @@ object TamerSpec extends ZIOSpecDefault with TamerSpecGen {
 
   val baseTamerLayer = Tamer.live {
     new Setup[Ref[Log], Key, Value, State] {
-      override final val initialState = State(0)
-      override final val stateKey     = 0
+      override final val initialState                                                                             = State(0)
+      override final val stateKey                                                                                 = 0
       override final def iteration(s: State, q: Enqueue[NonEmptyChunk[Record[Key, Value]]]): RIO[Ref[Log], State] =
         ZIO.service[Ref[Log]].flatMap { variable =>
           val cursor = s.state + 1
