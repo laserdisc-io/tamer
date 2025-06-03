@@ -60,7 +60,7 @@ trait HttpServerSupport {
       Random.nextUUID.flatMap(uuid => Ok(Value(p, uuid).asJson)) <& sl.set(ServerLog(Some(p)))
 
     object PageMatcher extends QueryParamDecoderMatcher[Long]("page")
-    def checkCustomHeader(r: Request[Task]) = r.headers.get(ci"header1") == NonEmptyList.one("value1")
+    def checkCustomHeader(r: Request[Task])                          = r.headers.get(ci"header1") == NonEmptyList.one("value1")
     def validBodyOrForbidden(r: Request[Task]): Task[Response[Task]] =
       (r.bodyText.compile.string.filterOrFail(_ == "valid body")(new RuntimeException("invalid body")) *> Ok("valid token"))
         .catchAll(_ => ZIO.succeed(Response(Forbidden)))

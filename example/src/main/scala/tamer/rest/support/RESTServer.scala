@@ -67,7 +67,7 @@ object RESTServer extends ZIOAppDefault {
       case r @ GET -> Root / "auth" if checkBasicAuth(r)       => rotatingSecret.get.flatMap(currentToken => Ok("validToken" + currentToken))
       case r @ GET -> Root / "basic-auth" if checkBasicAuth(r) => randomData.flatMap(Ok(_))
       case r @ GET -> Root                                     => ZIO.ifZIO(checkBearerAuthZIO(r))(randomData.flatMap(Ok(_)), forbidden)
-      case r @ GET -> Root / "finite-pagination" =>
+      case r @ GET -> Root / "finite-pagination"               =>
         @nowarn val Some(page) = r.uri.query.pairs.collectFirst { case (_, Some(IsInt(p))) => p }
         val bodyZIO            = finitePagination.get.map(_.grouped(3).toList.lift(page)).map(_.map(_.mkString(",")).getOrElse(""))
         bodyZIO.flatMap(Ok(_)) // outputs "1,2,3" "4,5,6" and so on...

@@ -37,7 +37,7 @@ object DatabaseGeneralized extends ZIOAppDefault {
       recordFrom = (_, v) => Record(v.id, v),
       stateFold = {
         case (s, QueryResult(_, results)) if results.isEmpty => Clock.instant.map(now => MyState(s.from, (s.to + 5.minutes).or(now)))
-        case (_, QueryResult(_, results)) =>
+        case (_, QueryResult(_, results))                    =>
           val mostRecent = results.sortBy(_.modifiedAt).max.timestamp
           Clock.instant.map(now => MyState(mostRecent, (mostRecent + 5.minutes).or(now)))
       }

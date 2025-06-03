@@ -54,7 +54,7 @@ object Registry {
 
     private[this] final val schemaRegistryV1MediaType = MediaType.unsafeParse("application/vnd.schemaregistry.v1+json")
     private[this] final val schemaRegistryMediaType   = MediaType.unsafeParse("application/vnd.schemaregistry+json")
-    private[this] final val request = basicRequest.headers(
+    private[this] final val request                   = basicRequest.headers(
       Header.accept(schemaRegistryV1MediaType, schemaRegistryMediaType, MediaType.ApplicationJson),
       Header.contentType(schemaRegistryV1MediaType)
     )
@@ -161,7 +161,7 @@ final case class RegistryProvider(from: RegistryConfig => RIO[Scope, Registry])
 
 object RegistryProvider {
   implicit final val defaultRegistryProvider: RegistryProvider = RegistryProvider { config =>
-    val sttpBackend = sttp.client4.httpclient.zio.HttpClientZioBackend.scoped()
+    val sttpBackend     = sttp.client4.httpclient.zio.HttpClientZioBackend.scoped()
     val schemaToIdCache = Cache.makeWithKey(config.cacheSize, Lookup((Registry.SttpRegistry.getOrRegisterId _).tupled))(
       _ => config.expiration,
       { case (_, _, _, _, subject, schema) => (subject, schema) }

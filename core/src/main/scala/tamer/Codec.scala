@@ -61,7 +61,7 @@ object Schema {
       s"{errorType:'${i.getType()}', description:'$errorDescription', additionalInfo:'${i.getMessage()}'}"
     }
 
-    override final def show: String = underlying.toString()
+    override final def show: String                                 = underlying.toString()
     override final def isCompatible(previous: String): List[String] =
       try
         org.apache.avro.SchemaCompatibility
@@ -140,7 +140,7 @@ object Codec extends LowPriorityCodecs {
       }
     }
     override final def encode(value: A, os: OutputStream): Unit = _vulcanCodec.encode(value) match {
-      case Left(error) => throw error.throwable
+      case Left(error)    => throw error.throwable
       case Right(encoded) =>
         val encoder = org.apache.avro.io.EncoderFactory.get.binaryEncoder(os, null)
         _genericDatumWriter.write(encoded, encoder)
@@ -160,7 +160,7 @@ object Codec extends LowPriorityCodecs {
     private[this] final val _avroEncoderBuilder =
       OutputStreamEncoder.avro4sOutputStream(schema.underlying, ea.asInstanceOf[com.sksamuel.avro4s.Encoder[A]])
 
-    override final def decode(is: InputStream): A = _avroDecoderBuilder.from(is).build(schema.underlying).iterator.next()
+    override final def decode(is: InputStream): A               = _avroDecoderBuilder.from(is).build(schema.underlying).iterator.next()
     override final def encode(value: A, os: OutputStream): Unit = {
       val ser = _avroEncoderBuilder.to(os).build()
       ser.write(value)

@@ -45,7 +45,7 @@ sealed abstract case class DbSetup[K: Tag, V: Tag, SV: Tag: Hashable](
   private[this] final val queryHash        = sql.hash
   private[this] final val initialStateHash = initialState.hash
 
-  override final val stateKey = queryHash + initialStateHash
+  override final val stateKey     = queryHash + initialStateHash
   override final val repr: String =
     s"""query:              $sql
        |query hash:         $queryHash
