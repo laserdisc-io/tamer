@@ -28,7 +28,7 @@ import zio._
 object RESTBasicAuth extends ZIOAppDefault {
   import implicits._
 
-  val dataRegex = """.*"data":"(-?[\d]+).*""".r
+  val dataRegex                                                = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] =
     DecodedPage.fromString {
       case dataRegex(data) => ZIO.attempt(List(MyData(data.toInt)))
