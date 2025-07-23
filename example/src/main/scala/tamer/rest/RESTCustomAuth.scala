@@ -31,7 +31,7 @@ import scala.util.matching.Regex
 object RESTCustomAuth extends ZIOAppDefault {
   import implicits._
 
-  val dataRegex: Regex = """.*"data":"(-?[\d]+).*""".r
+  val dataRegex: Regex                                         = """.*"data":"(-?[\d]+).*""".r
   val pageDecoder: String => Task[DecodedPage[MyData, Offset]] = DecodedPage.fromString {
     case dataRegex(data) => ZIO.attempt(List(MyData(data.toInt)))
     case pageBody        => ZIO.fail(new RuntimeException(s"Could not parse pageBody: $pageBody"))
@@ -39,7 +39,7 @@ object RESTCustomAuth extends ZIOAppDefault {
 
   val authentication: Authentication[SttpClient] = new Authentication[SttpClient] {
     override def addAuthentication(request: SttpRequest, bearerToken: Option[String]): SttpRequest = request.auth.bearer(bearerToken.getOrElse(""))
-    override def setSecret(secretRef: Ref[Option[String]]): RIO[SttpClient, Unit] = {
+    override def setSecret(secretRef: Ref[Option[String]]): RIO[SttpClient, Unit]                  = {
       val fetchToken = send(basicRequest.get(uri"http://localhost:9395/auth").auth.basic("user", "pass"))
         .flatMap(_.body match {
           case Left(error)  => ZIO.fail(TamerError(error))

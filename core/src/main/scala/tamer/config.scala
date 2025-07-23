@@ -44,7 +44,7 @@ object RegistryAuthConfig {
       case (Some(userInfo), None, None, None)           => Right(Some(Basic(userInfo.value.asString)))
       case (None, Some(username), Some(password), None) => Right(Some(Basic(username.value.asString, password.value.asString)))
       case (None, None, None, Some(token))              => Right(Some(Bearer(token.value.asString)))
-      case _ =>
+      case _                                            =>
         Left(
           Config.Error.InvalidData(message =
             "When auth is configured you must specify one of these three options (mutually exclusive): user_info (Basic auth), username and password pair (Basic auth) or token (Bearer auth)"
