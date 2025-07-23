@@ -61,7 +61,7 @@ sealed abstract case class S3Setup[R, K: Tag, V: Tag, SV: Tag: Hashable](
   private[this] final val initialStateHash = initialState.hash
 
   override final val stateKey = bucketHash + prefixHash + initialStateHash
-  override final val repr =
+  override final val repr     =
     s"""bucket:      $bucket
        |bucket hash: $bucketHash
        |prefix:      $prefix
@@ -80,7 +80,7 @@ sealed abstract case class S3Setup[R, K: Tag, V: Tag, SV: Tag: Hashable](
     val paginationMaxKeys         = 1000L      // FIXME magic
     val paginationMaxPages        = 1000L      // FIXME magic
     val defaultTimeoutBucketFetch = 60.seconds // FIXME magic
-    val timeoutForFetchAllKeys =
+    val timeoutForFetchAllKeys    =
       if (minimumIntervalForBucketFetch < defaultTimeoutBucketFetch) minimumIntervalForBucketFetch
       else defaultTimeoutBucketFetch
 
@@ -111,7 +111,7 @@ sealed abstract case class S3Setup[R, K: Tag, V: Tag, SV: Tag: Hashable](
     _         <- log.debug(s"next state computed to be $nextState")
     keys      <- keysR.get
     optKey    <- ZIO.succeed(selectObjectForState(nextState, keys))
-    _ <- log.debug(s"will ask for key $optKey") *> optKey
+    _         <- log.debug(s"will ask for key $optKey") *> optKey
       .map(
         getObject(bucket, _)
           .via(pipeline)
@@ -160,7 +160,7 @@ object S3Setup {
   ) {}
 
   private[s3] final def suffixWithoutFileExtension(key: String, prefix: String, formatter: ZonedDateTimeFormatter): String = {
-    val dotCountInDate = formatter.format(Instant.EPOCH).count(_ == '.')
+    val dotCountInDate      = formatter.format(Instant.EPOCH).count(_ == '.')
     val keyWithoutExtension =
       if (key.count(_ == '.') > dotCountInDate) key.split('.').splitAt(dotCountInDate + 1)._1.mkString(".") else key
     keyWithoutExtension.stripPrefix(prefix)

@@ -51,7 +51,7 @@ sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, SV: Tag: Hashable](
   private[this] final val initialStateHash = initialState.hash
 
   override final val stateKey = queryHash + initialStateHash
-  override final val repr =
+  override final val repr     =
     s"""query:              $query
        |query hash:         $queryHash
        |initial state:      $initialState
@@ -82,7 +82,7 @@ sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, SV: Tag: Hashable](
         _             <- secretCacheRef.get.flatMap(_.fold(auth.setSecret(secretCacheRef))(_ => ZIO.unit))
         maybeToken    <- secretCacheRef.get
         firstResponse <- authenticateAndSendHelper(maybeToken)
-        response <- firstResponse.code match {
+        response      <- firstResponse.code match {
           case Forbidden | Unauthorized | NotFound =>
             log.warn("authentication failed, assuming credentials are expired, will retry, possibly refreshing them...") *>
               log.debug(s"response was: ${firstResponse.body}") *>
@@ -94,7 +94,7 @@ sealed abstract case class RESTSetup[-R, K: Tag, V: Tag, SV: Tag: Hashable](
     }
 
     for {
-      response <- authentication.map(authenticateAndSendRequest).getOrElse(sendRequestRepeatMaybe(request))
+      response    <- authentication.map(authenticateAndSendRequest).getOrElse(sendRequestRepeatMaybe(request))
       decodedPage <- response.body match {
         case Left(error) =>
           // assume the cookie/auth expired
@@ -169,8 +169,8 @@ object RESTSetup {
       basicRequest.get(uri"$baseUrl".addParam(offsetParameterName, state.offset.toString)).readTimeout(readRequestTimeout.asScala)
 
     def nextPageOrNextIndexIfPageNotComplete(decodedPage: DecodedPage[V, Offset], offset: Offset): URIO[R, Offset] = {
-      val fetchedElementCount = decodedPage.data.length
-      val nextElementIndex    = decodedPage.data.length
+      val fetchedElementCount   = decodedPage.data.length
+      val nextElementIndex      = decodedPage.data.length
       lazy val defaultNextState = fixedPageElementCount match {
         case Some(expectedElemCount) if fetchedElementCount <= expectedElemCount - 1 => ZIO.succeed(offset.nextIndex(nextElementIndex))
         case _                                                                       => ZIO.succeed(offset.incrementedBy(increment))
@@ -250,7 +250,7 @@ object RESTSetup {
     def getNextState(decodedPage: DecodedPage[V, PeriodicOffset], periodicOffset: PeriodicOffset): URIO[R, PeriodicOffset] =
       decodedPage.nextState.map(ZIO.succeed(_)).getOrElse {
         for {
-          now <- Clock.instant
+          now       <- Clock.instant
           newOffset <-
             if (
               now.isAfter(periodicOffset.periodStart.plus(maxPeriod)) ||
@@ -280,9 +280,9 @@ object RESTSetup {
           currentState: PeriodicOffset,
           queue: Enqueue[NonEmptyChunk[Record[K, V]]]
       ): RIO[R with SttpClient with EphemeralSecretCache, PeriodicOffset] = for {
-        log        <- logTask
-        tokenCache <- ZIO.service[EphemeralSecretCache]
-        now        <- Clock.instant
+        log                  <- logTask
+        tokenCache           <- ZIO.service[EphemeralSecretCache]
+        now                  <- Clock.instant
         delayUntilNextPeriod <-
           if (currentState.periodStart.isBefore(now))
             ZIO.succeed(Duration.Zero)
