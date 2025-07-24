@@ -19,9 +19,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package tamer
+package zio
 
-import zio._
+import _root_.zio._
 
 /** This class is needed due to the removal of contramap from ZQueue in 2.x.
   *
@@ -36,7 +36,7 @@ import zio._
   * @see
   *   https://github.com/zio/zio/blob/449ecc968de4f2d2a0b5ca9f8a8ff850fe204d6b/core/shared/src/main/scala/zio/Enqueue.scala#L46-L63
   */
-class EnrichedBoundedEnqueue[-A, B](underlying: Enqueue[B], f: A => B) extends Enqueue[A] {
+class EnrichedBoundedEnqueue[-A, B](underlying: Enqueue[B], f: A => B) extends Enqueue.Internal[A] {
   override final def awaitShutdown(implicit trace: Trace): UIO[Unit]                            = underlying.awaitShutdown
   override final def capacity: Int                                                              = underlying.capacity
   override final def isShutdown(implicit trace: Trace): UIO[Boolean]                            = underlying.isShutdown
