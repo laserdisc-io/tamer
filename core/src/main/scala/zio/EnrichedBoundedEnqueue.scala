@@ -21,7 +21,7 @@
 
 package zio
 
-import _root_.zio.{Chunk, Enqueue, Trace, UIO, ZIO}
+import _root_.zio._
 
 /** This class is needed due to the removal of contramap from ZQueue in 2.x.
   *
