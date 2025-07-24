@@ -84,5 +84,5 @@ object RESTServer extends ZIOAppDefault {
   }
 
   override final val run =
-    (rotatingSecret <&> finitePagination <&> dynamicPagination).flatMap { case (rs, fp, dp) => server(rs, fp, dp).build.useForever.exitCode }
+    (rotatingSecret <&> finitePagination <&> dynamicPagination).flatMap { case (rs, fp, dp) => server(rs, fp, dp).build.useForever }
 }
