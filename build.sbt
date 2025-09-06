@@ -31,7 +31,7 @@ val V = new {
   val `zio-json`                       = "0.7.44"
   val `zio-kafka`                      = "2.12.0"
   val `zio-nio`                        = "2.0.2"
-  val `zio-oci-objectstorage`          = "0.8.3"
+  val `zio-oci-objectstorage`          = "0.8.4"
   val `zio-s3`                         = "0.4.4"
 }
 
