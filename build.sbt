@@ -14,10 +14,10 @@ val V = new {
   val jackson                          = "2.20.0"
   val `jackson-annotations`            = "2.20"
   val `json-schema`                    = "1.14.4"
-  val `jsoniter-scala`                 = "2.37.9"
+  val `jsoniter-scala`                 = "2.37.10"
   val kafka                            = "3.9.1"
   val logback                          = "1.5.18"
-  val `log-effect`                     = "0.19.7"
+  val `log-effect`                     = "0.19.8"
   val ocisdk                           = "3.72.2"
   val postgresql                       = "42.7.7"
   val `scala-collection-compat`        = "2.13.0"
@@ -31,7 +31,7 @@ val V = new {
   val `zio-json`                       = "0.7.44"
   val `zio-kafka`                      = "2.12.0"
   val `zio-nio`                        = "2.0.2"
-  val `zio-oci-objectstorage`          = "0.8.4"
+  val `zio-oci-objectstorage`          = "0.8.5"
   val `zio-s3`                         = "0.4.4"
 }
 
