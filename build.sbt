@@ -1,5 +1,5 @@
 val scala_213 = "2.13.17"
-val scala_3   = "3.3.6"
+val scala_3   = "3.3.7"
 
 val V = new {
   val avro4s_scala2                    = "4.1.2"
