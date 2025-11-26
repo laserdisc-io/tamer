@@ -1,4 +1,4 @@
-val scala_213 = "2.13.17"
+val scala_213 = "2.13.18"
 val scala_3   = "3.3.7"
 
 val V = new {
@@ -27,7 +27,7 @@ val V = new {
   val vulcan                           = "1.12.0"
   val zio                              = "2.1.22"
   val `zio-interop`                    = "23.1.0.10"
-  val `zio-cache`                      = "0.2.5"
+  val `zio-cache`                      = "0.2.7"
   val `zio-json`                       = "0.7.45"
   val `zio-kafka`                      = "2.12.0"
   val `zio-nio`                        = "2.0.2"
