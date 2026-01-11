@@ -23,7 +23,7 @@ package tamer
 
 import log.effect.LogWriter
 import log.effect.zio.ZioLogWriter.log4sFromName
-import org.apache.kafka.clients.consumer.{ConsumerConfig, OffsetAndMetadata}
+import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.config.{TopicConfig => KTopicConfig}
 import zio._
@@ -356,22 +356,21 @@ object Tamer {
         .withGroupId(groupId)
         .withOffsetRetrieval(OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest))
         .withProperties(properties)
-        .withProperty(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed")
+        .withReadCommitted(true)
+        .withRebalanceSafeCommits(true)
       val producerSettings = ProducerSettings(brokers)
         .withCloseTimeout(closeTimeout)
         .withProperties(properties)
       val txProducerSettings = TransactionalProducerSettings(producerSettings, transactionalId)
 
-      val serdes      = serdesProvider.using(config.maybeRegistry)
-      val adminClient = AdminClient.make(adminClientSettings)
-      val consumer    = Consumer.make(consumerSettings)
-      val producer    = TransactionalProducer.make(txProducerSettings)
+      val tamer = for {
+        serdes      <- serdesProvider.using(config.maybeRegistry)
+        adminClient <- AdminClient.make(adminClientSettings)
+        consumer    <- Consumer.make(consumerSettings)
+        producer    <- TransactionalProducer.make(txProducerSettings, consumer)
+      } yield new LiveTamer(config, serdes, initialState, stateKey, iterationFunction, repr, adminClient, consumer, producer)
 
-      (serdes <*> adminClient <*> consumer <*> producer)
-        .map { case (serdes, adminClient, consumer, producer) =>
-          new LiveTamer(config, serdes, initialState, stateKey, iterationFunction, repr, adminClient, consumer, producer)
-        }
-        .mapError(TamerError("Could not build Kafka client", _))
+      tamer.mapError(TamerError("Could not build Kafka client", _))
     }
 
     private[tamer] final def getLayer[R, K: Tag, V: Tag, SV: Tag](setup: Setup[R, K, V, SV]): RLayer[R with KafkaConfig, Tamer] =
