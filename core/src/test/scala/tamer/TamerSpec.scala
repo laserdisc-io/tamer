@@ -23,12 +23,11 @@ package tamer
 
 import org.apache.kafka.common.TopicPartition
 import zio._
-import zio.kafka.admin.AdminClient.{TopicPartition => AdminPartition}
 import zio.test._
 import zio.test.Assertion.equalTo
 import zio.test.TestAspect.{timeout, withLiveClock}
 
-object TamerSpec extends ZIOSpecDefault with TamerSpecGen {
+object TamerSpec extends ZIOSpecDefault {
 
   case class Log(series: Vector[Int])
   object Log {
@@ -58,23 +57,10 @@ object TamerSpec extends ZIOSpecDefault with TamerSpecGen {
     test("should successfully run the iteration function 10 times") {
       for {
         outputVector <- ZIO.service[Ref[Log]]
-        _            <- runLoop.timeout(7.seconds)
+        _            <- runLoop.timeout(7.seconds).fork
+        _            <- ZIO.sleep(10.seconds)
         result       <- outputVector.get
       } yield assert(result.series)(equalTo(Vector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)))
     } @@ timeout(20.seconds)
-  ).provideSomeLayerShared[TestEnvironment](embeddedKafkaTamerLayer ++ Log.layer) @@ withLiveClock
-
-}
-
-private[tamer] sealed trait TamerSpecGen {
-
-  val testPartition      = new TopicPartition("gen-test-topic", 1)
-  val testAdminPartition = AdminPartition(testPartition)
-
-  private[this] val committedOffset = Gen.long(0L, 100L).map(l => Map(testPartition -> l))
-
-  val offsets: Gen[Sized, (Map[TopicPartition, Long], Map[TopicPartition, Long])] =
-    committedOffset.flatMap { co =>
-      Gen.long(0L, 100L).map(lag => co -> Map(testPartition -> (co(testPartition) + lag)))
-    }
+  ).provideSomeLayer[TestEnvironment](embeddedKafkaTamerLayer ++ Log.layer) @@ withLiveClock
 }

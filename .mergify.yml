@@ -10,10 +10,10 @@ pull_request_rules:
   conditions:
   - author=scala-steward
   - body~=labels:.*early-semver-patch
-  - status-success=Test (ubuntu-22.04, 2.13, temurin@11, tamerJVM)
   - status-success=Test (ubuntu-22.04, 2.13, temurin@17, tamerJVM)
   - status-success=Test (ubuntu-22.04, 2.13, temurin@21, tamerJVM)
-  - status-success=Test (ubuntu-22.04, 3, temurin@11, tamerJVM)
+  - status-success=Test (ubuntu-22.04, 2.13, temurin@25, tamerJVM)
+  - status-success=Test (ubuntu-22.04, 3, temurin@17, tamerJVM)
   actions:
     merge:
       method: squash
