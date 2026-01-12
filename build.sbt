@@ -108,7 +108,7 @@ ThisBuild / mergifyLabelPaths    := Map.empty
 ThisBuild / mergifyStewardConfig := Some(MergifyStewardConfig(action = MergifyAction.Merge(Some("squash"))))
 
 lazy val commonSettings = Seq(
-  headerEndYear := Some(2025),
+  headerEndYear := Some(2026),
   scalacOptions ++= {
     CrossVersion.partialVersion(scalaVersion.value) match {
       case Some((2, major)) if major >= 13 => Seq("-Wconf:cat=lint-infer-any:s")
