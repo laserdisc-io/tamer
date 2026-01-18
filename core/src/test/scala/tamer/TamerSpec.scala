@@ -34,17 +34,19 @@ object TamerSpec extends ZIOSpecDefault {
     val layer: ULayer[Ref[Log]] = ZLayer(Ref.make(Log(Vector.empty)))
   }
 
+  implicit val intCodec: Codec[Int] = Codec.optionalVulcanCodec
+
   val baseTamerLayer = Tamer.live {
-    new Setup[Ref[Log], Key, Value, State] {
-      override final val initialState                                                                             = State(0)
-      override final val stateKey                                                                                 = 0
-      override final def iteration(s: State, q: Enqueue[NonEmptyChunk[Record[Key, Value]]]): RIO[Ref[Log], State] =
-        ZIO.service[Ref[Log]].flatMap { variable =>
-          val cursor = s.state + 1
+    new Setup[Ref[Log], Int, Int, Int] {
+      override final val initialState                                                                               = 0
+      override final val stateKey                                                                                   = 0
+      override final def iteration(state: Int, queue: Enqueue[NonEmptyChunk[Record[Int, Int]]]): RIO[Ref[Log], Int] =
+        ZIO.service[Ref[Log]].flatMap { logRef =>
+          val cursor = state + 1
           if (cursor <= 10)
-            variable.update(log => log.copy(log.series ++ Vector(cursor))) *>
-              q.offer(NonEmptyChunk(Record(Key(cursor), Value(cursor)))).as(s.copy(state = cursor))
-          else ZIO.never *> ZIO.succeed(State(9999))
+            logRef.update(log => log.copy(log.series :+ cursor)) *>
+              queue.offer(NonEmptyChunk(Record(cursor, cursor))).as(cursor)
+          else ZIO.never
         }
     }
   }
@@ -58,9 +60,9 @@ object TamerSpec extends ZIOSpecDefault {
       for {
         outputVector <- ZIO.service[Ref[Log]]
         _            <- runLoop.timeout(7.seconds).fork
-        _            <- ZIO.sleep(10.seconds)
+        _            <- ZIO.sleep(5.seconds)
         result       <- outputVector.get
       } yield assert(result.series)(equalTo(Vector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)))
-    } @@ timeout(20.seconds)
-  ).provideSomeLayer[TestEnvironment](embeddedKafkaTamerLayer ++ Log.layer) @@ withLiveClock
+    }
+  ).provideSomeLayer[TestEnvironment](embeddedKafkaTamerLayer ++ Log.layer) @@ timeout(20.seconds) @@ withLiveClock
 }

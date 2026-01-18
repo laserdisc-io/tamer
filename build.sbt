@@ -18,6 +18,7 @@ val V = new {
   val kafka                            = "4.1.1"
   val logback                          = "1.5.25"
   val `log-effect`                     = "0.19.8"
+  val lz4                              = "1.8.1"
   val ocisdk                           = "3.78.0"
   val postgresql                       = "42.7.9"
   val `scala-collection-compat`        = "2.14.0"
@@ -69,6 +70,7 @@ lazy val D = new {
   val `log4j-over-slf4j`           = "org.slf4j"                              % "log4j-over-slf4j"           % V.slf4j
   val `logback-classic`            = "ch.qos.logback"                         % "logback-classic"            % V.logback
   val `log-effect-zio`             = "io.laserdisc"                          %% "log-effect-zio"             % V.`log-effect`
+  val `lz4-java`                   = "org.lz4"                                % "lz4-java"                   % V.lz4
   val `oci-java-sdk-objectstorage` = "com.oracle.oci.sdk"                     % "oci-java-sdk-objectstorage" % V.ocisdk
   val postgresql                   = "org.postgresql"                         % "postgresql"                 % V.postgresql
   val `scala-collection-compat`    = "org.scala-lang.modules"                %% "scala-collection-compat"    % V.`scala-collection-compat`
@@ -132,6 +134,7 @@ lazy val core = project
       D.`jackson-databind`,
       D.`kafka-clients`,
       D.`log-effect-zio`,
+      D.`lz4-java`,
       D.`sttp-upickle`,
       D.`sttp-zio`,
       D.upickle,

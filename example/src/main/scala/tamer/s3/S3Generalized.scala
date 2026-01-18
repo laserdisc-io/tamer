@@ -58,6 +58,8 @@ object S3Generalized extends ZIOAppDefault {
       List("localhost:9092"),
       Some(RegistryConfig("http://localhost:8081")),
       10.seconds,
+      15.seconds,
+      None,
       50,
       TopicConfig("sink", Some(TopicOptions(1, 1, false))),
       TopicConfig("state", Some(TopicOptions(1, 1, true))),

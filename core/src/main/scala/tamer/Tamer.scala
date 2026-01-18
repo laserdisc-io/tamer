@@ -346,28 +346,29 @@ object Tamer {
         repr: String
     ): RIO[Scope, LiveTamer[K, V, SV]] = {
 
-      val KafkaConfig(brokers, _, closeTimeout, _, _, _, groupId, clientId, transactionalId, properties) = config
+      val KafkaConfig(brokers, _, closeTimeout, commitTimeout, maybeMaxRebalanceDuration, _, _, _, gid, cid, tid, props) = config
 
-      val adminClientSettings = AdminClientSettings(closeTimeout, properties)
+      val adminClientSettings = AdminClientSettings(closeTimeout, props)
         .withBootstrapServers(brokers)
-      val consumerSettings = ConsumerSettings(brokers)
-        .withClientId(clientId)
-        .withCloseTimeout(closeTimeout)
-        .withGroupId(groupId)
-        .withOffsetRetrieval(OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest))
-        .withProperties(properties)
-        .withReadCommitted(true)
-        .withRebalanceSafeCommits(true)
-      val producerSettings = ProducerSettings(brokers)
-        .withCloseTimeout(closeTimeout)
-        .withProperties(properties)
-      val txProducerSettings = TransactionalProducerSettings(producerSettings, transactionalId)
+      val consumerSettings = {
+        val settings = ConsumerSettings(brokers)
+          .withProperties(props)
+          .withClientId(cid)
+          .withCloseTimeout(closeTimeout)
+          .withCommitTimeout(commitTimeout)
+          .withGroupId(gid)
+          .withOffsetRetrieval(OffsetRetrieval.Auto(AutoOffsetStrategy.Earliest))
+          .withReadCommitted(true)
+          .withRebalanceSafeCommits(true)
+        maybeMaxRebalanceDuration.map(settings.withMaxRebalanceDuration(_)).getOrElse(settings)
+      }
+      val producerSettings = TransactionalProducerSettings(ProducerSettings(brokers).withProperties(props).withCloseTimeout(closeTimeout), tid)
 
       val tamer = for {
         serdes      <- serdesProvider.using(config.maybeRegistry)
         adminClient <- AdminClient.make(adminClientSettings)
         consumer    <- Consumer.make(consumerSettings)
-        producer    <- TransactionalProducer.make(txProducerSettings, consumer)
+        producer    <- TransactionalProducer.make(producerSettings, consumer)
       } yield new LiveTamer(config, serdes, initialState, stateKey, iterationFunction, repr, adminClient, consumer, producer)
 
       tamer.mapError(TamerError("Could not build Kafka client", _))

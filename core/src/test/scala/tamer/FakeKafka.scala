@@ -61,6 +61,8 @@ object FakeKafka {
       brokers = fakeKafka.bootstrapServers,
       maybeRegistry = Some(RegistryConfig(fakeKafka.schemaRegistryUrl)),
       closeTimeout = 1.second,
+      commitTimeout = 1.second,
+      maybeMaxRebalanceDuration = Some(3.seconds),
       bufferSize = 5,
       sink = TopicConfig(s"sink.topic.$randomString"),
       state = TopicConfig(s"state.topic.$randomString"),
