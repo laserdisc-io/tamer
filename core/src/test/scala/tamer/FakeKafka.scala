@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2025 LaserDisc
+ * Copyright (c) 2019-2026 LaserDisc
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -61,6 +61,8 @@ object FakeKafka {
       brokers = fakeKafka.bootstrapServers,
       maybeRegistry = Some(RegistryConfig(fakeKafka.schemaRegistryUrl)),
       closeTimeout = 1.second,
+      commitTimeout = 1.second,
+      maybeMaxRebalanceDuration = Some(3.seconds),
       bufferSize = 5,
       sink = TopicConfig(s"sink.topic.$randomString"),
       state = TopicConfig(s"state.topic.$randomString"),

@@ -8,16 +8,17 @@ val V = new {
   val `cats-effect`                    = "3.5.3"
   val circe                            = "0.14.15"
   val doobie                           = "1.0.0-RC11"
-  val `embedded-kafka`                 = "3.9.1"
-  val `embedded-kafka-schema-registry` = "7.9.2"
+  val `embedded-kafka`                 = "4.1.0"
+  val `embedded-kafka-schema-registry` = "8.1.0"
   val http4s                           = "0.23.33"
   val jackson                          = "2.20.1"
   val `jackson-annotations`            = "2.20"
   val `json-schema`                    = "1.14.4"
   val `jsoniter-scala`                 = "2.38.8"
-  val kafka                            = "3.9.1"
+  val kafka                            = "4.1.1"
   val logback                          = "1.5.25"
   val `log-effect`                     = "0.19.8"
+  val lz4                              = "1.8.1"
   val ocisdk                           = "3.78.0"
   val postgresql                       = "42.7.9"
   val `scala-collection-compat`        = "2.14.0"
@@ -29,7 +30,7 @@ val V = new {
   val `zio-interop`                    = "23.1.0.13"
   val `zio-cache`                      = "0.2.7"
   val `zio-json`                       = "0.8.0"
-  val `zio-kafka`                      = "2.12.0"
+  val `zio-kafka`                      = "3.2.0"
   val `zio-nio`                        = "2.0.2"
   val `zio-oci-objectstorage`          = "0.8.5"
   val `zio-s3`                         = "0.4.4"
@@ -69,6 +70,7 @@ lazy val D = new {
   val `log4j-over-slf4j`           = "org.slf4j"                              % "log4j-over-slf4j"           % V.slf4j
   val `logback-classic`            = "ch.qos.logback"                         % "logback-classic"            % V.logback
   val `log-effect-zio`             = "io.laserdisc"                          %% "log-effect-zio"             % V.`log-effect`
+  val `lz4-java`                   = "org.lz4"                                % "lz4-java"                   % V.lz4
   val `oci-java-sdk-objectstorage` = "com.oracle.oci.sdk"                     % "oci-java-sdk-objectstorage" % V.ocisdk
   val postgresql                   = "org.postgresql"                         % "postgresql"                 % V.postgresql
   val `scala-collection-compat`    = "org.scala-lang.modules"                %% "scala-collection-compat"    % V.`scala-collection-compat`
@@ -90,9 +92,9 @@ lazy val D = new {
   val `zio-test-sbt`               = "dev.zio"                               %% "zio-test-sbt"               % V.zio
 }
 
-ThisBuild / tlBaseVersion              := "0.25"
+ThisBuild / tlBaseVersion              := "0.26"
 ThisBuild / tlCiReleaseBranches        := Seq("master")
-ThisBuild / tlJdkRelease               := Some(11)
+ThisBuild / tlJdkRelease               := Some(17)
 ThisBuild / organization               := "io.laserdisc"
 ThisBuild / organizationName           := "LaserDisc"
 ThisBuild / licenses                   := Seq(License.MIT)
@@ -100,7 +102,7 @@ ThisBuild / startYear                  := Some(2019)
 ThisBuild / developers                 := List(tlGitHubDev("sirocchj", "Julien Sirocchi"))
 ThisBuild / crossScalaVersions         := Seq(scala_213, scala_3)
 ThisBuild / scalaVersion               := scala_213
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("11"), JavaSpec.temurin("17"), JavaSpec.temurin("21"))
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"), JavaSpec.temurin("21"), JavaSpec.temurin("25"))
 
 ThisBuild / resolvers ++= List("confluent" at "https://packages.confluent.io/maven/", "jitpack" at "https://jitpack.io")
 
@@ -108,7 +110,7 @@ ThisBuild / mergifyLabelPaths    := Map.empty
 ThisBuild / mergifyStewardConfig := Some(MergifyStewardConfig(action = MergifyAction.Merge(Some("squash"))))
 
 lazy val commonSettings = Seq(
-  headerEndYear := Some(2025),
+  headerEndYear := Some(2026),
   scalacOptions ++= {
     CrossVersion.partialVersion(scalaVersion.value) match {
       case Some((2, major)) if major >= 13 => Seq("-Wconf:cat=lint-infer-any:s")
@@ -132,6 +134,7 @@ lazy val core = project
       D.`jackson-databind`,
       D.`kafka-clients`,
       D.`log-effect-zio`,
+      D.`lz4-java`,
       D.`sttp-upickle`,
       D.`sttp-zio`,
       D.upickle,

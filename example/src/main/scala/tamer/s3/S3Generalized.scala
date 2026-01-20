@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2025 LaserDisc
+ * Copyright (c) 2019-2026 LaserDisc
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -58,6 +58,8 @@ object S3Generalized extends ZIOAppDefault {
       List("localhost:9092"),
       Some(RegistryConfig("http://localhost:8081")),
       10.seconds,
+      5.seconds,
+      None,
       50,
       TopicConfig("sink", Some(TopicOptions(1, 1, false))),
       TopicConfig("state", Some(TopicOptions(1, 1, true))),

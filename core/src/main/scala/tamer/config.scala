@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2025 LaserDisc
+ * Copyright (c) 2019-2026 LaserDisc
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -26,6 +26,7 @@ import java.time.{Duration => JDuration}
 import java.util.Base64
 
 import zio._
+import zio.kafka.consumer.ConsumerSettings
 
 sealed trait RegistryAuthConfig extends Product with Serializable
 object RegistryAuthConfig {
@@ -98,6 +99,8 @@ final case class KafkaConfig(
     brokers: List[String],
     maybeRegistry: Option[RegistryConfig],
     closeTimeout: Duration,
+    commitTimeout: Duration,
+    maybeMaxRebalanceDuration: Option[Duration],
     bufferSize: Int,
     sink: TopicConfig,
     state: TopicConfig,
@@ -111,6 +114,8 @@ object KafkaConfig {
       brokers: List[String],
       maybeRegistry: Option[RegistryConfig],
       closeTimeout: Duration,
+      commitTimeout: Duration,
+      maybeMaxRebalanceDuration: Option[Duration],
       bufferSize: Int,
       sink: TopicConfig,
       state: TopicConfig,
@@ -121,6 +126,8 @@ object KafkaConfig {
     brokers = brokers,
     maybeRegistry = maybeRegistry,
     closeTimeout = closeTimeout,
+    commitTimeout = commitTimeout,
+    maybeMaxRebalanceDuration = maybeMaxRebalanceDuration,
     bufferSize = bufferSize,
     sink = sink,
     state = state,
@@ -134,14 +141,41 @@ object KafkaConfig {
     Config.listOf(Config.string("brokers")) ++
       RegistryConfig.config.nested("schema_registry") ++
       Config.duration("close_timeout") ++
+      Config.duration("commit_timeout").withDefault(ConsumerSettings.defaultCommitTimeout) ++
+      Config.duration("max_rebalance_timeout").optional ++
       Config.int("buffer_size") ++
       TopicConfig.config(compactionDefault = false).nested("sink") ++
       TopicConfig.config(compactionDefault = true).nested("state") ++
       Config.string("group_id") ++
       Config.string("client_id") ++
       Config.string("transactional_id")
-  ).map { case (brokers, maybeRegistry, closeTimeout, bufferSize, sink, state, groupId, clientId, transactionalId) =>
-    KafkaConfig(brokers, maybeRegistry, closeTimeout, bufferSize, sink, state, groupId, clientId, transactionalId)
+  ).map {
+    case (
+          brokers,
+          maybeRegistry,
+          closeTimeout,
+          commitTimeout,
+          maybeMaxRebalanceDuration,
+          bufferSize,
+          sink,
+          state,
+          groupId,
+          clientId,
+          transactionalId
+        ) =>
+      KafkaConfig(
+        brokers,
+        maybeRegistry,
+        closeTimeout,
+        commitTimeout,
+        maybeMaxRebalanceDuration,
+        bufferSize,
+        sink,
+        state,
+        groupId,
+        clientId,
+        transactionalId
+      )
   }.nested("kafka")
 
   final val fromEnvironment: TaskLayer[KafkaConfig] = ZLayer {
