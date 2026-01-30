@@ -3,7 +3,7 @@ val scala_3   = "3.3.7"
 
 val V = new {
   val avro4s_scala2                    = "4.1.2"
-  val avro4s_scala3                    = "5.0.14"
+  val avro4s_scala3                    = "5.0.15"
   val awssdk                           = "2.41.10"
   val `cats-effect`                    = "3.5.3"
   val circe                            = "0.14.15"
@@ -23,7 +23,7 @@ val V = new {
   val postgresql                       = "42.7.9"
   val `scala-collection-compat`        = "2.14.0"
   val slf4j                            = "2.0.17"
-  val sttp                             = "4.0.14"
+  val sttp                             = "4.0.15"
   val upickle                          = "4.4.2"
   val vulcan                           = "1.12.0"
   val zio                              = "2.1.24"
