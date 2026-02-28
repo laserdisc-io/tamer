@@ -22,7 +22,7 @@
 package tamer
 
 import io.github.embeddedkafka.schemaregistry.{EmbeddedKWithSR, EmbeddedKafka, EmbeddedKafkaConfig}
-import kafka.server.UnboundedControllerMutationQuota
+import org.apache.kafka.server.quota.ControllerMutationQuota.UNBOUNDED_CONTROLLER_MUTATION_QUOTA
 import zio._
 
 trait FakeKafka {
@@ -36,7 +36,7 @@ object FakeKafka {
 
   case class EmbeddedKafkaService(embeddedKWithSR: EmbeddedKWithSR) extends FakeKafka {
     private[this] final def _createTopic(topic: String) =
-      embeddedKWithSR.broker.autoTopicCreationManager.createTopics(Set(topic), UnboundedControllerMutationQuota, None)
+      embeddedKWithSR.broker.autoTopicCreationManager.createTopics(Set(topic), UNBOUNDED_CONTROLLER_MUTATION_QUOTA, None)
 
     override def bootstrapServers: List[String]         = List(s"localhost:${embeddedKWithSR.config.kafkaPort}")
     override def schemaRegistryUrl: String              = s"http://localhost:${embeddedKWithSR.config.schemaRegistryPort}"
