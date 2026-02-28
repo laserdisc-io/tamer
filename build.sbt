@@ -117,7 +117,6 @@ lazy val commonSettings = Seq(
       case _                               => Seq.empty
     }
   },
-  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
   Test / fork := true
 )
 
