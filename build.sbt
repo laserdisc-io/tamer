@@ -8,14 +8,14 @@ val V = new {
   val `cats-effect`                    = "3.5.3"
   val circe                            = "0.14.15"
   val doobie                           = "1.0.0-RC12"
-  val `embedded-kafka`                 = "4.1.0"
-  val `embedded-kafka-schema-registry` = "8.1.0"
+  val `embedded-kafka`                 = "4.2.0"
+  val `embedded-kafka-schema-registry` = "8.2.0"
   val http4s                           = "0.23.33"
   val jackson                          = "2.21.1"
   val `jackson-annotations`            = "2.21"
   val `json-schema`                    = "1.14.4"
   val `jsoniter-scala`                 = "2.38.9"
-  val kafka                            = "4.1.1"
+  val kafka                            = "4.2.0"
   val logback                          = "1.5.32"
   val `log-effect`                     = "0.19.9"
   val lz4                              = "1.8.1"
@@ -30,7 +30,7 @@ val V = new {
   val `zio-interop`                    = "23.1.0.13"
   val `zio-cache`                      = "0.2.7"
   val `zio-json`                       = "0.9.0"
-  val `zio-kafka`                      = "3.2.0"
+  val `zio-kafka`                      = "3.3.0"
   val `zio-nio`                        = "2.0.2"
   val `zio-oci-objectstorage`          = "0.8.6"
   val `zio-s3`                         = "0.4.4"
@@ -117,7 +117,6 @@ lazy val commonSettings = Seq(
       case _                               => Seq.empty
     }
   },
-  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
   Test / fork := true
 )
 
