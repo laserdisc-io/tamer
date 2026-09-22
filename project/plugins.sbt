@@ -1,3 +1,3 @@
-addSbtPlugin("com.github.sbt" % "sbt-native-packager"   % "1.11.7")
+addSbtPlugin("com.github.sbt" % "sbt-native-packager"   % "1.12.0")
 addSbtPlugin("org.typelevel"  % "sbt-typelevel"         % "0.8.5")
 addSbtPlugin("org.typelevel"  % "sbt-typelevel-mergify" % "0.8.5")
