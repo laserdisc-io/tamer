@@ -1,4 +1,4 @@
-val scala_213 = "2.13.18"
+val scala_213 = "3.10.0"
 val scala_3   = "3.3.8"
 
 val V = new {
