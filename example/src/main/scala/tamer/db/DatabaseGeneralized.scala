@@ -22,9 +22,9 @@
 package tamer
 package db
 
-import doobie.generic.auto._
-import doobie.implicits.legacy.instant._
-import doobie.syntax.string._
+import org.typelevel.doobie.generic.auto._
+import org.typelevel.doobie.implicits.legacy.instant._
+import org.typelevel.doobie.syntax.string._
 import zio._
 
 object DatabaseGeneralized extends ZIOAppDefault {

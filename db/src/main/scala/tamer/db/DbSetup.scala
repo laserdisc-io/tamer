@@ -24,9 +24,9 @@ package db
 
 import java.time.Instant
 
-import doobie.Query0
-import doobie.implicits._
-import doobie.util.transactor.Transactor
+import org.typelevel.doobie.Query0
+import org.typelevel.doobie.implicits._
+import org.typelevel.doobie.util.transactor.Transactor
 import fs2.Stream
 import log.effect.zio.ZioLogWriter.log4sFromName
 import zio._
