@@ -24,9 +24,9 @@ package tamer
 import java.sql.SQLException
 import java.time.Instant
 
-import doobie.hikari.HikariTransactor
-import doobie.hikari.HikariTransactor.newHikariTransactor
-import doobie.util.transactor.Transactor
+import org.typelevel.doobie.hikari.HikariTransactor
+import org.typelevel.doobie.hikari.HikariTransactor.newHikariTransactor
+import org.typelevel.doobie.util.transactor.Transactor
 import zio._
 import zio.interop.catz._
 
